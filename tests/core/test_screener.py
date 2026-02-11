@@ -170,3 +170,80 @@ class TestPullbackScreenerDefaults:
         s1 = PullbackScreener(MockClient())
         s2 = PullbackScreener(MockClient())
         assert s1.DEFAULT_CRITERIA is s2.DEFAULT_CRITERIA
+
+
+# ===================================================================
+# _normalize_quote anomaly guards
+# ===================================================================
+
+
+class TestNormalizeQuoteAnomalyGuard:
+    """Tests for anomaly value guards in _normalize_quote()."""
+
+    def test_extreme_dividend_yield_sanitized(self):
+        quote = {"dividendYield": 0.78}  # 78% as ratio
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] is None
+
+    def test_extreme_dividend_yield_percentage_sanitized(self):
+        quote = {"dividendYield": 78.0}  # 78% as percentage -> /100 -> 0.78 -> sanitized
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] is None
+
+    def test_normal_dividend_yield_preserved(self):
+        quote = {"dividendYield": 0.035}
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == 0.035
+
+    def test_extreme_low_pbr_sanitized(self):
+        quote = {"priceToBook": 0.01}
+        assert QueryScreener._normalize_quote(quote)["pbr"] is None
+
+    def test_normal_pbr_preserved(self):
+        quote = {"priceToBook": 0.85}
+        assert QueryScreener._normalize_quote(quote)["pbr"] == 0.85
+
+    def test_anomalous_low_per_sanitized(self):
+        quote = {"trailingPE": 0.3}
+        assert QueryScreener._normalize_quote(quote)["per"] is None
+
+    def test_normal_per_preserved(self):
+        quote = {"trailingPE": 10.5}
+        assert QueryScreener._normalize_quote(quote)["per"] == 10.5
+
+    def test_extreme_roe_as_percentage_normalized_then_valid(self):
+        # returnOnEquity=2.5 -> >1 so /100 -> 0.025 -> valid
+        quote = {"returnOnEquity": 2.5}
+        assert QueryScreener._normalize_quote(quote)["roe"] == pytest.approx(0.025)
+
+    def test_combined_anomalies(self):
+        quote = {
+            "symbol": "ANOMALY",
+            "dividendYield": 0.68,
+            "priceToBook": 0.01,
+            "trailingPE": 0.5,
+            "returnOnEquity": 0.15,
+            "regularMarketPrice": 100.0,
+        }
+        result = QueryScreener._normalize_quote(quote)
+        assert result["dividend_yield"] is None
+        assert result["pbr"] is None
+        assert result["per"] is None
+        assert result["roe"] == 0.15  # normal
+        assert result["price"] == 100.0
+
+    def test_boundary_dividend_yield_15_percent(self):
+        quote = {"dividendYield": 0.15}
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == 0.15
+
+    def test_boundary_pbr_005(self):
+        quote = {"priceToBook": 0.05}
+        assert QueryScreener._normalize_quote(quote)["pbr"] == 0.05
+
+    def test_boundary_per_1(self):
+        quote = {"trailingPE": 1.0}
+        assert QueryScreener._normalize_quote(quote)["per"] == 1.0
+
+    def test_roe_ratio_exceeding_bounds_sanitized(self):
+        """ROE already in ratio form but exceeding bounds should be sanitized."""
+        # returnOnEquity: -1.5 is NOT > 1, so no percentage normalization.
+        # Anomaly guard catches it: -1.5 < -1.0 -> None
+        quote = {"returnOnEquity": -1.5}
+        assert QueryScreener._normalize_quote(quote)["roe"] is None

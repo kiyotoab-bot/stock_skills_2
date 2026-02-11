@@ -159,6 +159,21 @@ class QueryScreener:
         if raw_rev_growth is not None and abs(raw_rev_growth) > 5:
             raw_rev_growth = raw_rev_growth / 100.0
 
+        # --- Anomaly guard: sanitize extreme values ---
+        raw_per = quote.get("trailingPE")
+        if raw_per is not None and 0 < raw_per < 1.0:
+            raw_per = None
+
+        raw_pbr = quote.get("priceToBook")
+        if raw_pbr is not None and raw_pbr < 0.05:
+            raw_pbr = None
+
+        if raw_div is not None and raw_div > 0.15:
+            raw_div = None
+
+        if raw_roe is not None and (raw_roe < -1.0 or raw_roe > 2.0):
+            raw_roe = None
+
         return {
             "symbol": quote.get("symbol", ""),
             "name": quote.get("shortName") or quote.get("longName"),
@@ -169,9 +184,9 @@ class QueryScreener:
             "price": quote.get("regularMarketPrice"),
             "market_cap": quote.get("marketCap"),
             # Valuation
-            "per": quote.get("trailingPE"),
+            "per": raw_per,
             "forward_per": quote.get("forwardPE"),
-            "pbr": quote.get("priceToBook"),
+            "pbr": raw_pbr,
             # Profitability
             "roe": raw_roe,
             # Dividend
@@ -244,13 +259,19 @@ class QueryScreener:
         # Build the EquityQuery
         query = build_query(criteria, region=region, exchange=exchange, sector=sector)
 
-        # Request up to 250 (yf.screen max); we score and truncate later
-        request_size = min(max(top_n, 50), 250)
+        # Fetch more than needed to allow scoring to select the best.
+        # Pullback mode needs a higher multiplier since many stocks fail the technical filter.
+        # Keep pullback limit moderate to avoid excessive per-stock API calls.
+        if with_pullback:
+            max_results = max(top_n * 5, 250)
+        else:
+            max_results = top_n * 5
 
         # Call yahoo_client.screen_stocks()
         raw_quotes = self.yahoo_client.screen_stocks(
             query,
-            size=request_size,
+            size=250,
+            max_results=max_results,
             sort_field=sort_field,
             sort_asc=sort_asc,
         )
@@ -383,7 +404,8 @@ class PullbackScreener:
 
         raw_quotes = self.yahoo_client.screen_stocks(
             query,
-            size=100,
+            size=250,
+            max_results=max(top_n * 5, 250),
             sort_field="intradaymarketcap",
             sort_asc=False,
         )
@@ -503,7 +525,8 @@ class AlphaScreener:
 
         raw_quotes = self.yahoo_client.screen_stocks(
             query,
-            size=min(max(top_n, 50), 250),
+            size=250,
+            max_results=max(top_n * 5, 250),
             sort_field="intradaymarketcap",
             sort_asc=False,
         )

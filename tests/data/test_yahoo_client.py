@@ -20,6 +20,7 @@ from src.data.yahoo_client import (
     _normalize_ratio,
     _read_cache,
     _safe_get,
+    _sanitize_anomalies,
     _write_cache,
 )
 
@@ -249,3 +250,95 @@ class TestCacheReadWrite:
             _write_cache("TEST", {"symbol": "TEST"})
             assert nested_dir.exists()
             assert (nested_dir / "TEST.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# _sanitize_anomalies
+# ---------------------------------------------------------------------------
+
+class TestSanitizeAnomalies:
+    """Tests for _sanitize_anomalies() -- anomaly value guard."""
+
+    def test_normal_values_unchanged(self):
+        data = {"dividend_yield": 0.035, "pbr": 0.85, "per": 12.5, "roe": 0.15}
+        result = _sanitize_anomalies(data)
+        assert result["dividend_yield"] == 0.035
+        assert result["pbr"] == 0.85
+        assert result["per"] == 12.5
+        assert result["roe"] == 0.15
+
+    def test_extreme_dividend_yield_sanitized(self):
+        data = {"dividend_yield": 0.78}  # 78%
+        assert _sanitize_anomalies(data)["dividend_yield"] is None
+
+    def test_dividend_yield_at_boundary(self):
+        data = {"dividend_yield": 0.15}
+        assert _sanitize_anomalies(data)["dividend_yield"] == 0.15
+
+    def test_dividend_yield_just_over_boundary(self):
+        data = {"dividend_yield": 0.151}
+        assert _sanitize_anomalies(data)["dividend_yield"] is None
+
+    def test_extreme_low_pbr_sanitized(self):
+        data = {"pbr": 0.01}  # シーラHD case
+        assert _sanitize_anomalies(data)["pbr"] is None
+
+    def test_pbr_at_boundary(self):
+        data = {"pbr": 0.05}
+        assert _sanitize_anomalies(data)["pbr"] == 0.05
+
+    def test_pbr_just_under_boundary(self):
+        data = {"pbr": 0.049}
+        assert _sanitize_anomalies(data)["pbr"] is None
+
+    def test_anomalous_low_per_sanitized(self):
+        data = {"per": 0.5}
+        assert _sanitize_anomalies(data)["per"] is None
+
+    def test_per_at_boundary(self):
+        data = {"per": 1.0}
+        assert _sanitize_anomalies(data)["per"] == 1.0
+
+    def test_per_negative_not_touched(self):
+        data = {"per": -5.0}
+        assert _sanitize_anomalies(data)["per"] == -5.0
+
+    def test_per_zero_not_touched(self):
+        data = {"per": 0.0}
+        assert _sanitize_anomalies(data)["per"] == 0.0
+
+    def test_extreme_roe_high_sanitized(self):
+        data = {"roe": 2.5}
+        assert _sanitize_anomalies(data)["roe"] is None
+
+    def test_extreme_roe_low_sanitized(self):
+        data = {"roe": -1.5}
+        assert _sanitize_anomalies(data)["roe"] is None
+
+    def test_roe_at_upper_boundary(self):
+        data = {"roe": 2.0}
+        assert _sanitize_anomalies(data)["roe"] == 2.0
+
+    def test_roe_at_lower_boundary(self):
+        data = {"roe": -1.0}
+        assert _sanitize_anomalies(data)["roe"] == -1.0
+
+    def test_none_values_unchanged(self):
+        data = {"dividend_yield": None, "pbr": None, "per": None, "roe": None}
+        result = _sanitize_anomalies(data)
+        assert all(result[k] is None for k in ["dividend_yield", "pbr", "per", "roe"])
+
+    def test_missing_keys_no_error(self):
+        data = {"symbol": "TEST", "price": 100.0}
+        result = _sanitize_anomalies(data)
+        assert result["symbol"] == "TEST"
+
+    def test_multiple_anomalies_all_sanitized(self):
+        data = {"dividend_yield": 0.68, "pbr": 0.01, "per": 0.5, "roe": 3.0}
+        result = _sanitize_anomalies(data)
+        assert all(result[k] is None for k in ["dividend_yield", "pbr", "per", "roe"])
+
+    def test_returns_same_dict(self):
+        data = {"dividend_yield": 0.78}
+        result = _sanitize_anomalies(data)
+        assert result is data

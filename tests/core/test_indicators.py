@@ -268,3 +268,34 @@ class TestScoreRoe:
     def test_roe_above_cap(self):
         """ROE above cap should still yield 15 points."""
         assert _score_roe(0.50, 0.08) == 15.0
+
+
+# ===================================================================
+# Anomaly value scoring (values sanitized to None upstream)
+# ===================================================================
+
+class TestAnomalyValueScoring:
+    """Test that anomalous values (sanitized to None upstream) score correctly."""
+
+    def test_none_dividend_yield_scores_zero(self):
+        stock = {"dividend_yield": None, "per": 10.0, "pbr": 0.8}
+        stock_no_div = {"per": 10.0, "pbr": 0.8}
+        assert calculate_value_score(stock) == calculate_value_score(stock_no_div)
+
+    def test_none_pbr_scores_zero(self):
+        assert calculate_value_score({"pbr": None}) == 0.0
+
+    def test_none_per_scores_zero(self):
+        assert calculate_value_score({"per": None}) == 0.0
+
+    def test_none_roe_scores_zero(self):
+        assert calculate_value_score({"roe": None}) == 0.0
+
+    def test_extreme_dividend_unsanitized_would_max(self):
+        """Documents the problem KIK-350 fixes upstream: 78% div gets max score."""
+        score = calculate_value_score({"dividend_yield": 0.78})
+        assert score == 20.0  # max dividend score without upstream guard
+
+    def test_all_none_from_anomalies(self):
+        stock = {"per": None, "pbr": None, "dividend_yield": None, "roe": None, "revenue_growth": None}
+        assert calculate_value_score(stock) == 0.0
