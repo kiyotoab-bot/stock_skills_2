@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-割安株スクリーニングシステム。Yahoo Finance API（yfinance）を使って日本株・米国株・ASEAN株から割安銘柄をスクリーニングする。Claude Code Skills として動作し、`/screen-stocks`、`/stock-report`、`/watchlist`、`/stress-test` コマンドで利用する。
+割安株スクリーニングシステム。Yahoo Finance API（yfinance）を使って日本株・米国株・ASEAN株から割安銘柄をスクリーニングする。Claude Code Skills として動作し、`/screen-stocks`、`/stock-report`、`/watchlist`、`/stress-test`、`/stock-portfolio` コマンドで利用する。
 
 ## Commands
 
@@ -45,6 +45,13 @@ python3 .claude/skills/watchlist/scripts/manage_watchlist.py remove my-list 7203
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,AAPL,D05.SI
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,9984.T --scenario トリプル安
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,AAPL --weights 0.6,0.4 --scenario 米国リセッション
+
+# ポートフォリオ管理
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py snapshot
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py buy --symbol 7203.T --shares 100 --price 2850 --currency JPY --date 2025-06-15 --memo トヨタ
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py sell --symbol AAPL --shares 5
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py analyze
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
 
 # 依存インストール
 pip install -r requirements.txt
@@ -95,6 +102,10 @@ Core Layer (src/core/)     Market Layer (src/markets/)
   ├─ scenario_analysis.py  (Team 3)
   │   analyze_scenario()
   │
+  ├─ portfolio_manager.py  (Team 2 - PF管理)
+  │   load_portfolio() / save_portfolio()
+  │   add_position() / sell_position()
+  │
   └─ technicals.py
       detect_pullback_in_uptrend()
       compute_rsi() / compute_bollinger_bands()
@@ -106,8 +117,11 @@ Data Layer (src/data/)     Output Layer (src/output/)
       screen_stocks()         │   format_sharpe_markdown()
       get_price_history()     │   format_pullback_markdown()
       24時間TTLのJSONキャッシュ│
-                              └─ stress_formatter.py (Team 3)
-                                  format_stress_report()
+                              ├─ stress_formatter.py (Team 3)
+                              │   format_stress_report()
+                              │
+                              └─ portfolio_formatter.py (Team 3 - PF管理)
+                                  format_snapshot() / format_structure_analysis()
 ```
 
 ## Four Screening Engines
