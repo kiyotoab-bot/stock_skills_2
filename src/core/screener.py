@@ -159,6 +159,21 @@ class QueryScreener:
         if raw_rev_growth is not None and abs(raw_rev_growth) > 5:
             raw_rev_growth = raw_rev_growth / 100.0
 
+        # --- Anomaly guard: sanitize extreme values ---
+        raw_per = quote.get("trailingPE")
+        if raw_per is not None and 0 < raw_per < 1.0:
+            raw_per = None
+
+        raw_pbr = quote.get("priceToBook")
+        if raw_pbr is not None and raw_pbr < 0.05:
+            raw_pbr = None
+
+        if raw_div is not None and raw_div > 0.15:
+            raw_div = None
+
+        if raw_roe is not None and (raw_roe < -1.0 or raw_roe > 2.0):
+            raw_roe = None
+
         return {
             "symbol": quote.get("symbol", ""),
             "name": quote.get("shortName") or quote.get("longName"),
@@ -169,9 +184,9 @@ class QueryScreener:
             "price": quote.get("regularMarketPrice"),
             "market_cap": quote.get("marketCap"),
             # Valuation
-            "per": quote.get("trailingPE"),
+            "per": raw_per,
             "forward_per": quote.get("forwardPE"),
-            "pbr": quote.get("priceToBook"),
+            "pbr": raw_pbr,
             # Profitability
             "roe": raw_roe,
             # Dividend

@@ -70,6 +70,36 @@ def _normalize_ratio(value: Any) -> Optional[float]:
     return value
 
 
+def _sanitize_anomalies(data: dict) -> dict:
+    """Sanitize anomalous financial data values to None.
+
+    Yahoo Finance occasionally returns extreme values (e.g. 78% dividend yield
+    from special dividends, PBR 0.01 from accounting anomalies) that would
+    distort screening results.
+    """
+    # dividend_yield: max 15%
+    dy = data.get("dividend_yield")
+    if dy is not None and dy > 0.15:
+        data["dividend_yield"] = None
+
+    # pbr: min 0.05
+    pbr = data.get("pbr")
+    if pbr is not None and pbr < 0.05:
+        data["pbr"] = None
+
+    # per: min 1.0 (negative/zero already handled by scorers)
+    per = data.get("per")
+    if per is not None and 0 < per < 1.0:
+        data["per"] = None
+
+    # roe: -100% to 200%
+    roe = data.get("roe")
+    if roe is not None and (roe < -1.0 or roe > 2.0):
+        data["roe"] = None
+
+    return data
+
+
 def get_stock_info(symbol: str) -> Optional[dict]:
     """Fetch basic stock information for a single symbol.
 
@@ -123,6 +153,7 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             "fifty_two_week_low": _safe_get(info, "fiftyTwoWeekLow"),
         }
 
+        _sanitize_anomalies(result)
         _write_cache(symbol, result)
         return result
 
