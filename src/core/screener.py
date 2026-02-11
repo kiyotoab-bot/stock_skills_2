@@ -464,10 +464,8 @@ class PullbackScreener:
                 # Bounce / match info
                 "bounce_score": stock.get("bounce_score"),
                 "match_type": stock.get("match_type", "full"),
-                # SR (may be None)
-                "adjusted_sr": adjusted_sr,
-                "conditions_passed": conditions_passed,
-                "final_score": final_score,
+                # Score
+                "final_score": stock.get("value_score", 0.0),
             })
 
         # Sort: "full" matches first, then "partial"; within each group by final_score descending
