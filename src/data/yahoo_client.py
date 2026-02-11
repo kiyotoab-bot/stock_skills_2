@@ -199,6 +199,32 @@ def _try_get_field(df: Any, field_names: list[str]) -> Optional[float]:
         return None
 
 
+def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[float]:
+    """Try to extract multiple periods of data from a DataFrame row.
+
+    Returns a list of floats in latest-to-oldest order.  Stops at the first
+    NaN / None so that only contiguous data is returned.
+    """
+    try:
+        if df is None or df.empty:
+            return []
+        for name in field_names:
+            if name in df.index:
+                values: list[float] = []
+                row = df.loc[name]
+                for i in range(min(len(row), max_periods)):
+                    val = row.iloc[i]
+                    if val is not None and val == val:  # NaN check
+                        values.append(float(val))
+                    else:
+                        break  # contiguous data required
+                if values:
+                    return values
+        return []
+    except Exception:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # get_stock_detail
 # ---------------------------------------------------------------------------
@@ -235,8 +261,10 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         except Exception:
             pass
 
-        # --- Balance sheet: equity ratio ---
+        # --- Balance sheet: equity ratio, total_assets, equity_history ---
         equity_ratio: Optional[float] = None
+        total_assets: Optional[float] = None
+        equity_history: list[float] = []
         try:
             bs = ticker.balance_sheet
             if bs is not None and not bs.empty:
@@ -254,6 +282,15 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                 ])
                 if equity is not None and total_assets is not None and total_assets != 0:
                     equity_ratio = float(equity / total_assets)
+
+                # Multi-period equity history for ROE trend analysis
+                equity_history = _try_get_history(bs, [
+                    "Stockholders Equity",
+                    "Total Stockholder Equity",
+                    "Stockholders' Equity",
+                    "StockholdersEquity",
+                    "Total Equity Gross Minority Interest",
+                ])
         except Exception:
             pass
 
@@ -274,16 +311,31 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         except Exception:
             pass
 
-        # --- Income statement: EPS & net income ---
+        # --- Income statement: EPS, net income, revenue/NI history ---
         eps_current: Optional[float] = None
         eps_previous: Optional[float] = None
         eps_growth: Optional[float] = None
         net_income_stmt: Optional[float] = None
+        revenue_history: list[float] = []
+        net_income_history: list[float] = []
         try:
             inc = ticker.income_stmt
             if inc is not None and not inc.empty:
                 # Net income from most recent period
                 net_income_stmt = _try_get_field(inc, [
+                    "Net Income",
+                    "NetIncome",
+                    "Net Income Common Stockholders",
+                ])
+
+                # Multi-period revenue history for acceleration analysis
+                revenue_history = _try_get_history(inc, [
+                    "Total Revenue",
+                    "Revenue",
+                ])
+
+                # Multi-period net income history for ROE trend analysis
+                net_income_history = _try_get_history(inc, [
                     "Net Income",
                     "NetIncome",
                     "Net Income Common Stockholders",
@@ -340,6 +392,11 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             "eps_current": eps_current,
             "eps_previous": eps_previous,
             "eps_growth": eps_growth,
+            # Alpha signal fields (KIK-346)
+            "total_assets": total_assets,
+            "revenue_history": revenue_history,
+            "net_income_history": net_income_history,
+            "equity_history": equity_history,
         })
 
         # 5. Cache the result

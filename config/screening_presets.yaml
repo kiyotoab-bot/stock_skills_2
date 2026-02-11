@@ -42,3 +42,7 @@ presets:
       max_per: 20
       min_roe: 0.08
       min_revenue_growth: 0.05
+
+  alpha:
+    description: "アルファシグナル（割安＋変化の質＋押し目）"
+    mode: "alpha"

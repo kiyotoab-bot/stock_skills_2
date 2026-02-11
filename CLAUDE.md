@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # スクリーニング実行（EquityQuery方式 - デフォルト）
 python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset value --top 10
 # region: japan / us / asean / sg / th / my / id / ph / hk / kr / tw / cn / all
-# preset: value / high-dividend / growth-value / deep-value / quality / pullback
+# preset: value / high-dividend / growth-value / deep-value / quality / pullback / alpha
 # sector (optional): Technology / Financial Services / Healthcare / Consumer Cyclical / Industrials
 #                     Communication Services / Consumer Defensive / Energy / Basic Materials
 #                     Real Estate / Utilities
@@ -25,6 +25,9 @@ python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --pres
 
 # 押し目買い型スクリーニング
 python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset pullback
+
+# アルファシグナル（割安＋変化＋押し目の統合スクリーニング）
+python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset alpha
 
 # 割安株 + 押し目フィルタ
 python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset value --with-pullback
@@ -76,7 +79,8 @@ Core Layer (src/core/)     Market Layer (src/markets/)
   ├─ screener.py           ├─ base.py    … 抽象基底クラス Market
   │   ValueScreener +      ├─ japan.py   … .T suffix, get_region()="jp"
   │   QueryScreener +      ├─ us.py      … get_region()="us"
-  │   PullbackScreener     └─ asean.py   … get_region()=["sg","th",...]
+  │   PullbackScreener +   └─ asean.py   … get_region()=["sg","th",...]
+  │   AlphaScreener
   │
   ├─ query_builder.py      Config Layer (config/)
   │   build_query() →       ├─ screening_presets.yaml
@@ -105,6 +109,9 @@ Core Layer (src/core/)     Market Layer (src/markets/)
   │   load_portfolio() / save_portfolio()
   │   add_position() / sell_position()
   │
+  ├─ alpha.py
+  │   compute_change_score() → 変化スコア(0-100)
+  │
   └─ technicals.py
       detect_pullback_in_uptrend()
       compute_rsi() / compute_bollinger_bands()
@@ -114,7 +121,7 @@ Data Layer (src/data/)     Output Layer (src/output/)
       get_stock_info()        │   format_markdown()
       get_stock_detail()      │   format_query_markdown()
       screen_stocks()         │   format_pullback_markdown()
-      get_price_history()     │
+      get_price_history()     │   format_alpha_markdown()
       24時間TTLのJSONキャッシュ│
                               ├─ stress_formatter.py (Team 3)
                               │   format_stress_report()
@@ -123,7 +130,7 @@ Data Layer (src/data/)     Output Layer (src/output/)
                                   format_snapshot() / format_structure_analysis()
 ```
 
-## Three Screening Engines
+## Four Screening Engines
 
 ### QueryScreener（EquityQuery方式 - デフォルト）
 yfinance の EquityQuery API を使い、銘柄リストなしで Yahoo Finance のスクリーナーに直接条件を送信。`query_builder.build_query()` で region/exchange/sector/criteria を EquityQuery に変換し、`yahoo_client.screen_stocks()` で実行。結果は `_normalize_quote()` で正規化後、`calculate_value_score()` でスコア付け。対応地域は約60（jp, us, sg, th, my, id, ph, hk, kr, tw, cn 等）。`--mode query` (デフォルト) で使用。
@@ -135,6 +142,12 @@ yfinance の EquityQuery API を使い、銘柄リストなしで Yahoo Finance 
 2段パイプライン: EquityQuery(ファンダ) → テクニカル判定(detect_pullback_in_uptrend)。value_score でスコアリング。
 上昇トレンド中の一時調整（-5%〜-20%）を検出。3条件: (1)株価>200日MA＋50日MA>200日MA、
 (2)60日高値から-5%〜-20%、(3)RSI30-40反転＋出来高低下 or BB下限タッチ。`--preset pullback` で使用。
+
+### AlphaScreener（アルファシグナル方式）
+4段パイプライン: EquityQuery(割安足切り) → 変化の質チェック(alpha.py) → 押し目判定(technicals.py) → 2軸スコアリング。
+割安スコア(100点) + 変化スコア(100点) = 総合スコア(200点満点 + 押し目ボーナス)。
+4指標で変化の質を判定: アクルーアルズ(利益の質) + 売上成長加速度 + FCF利回り + ROE改善トレンド。
+3つ以上◎で通過。`--preset alpha` で使用。
 
 ## yahoo_client のデータ取得パターン
 
