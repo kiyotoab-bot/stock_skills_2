@@ -60,7 +60,15 @@ python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
 pip install -r requirements.txt
 ```
 
-テストフレームワーク未導入。テストを追加する場合は `tests/` に配置する。
+テストは pytest で実行する。テストを追加する場合は `tests/` に配置する。
+
+```bash
+# テスト全件実行
+pytest tests/
+
+# 特定モジュールのテスト
+pytest tests/core/test_indicators.py -v
+```
 
 ## Architecture
 
@@ -170,3 +178,5 @@ yfinance の EquityQuery API を使い、銘柄リストなしで Yahoo Finance 
 - データ取得は必ず `src/data/yahoo_client.py` 経由（直接 yfinance を呼ばない）
 - 新しい市場を追加する場合は `src/markets/base.py` の `Market` を継承
 - `data/cache/`、`data/watchlists/`、`data/screening_results/` は gitignore 済み
+- テストは `pytest` で実行。`tests/conftest.py` に共通フィクスチャあり
+- yahoo_client のモックは `conftest.py` の `mock_yahoo_client` を使用
