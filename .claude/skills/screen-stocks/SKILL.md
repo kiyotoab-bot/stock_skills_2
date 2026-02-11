@@ -47,6 +47,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 | 「超割安」「ディープバリュー」 | deep-value |
 | 「クオリティ」「高品質」 | quality |
 | 「押し目」「pullback」 | pullback |
+| 「アルファ」「alpha」「割安＋変化」 | alpha |
 | 「割安で押し目」「バリュー+押し目」 | value --with-pullback |
 | 「高配当で押し目」 | high-dividend --with-pullback |
 
@@ -101,6 +102,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 - `deep-value` : ディープバリュー（非常に低いPER/PBR）
 - `quality` : クオリティバリュー（高ROE＋割安）
 - `pullback` : 押し目買い型（上昇トレンド中の一時調整でエントリー。EquityQuery→テクニカル→SR の3段パイプライン。実行に時間がかかります）
+- `alpha` : アルファシグナル（割安＋変化の質＋押し目の3軸統合。EquityQuery→変化の質→押し目判定→2軸スコアリングの4段パイプライン。実行に時間がかかります）
 
 ## 出力
 
@@ -114,6 +116,9 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 
 ### Pullback モードの出力列
 順位 / 銘柄 / 株価 / PER / 押し目% / RSI / 出来高比 / SMA50 / SMA200 / スコア
+
+### Alpha モードの出力列
+順位 / 銘柄 / 株価 / PER / PBR / 割安 / 変化 / 総合 / 押し目 / ア / 加速 / FCF / ROE趨勢
 
 ## 実行例
 
@@ -135,6 +140,12 @@ python3 .../run_screen.py --region us --preset value --mode legacy
 
 # 日本株の押し目買い候補
 python3 .../run_screen.py --region japan --preset pullback
+
+# 日本株のアルファシグナル（割安＋変化＋押し目）
+python3 .../run_screen.py --region japan --preset alpha
+
+# 米国株のアルファシグナル
+python3 .../run_screen.py --region us --preset alpha
 
 # 日本の割安株 + 押し目フィルタ
 python3 .../run_screen.py --region japan --preset value --with-pullback

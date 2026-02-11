@@ -140,3 +140,71 @@ def format_pullback_markdown(results: list[dict]) -> str:
         )
 
     return "\n".join(lines)
+
+
+def format_alpha_markdown(results: list[dict]) -> str:
+    """Format alpha signal screening results as a Markdown table.
+
+    Shows 2-axis scoring: value_score (100pt) + change_score (100pt) = total_score (200pt+).
+    Also shows pullback status and key change indicators.
+    """
+    if not results:
+        return "アルファシグナル条件に合致する銘柄が見つかりませんでした。"
+
+    lines = [
+        "| 順位 | 銘柄 | 株価 | PER | PBR | 割安 | 変化 | 総合 | 押し目 | ア | 加速 | FCF | ROE趨勢 |",
+        "|---:|:-----|-----:|----:|----:|----:|----:|----:|:------:|:--:|:---:|:---:|:------:|",
+    ]
+
+    for rank, row in enumerate(results, start=1):
+        symbol = row.get("symbol", "-")
+        name = row.get("name") or ""
+        label = f"{symbol} {name}".strip() if name else symbol
+
+        price = _fmt_float(row.get("price"), decimals=0) if row.get("price") is not None else "-"
+        per = _fmt_float(row.get("per"))
+        pbr = _fmt_float(row.get("pbr"))
+
+        value_score = _fmt_float(row.get("value_score"))
+        change_score = _fmt_float(row.get("change_score"))
+        total_score = _fmt_float(row.get("total_score"))
+
+        # Pullback status
+        pullback = row.get("pullback_match", "none")
+        if pullback == "full":
+            pb_str = "★"
+        elif pullback == "partial":
+            pb_str = "△"
+        else:
+            pb_str = "-"
+
+        # Change indicators: ◎(>=20) ○(>=15) △(>=10) ×(<10)
+        def _indicator(score):
+            if score is None:
+                return "-"
+            if score >= 20:
+                return "◎"
+            if score >= 15:
+                return "○"
+            if score >= 10:
+                return "△"
+            return "×"
+
+        accruals = _indicator(row.get("accruals_score"))
+        rev_accel = _indicator(row.get("rev_accel_score"))
+        fcf = _indicator(row.get("fcf_yield_score"))
+        roe_trend = _indicator(row.get("roe_trend_score"))
+
+        lines.append(
+            f"| {rank} | {label} | {price} | {per} | {pbr} "
+            f"| {value_score} | {change_score} | {total_score} | {pb_str} "
+            f"| {accruals} | {rev_accel} | {fcf} | {roe_trend} |"
+        )
+
+    # Legend
+    lines.append("")
+    lines.append("**凡例**: 割安=割安スコア(100点) / 変化=変化スコア(100点) / 総合=割安+変化(+押し目ボーナス)")
+    lines.append("**変化指標**: ア=アクルーアルズ(利益の質) / 加速=売上成長加速度 / FCF=FCF利回り / ROE趨勢=ROE改善トレンド")
+    lines.append("**判定**: ◎=優秀(20+) ○=良好(15+) △=普通(10+) ×=不足(<10)")
+
+    return "\n".join(lines)

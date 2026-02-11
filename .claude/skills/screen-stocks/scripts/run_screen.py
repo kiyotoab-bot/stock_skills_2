@@ -14,8 +14,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
 from src.data import yahoo_client
-from src.core.screener import ValueScreener, QueryScreener, PullbackScreener
-from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown
+from src.core.screener import ValueScreener, QueryScreener, PullbackScreener, AlphaScreener
+from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown, format_alpha_markdown
 from src.markets.japan import JapanMarket
 from src.markets.us import USMarket
 from src.markets.asean import ASEANMarket
@@ -106,6 +106,19 @@ def run_query_mode(args):
             print()
         return
 
+    # alpha preset uses AlphaScreener
+    if args.preset == "alpha":
+        screener = AlphaScreener(yahoo_client)
+        for region_code in regions:
+            region_name = REGION_NAMES.get(region_code, region_code.upper())
+            print(f"\n## {region_name} - アルファシグナル スクリーニング結果\n")
+            print("Step 1: 割安足切り (EquityQuery)...")
+            results = screener.screen(region=region_code, top_n=args.top)
+            print(f"Step 2-4 完了: {len(results)}銘柄がアルファ条件に合致\n")
+            print(format_alpha_markdown(results))
+            print()
+        return
+
     screener = QueryScreener(yahoo_client)
 
     for region_code in regions:
@@ -188,7 +201,7 @@ def main():
     parser.add_argument(
         "--preset",
         default="value",
-        choices=["value", "high-dividend", "growth-value", "deep-value", "quality", "pullback"],
+        choices=["value", "high-dividend", "growth-value", "deep-value", "quality", "pullback", "alpha"],
     )
     parser.add_argument(
         "--sector",
@@ -236,6 +249,10 @@ def main():
     # pullback preset always uses query mode (needs EquityQuery + technical analysis)
     if args.preset == "pullback" and args.mode == "legacy":
         print("Note: pullback preset requires query mode. Switching to --mode query.")
+        args.mode = "query"
+
+    if args.preset == "alpha" and args.mode == "legacy":
+        print("Note: alpha preset requires query mode. Switching to --mode query.")
         args.mode = "query"
 
     if args.mode == "query":
