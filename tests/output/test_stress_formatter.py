@@ -10,9 +10,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.output.stress_formatter import (
     format_concentration_report,
+    format_correlation_report,
     format_full_stress_report,
+    format_recommendations_report,
     format_scenario_report,
     format_sensitivity_report,
+    format_var_report,
 )
 
 
@@ -123,6 +126,77 @@ def _make_scenario_result():
     }
 
 
+def _make_correlation():
+    """Create sample correlation data."""
+    return {
+        "symbols": ["7203.T", "AAPL", "D05.SI"],
+        "matrix": [
+            [1.0, 0.45, 0.30],
+            [0.45, 1.0, 0.72],
+            [0.30, 0.72, 1.0],
+        ],
+    }
+
+
+def _make_high_pairs():
+    """Create sample high correlation pairs."""
+    return [
+        {
+            "pair": ["AAPL", "D05.SI"],
+            "correlation": 0.72,
+            "label": "強い正の相関",
+        },
+    ]
+
+
+def _make_factor_results():
+    """Create sample factor decomposition results."""
+    return [
+        {
+            "symbol": "7203.T",
+            "factors": [
+                {"name": "USD/JPY", "symbol": "USDJPY=X", "beta": 0.35, "contribution": 0.28},
+                {"name": "日経225", "symbol": "^N225", "beta": 0.80, "contribution": 0.45},
+            ],
+            "r_squared": 0.52,
+            "residual_std": 0.012,
+        },
+    ]
+
+
+def _make_var_result():
+    """Create sample VaR result."""
+    return {
+        "daily_var": {0.95: -0.023, 0.99: -0.041},
+        "monthly_var": {0.95: -0.105, 0.99: -0.188},
+        "daily_var_amount": {0.95: -230_000, 0.99: -410_000},
+        "monthly_var_amount": {0.95: -1_050_000, 0.99: -1_880_000},
+        "portfolio_volatility": 0.22,
+        "observation_days": 245,
+        "total_value": 10_000_000,
+    }
+
+
+def _make_recommendations():
+    """Create sample recommendations."""
+    return [
+        {
+            "priority": "high",
+            "category": "correlation",
+            "title": "強い連動: AAPL x D05.SI (r=0.72)",
+            "detail": "両銘柄の価格が連動しています。",
+            "action": "片方を縮小し非連動セクターへ分散",
+        },
+        {
+            "priority": "medium",
+            "category": "concentration",
+            "title": "セクターがやや集中",
+            "detail": "HHI=0.3050",
+            "action": "セクター分散の改善を検討",
+        },
+    ]
+
+
 # ---------------------------------------------------------------------------
 # format_full_stress_report
 # ---------------------------------------------------------------------------
@@ -190,6 +264,81 @@ class TestFormatFullStressReport:
         assert "認識" in output
         assert "推奨アクション" in output
 
+    def test_backward_compatible_without_new_args(self):
+        """Report works without KIK-352 optional arguments."""
+        output = format_full_stress_report(
+            portfolio_summary=_make_portfolio_summary(),
+            concentration=_make_concentration(),
+            sensitivities=_make_sensitivities(),
+            scenario_result=_make_scenario_result(),
+        )
+        assert "推奨アクション" in output
+
+    def test_includes_correlation_section(self):
+        """Report includes correlation section when provided."""
+        output = format_full_stress_report(
+            portfolio_summary=_make_portfolio_summary(),
+            concentration=_make_concentration(),
+            sensitivities=_make_sensitivities(),
+            scenario_result=_make_scenario_result(),
+            correlation=_make_correlation(),
+            high_correlation_pairs=_make_high_pairs(),
+            factor_decomposition=_make_factor_results(),
+        )
+        assert "### 相関分析" in output
+        assert "相関行列" in output
+
+    def test_includes_var_section(self):
+        """Report includes VaR section when provided."""
+        output = format_full_stress_report(
+            portfolio_summary=_make_portfolio_summary(),
+            concentration=_make_concentration(),
+            sensitivities=_make_sensitivities(),
+            scenario_result=_make_scenario_result(),
+            var_result=_make_var_result(),
+        )
+        assert "### リスク指標" in output
+        assert "VaR" in output
+
+    def test_includes_recommendations_section(self):
+        """Report includes recommendations section when provided."""
+        output = format_full_stress_report(
+            portfolio_summary=_make_portfolio_summary(),
+            concentration=_make_concentration(),
+            sensitivities=_make_sensitivities(),
+            scenario_result=_make_scenario_result(),
+            recommendations=_make_recommendations(),
+        )
+        assert "### 推奨アクション（自動生成）" in output
+
+    def test_var_summary_in_judgment_table(self):
+        """VaR summary should appear in the judgment table."""
+        output = format_full_stress_report(
+            portfolio_summary=_make_portfolio_summary(),
+            concentration=_make_concentration(),
+            sensitivities=_make_sensitivities(),
+            scenario_result=_make_scenario_result(),
+            var_result=_make_var_result(),
+        )
+        assert "日次VaR(95%)" in output
+
+    def test_all_kik352_sections(self):
+        """Report includes all KIK-352 sections when all data is provided."""
+        output = format_full_stress_report(
+            portfolio_summary=_make_portfolio_summary(),
+            concentration=_make_concentration(),
+            sensitivities=_make_sensitivities(),
+            scenario_result=_make_scenario_result(),
+            correlation=_make_correlation(),
+            high_correlation_pairs=_make_high_pairs(),
+            factor_decomposition=_make_factor_results(),
+            var_result=_make_var_result(),
+            recommendations=_make_recommendations(),
+        )
+        assert "### 相関分析" in output
+        assert "### リスク指標" in output
+        assert "### 推奨アクション（自動生成）" in output
+
 
 # ---------------------------------------------------------------------------
 # format_concentration_report
@@ -222,7 +371,6 @@ class TestFormatConcentrationReport:
     def test_contains_hhi_values(self):
         """Report includes HHI numeric values."""
         output = format_concentration_report(_make_concentration())
-        # sector_hhi = 0.3050 -> "0.3050"
         assert "0.3050" in output
 
 
@@ -294,3 +442,110 @@ class TestFormatScenarioReport:
         assert "### Step 6: 定量結果" in output
         assert "PF影響率" in output
         assert "判定" in output
+
+
+# ---------------------------------------------------------------------------
+# format_correlation_report (KIK-352)
+# ---------------------------------------------------------------------------
+
+class TestFormatCorrelationReport:
+    """Tests for format_correlation_report()."""
+
+    def test_contains_heading(self):
+        output = format_correlation_report(_make_correlation(), _make_high_pairs())
+        assert "### 相関分析" in output
+
+    def test_contains_matrix(self):
+        output = format_correlation_report(_make_correlation(), _make_high_pairs())
+        assert "#### 相関行列" in output
+        assert "7203.T" in output
+        assert "AAPL" in output
+
+    def test_contains_high_pairs(self):
+        output = format_correlation_report(_make_correlation(), _make_high_pairs())
+        assert "#### 高相関ペア" in output
+        assert "AAPL x D05.SI" in output
+
+    def test_no_high_pairs_message(self):
+        output = format_correlation_report(_make_correlation(), [])
+        assert "検出されませんでした" in output
+
+    def test_contains_factor_decomposition(self):
+        output = format_correlation_report(
+            _make_correlation(), _make_high_pairs(), _make_factor_results()
+        )
+        assert "#### ファクター分解" in output
+        assert "7203.T" in output
+        assert "USD/JPY" in output
+
+    def test_single_stock_message(self):
+        corr = {"symbols": ["A"], "matrix": [[1.0]]}
+        output = format_correlation_report(corr, [])
+        assert "スキップ" in output
+
+
+# ---------------------------------------------------------------------------
+# format_var_report (KIK-352)
+# ---------------------------------------------------------------------------
+
+class TestFormatVarReport:
+    """Tests for format_var_report()."""
+
+    def test_contains_heading(self):
+        output = format_var_report(_make_var_result())
+        assert "### リスク指標" in output
+
+    def test_contains_var_values(self):
+        output = format_var_report(_make_var_result())
+        assert "95%" in output
+        assert "99%" in output
+        assert "日次VaR" in output
+        assert "月次VaR" in output
+
+    def test_contains_volatility(self):
+        output = format_var_report(_make_var_result())
+        assert "ボラティリティ" in output
+
+    def test_contains_observation_days(self):
+        output = format_var_report(_make_var_result())
+        assert "245" in output
+
+    def test_insufficient_data_message(self):
+        var = {"observation_days": 10, "daily_var": {}, "monthly_var": {}}
+        output = format_var_report(var)
+        assert "スキップ" in output
+
+    def test_contains_disclaimer(self):
+        output = format_var_report(_make_var_result())
+        assert "テールリスク" in output
+
+
+# ---------------------------------------------------------------------------
+# format_recommendations_report (KIK-352)
+# ---------------------------------------------------------------------------
+
+class TestFormatRecommendationsReport:
+    """Tests for format_recommendations_report()."""
+
+    def test_contains_heading(self):
+        output = format_recommendations_report(_make_recommendations())
+        assert "### 推奨アクション（自動生成）" in output
+
+    def test_contains_recommendations(self):
+        output = format_recommendations_report(_make_recommendations())
+        assert "強い連動" in output
+        assert "セクター" in output
+
+    def test_empty_recommendations(self):
+        output = format_recommendations_report([])
+        assert "特筆すべき推奨アクションはありません" in output
+
+    def test_priority_markers(self):
+        output = format_recommendations_report(_make_recommendations())
+        assert "!!!" in output  # high
+        assert "!!" in output  # medium
+
+    def test_category_labels(self):
+        output = format_recommendations_report(_make_recommendations())
+        assert "[相関]" in output
+        assert "[集中度]" in output
