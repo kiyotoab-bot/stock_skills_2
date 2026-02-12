@@ -45,6 +45,19 @@ python3 .../run_portfolio.py sell --symbol <sym> --shares <n>
 python3 .../run_portfolio.py analyze
 ```
 
+### health -- ヘルスチェック
+
+保有銘柄の投資仮説がまだ有効かをチェックする。テクニカル（SMA50/200, RSI）とファンダメンタル（変化スコア）の2軸で3段階アラートを出力。
+
+```bash
+python3 .../run_portfolio.py health
+```
+
+アラートレベル:
+- **早期警告**: SMA50割れ / RSI急低下 / 変化スコア1指標悪化
+- **注意**: SMA50がSMA200に接近 + 指標悪化 / 変化スコア複数悪化
+- **撤退**: デッドクロス / トレンド崩壊 + 変化スコア悪化
+
 ### list -- 保有銘柄一覧
 
 portfolio.csv の内容をそのまま表示する。
@@ -63,6 +76,7 @@ python3 .../run_portfolio.py list
 | 「〇〇を△株買った」「〇〇を△株 ¥XXXXで購入」 | buy |
 | 「〇〇を△株売った」「〇〇を売却」 | sell |
 | 「構造分析」「偏りを調べて」「集中度」「HHI」 | analyze |
+| 「ヘルスチェック」「健全性チェック」「利確判断」「損切り判断」 | health |
 | 「一覧」「リスト」「CSV」 | list |
 
 ### buy コマンドの自然言語変換例
@@ -101,6 +115,10 @@ python3 .../run_portfolio.py list
 - 各軸の構成比率
 - リスクレベル判定
 
+### health の出力項目
+- 銘柄 / 損益率 / トレンド（上昇/横ばい/下降） / 変化の質（良好/1指標↓/複数悪化） / アラート
+- アラートがある銘柄の詳細（理由、SMA/RSI値、変化スコア、推奨アクション）
+
 ## 実行例
 
 ```bash
@@ -118,4 +136,7 @@ python3 .../run_portfolio.py analyze
 
 # 一覧表示
 python3 .../run_portfolio.py list
+
+# ヘルスチェック
+python3 .../run_portfolio.py health
 ```
