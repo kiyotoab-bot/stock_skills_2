@@ -387,3 +387,192 @@ class TestPortfolioScenario:
         assert len(result["stock_impacts"]) == 2
         # Second stock should get the remaining weight
         assert result["stock_impacts"][1]["weight"] == 0.5
+
+
+# ===================================================================
+# KIK-354: New scenarios and alias improvements
+# ===================================================================
+
+
+class TestKIK354NewScenarios:
+    """Tests for tech_crash and yen_appreciation scenarios (KIK-354)."""
+
+    def test_scenarios_count_is_8(self):
+        """Should have 8 predefined scenarios after adding 2 new ones."""
+        assert len(SCENARIOS) == 8
+
+    def test_tech_crash_defined(self):
+        """tech_crash scenario should exist with correct base_shock."""
+        assert "tech_crash" in SCENARIOS
+        sc = SCENARIOS["tech_crash"]
+        assert sc["base_shock"] == -0.30
+        assert "テック暴落" in sc["name"]
+
+    def test_yen_appreciation_defined(self):
+        """yen_appreciation scenario should exist with correct base_shock."""
+        assert "yen_appreciation" in SCENARIOS
+        sc = SCENARIOS["yen_appreciation"]
+        assert sc["base_shock"] == -0.10
+        assert "円高ドル安" in sc["name"]
+
+    def test_tech_crash_effects_structure(self):
+        """tech_crash should have proper effects structure."""
+        effects = SCENARIOS["tech_crash"]["effects"]
+        assert len(effects["primary"]) >= 2
+        assert len(effects["secondary"]) >= 2
+        assert "currency" in effects
+        assert effects["currency"]["usd_jpy_change"] < 0  # risk-off yen strengthening
+
+    def test_yen_appreciation_effects_structure(self):
+        """yen_appreciation should have proper effects structure."""
+        effects = SCENARIOS["yen_appreciation"]["effects"]
+        assert len(effects["primary"]) >= 2
+        assert "currency" in effects
+        assert effects["currency"]["usd_jpy_change"] == -20
+
+    def test_tech_crash_hits_tech_sector(self):
+        """Tech stock should receive significant damage in tech_crash."""
+        stock = {
+            "symbol": "NVDA", "name": "NVIDIA", "sector": "Technology",
+            "country": "United States", "currency": "USD",
+            "price": 900, "beta": 1.8,
+        }
+        scenario = SCENARIOS["tech_crash"]
+        result = compute_stock_scenario_impact(stock, {}, scenario)
+        assert result["total_impact"] < -0.30
+
+    def test_tech_crash_spares_defensive(self):
+        """Defensive stock should be less impacted in tech_crash."""
+        stock = {
+            "symbol": "2914.T", "name": "ツムラ", "sector": "Healthcare",
+            "country": "Japan", "currency": "JPY",
+            "price": 3000, "beta": 0.4,
+        }
+        scenario = SCENARIOS["tech_crash"]
+        result = compute_stock_scenario_impact(stock, {}, scenario)
+        # Defensive should be less impacted
+        assert result["direct_impact"] > -0.30
+
+    def test_yen_appreciation_hurts_usd_assets(self):
+        """USD-denominated assets should lose value in yen_appreciation."""
+        stock = {
+            "symbol": "AAPL", "name": "Apple", "sector": "Technology",
+            "country": "United States", "currency": "USD",
+            "price": 200, "beta": 1.2,
+        }
+        scenario = SCENARIOS["yen_appreciation"]
+        result = compute_stock_scenario_impact(stock, {}, scenario)
+        assert result["currency_impact"] < 0
+
+    def test_yen_appreciation_no_currency_impact_jpy(self):
+        """JPY stocks should have no currency impact in yen_appreciation."""
+        stock = {
+            "symbol": "9501.T", "name": "関西電力", "sector": "Utilities",
+            "country": "Japan", "currency": "JPY",
+            "price": 2000, "beta": 0.5,
+        }
+        scenario = SCENARIOS["yen_appreciation"]
+        result = compute_stock_scenario_impact(stock, {}, scenario)
+        assert result["currency_impact"] == 0.0
+
+    def test_portfolio_tech_crash_scenario_name(self):
+        """Portfolio analysis should report tech_crash scenario name."""
+        stock = {
+            "symbol": "NVDA", "sector": "Technology",
+            "price": 900, "beta": 1.8, "currency": "USD", "country": "US",
+        }
+        scenario = SCENARIOS["tech_crash"]
+        result = analyze_portfolio_scenario([stock], [{}], [1.0], scenario)
+        assert result["scenario_name"] == "テック暴落"
+
+    def test_portfolio_yen_appreciation_scenario_name(self):
+        """Portfolio analysis should report yen_appreciation scenario name."""
+        stock = {
+            "symbol": "7203.T", "sector": "Industrials",
+            "price": 2800, "beta": 1.0, "currency": "JPY", "country": "Japan",
+        }
+        scenario = SCENARIOS["yen_appreciation"]
+        result = analyze_portfolio_scenario([stock], [{}], [1.0], scenario)
+        assert result["scenario_name"] == "円高ドル安"
+
+
+class TestKIK354Aliases:
+    """Tests for improved alias resolution (KIK-354)."""
+
+    def test_tech_crash_aliases(self):
+        """Various tech crash aliases should resolve."""
+        for alias in ["テック暴落", "tech暴落", "AI暴落", "ナスダック暴落", "tech"]:
+            result = resolve_scenario(alias)
+            assert result is not None, f"Alias '{alias}' failed"
+            assert result["name"] == "テック暴落"
+
+    def test_yen_appreciation_aliases(self):
+        """Various yen appreciation aliases should resolve."""
+        for alias in ["円高ドル安", "円高", "ドル安"]:
+            result = resolve_scenario(alias)
+            assert result is not None, f"Alias '{alias}' failed"
+            assert result["name"] == "円高ドル安"
+
+    def test_existing_aliases_not_broken(self):
+        """Existing aliases must still work after adding new ones."""
+        cases = {
+            "トリプル安": "トリプル安（株安・債券安・円安）",
+            "リセッション": "米国リセッション",
+            "景気後退": "米国リセッション",
+            "利上げ": "日銀利上げ加速",
+            "米中": "米中対立激化",
+            "インフレ": "インフレ再燃",
+            "ドル高": "ドル高円安",
+            "円安": "ドル高円安",
+        }
+        for alias, expected_name in cases.items():
+            result = resolve_scenario(alias)
+            assert result is not None, f"Alias '{alias}' failed"
+            assert result["name"] == expected_name
+
+    def test_new_explicit_aliases(self):
+        """New explicit aliases for existing scenarios should work."""
+        cases = {
+            "日銀利上げ": "日銀利上げ加速",
+            "金利上昇": "日銀利上げ加速",
+            "米中対立": "米中対立激化",
+            "地政学リスク": "米中対立激化",
+            "貿易戦争": "米中対立激化",
+            "インフレ再燃": "インフレ再燃",
+            "物価上昇": "インフレ再燃",
+            "米国リセッション": "米国リセッション",
+            "為替ショック": "ドル高円安",
+            "ドル高円安": "ドル高円安",
+            "株安・円安・債券安": "トリプル安（株安・債券安・円安）",
+        }
+        for alias, expected_name in cases.items():
+            result = resolve_scenario(alias)
+            assert result is not None, f"Alias '{alias}' failed"
+            assert result["name"] == expected_name
+
+    def test_partial_match_with_suffix(self):
+        """Partial match should work when input contains alias."""
+        result = resolve_scenario("テック暴落シナリオ")
+        assert result is not None
+        assert result["name"] == "テック暴落"
+
+    def test_partial_match_with_prefix(self):
+        """Partial match should work when alias contains input."""
+        result = resolve_scenario("円高")
+        assert result is not None
+
+
+class TestMatchTargetKIK354:
+    """Tests for new _match_target entries (KIK-354)."""
+
+    def test_tech_stock_matches_tech(self):
+        assert _match_target("テック株", "Technology", "USD", "US") is True
+        assert _match_target("テック株", "Communication Services", "USD", "US") is True
+
+    def test_non_tech_matches(self):
+        assert _match_target("非テック株", "Healthcare", "USD", "US") is True
+        assert _match_target("非テック株", "Financial Services", "JPY", "Japan") is True
+
+    def test_non_tech_excludes_tech(self):
+        assert _match_target("非テック株", "Technology", "USD", "US") is False
+        assert _match_target("非テック株", "Communication Services", "USD", "US") is False
