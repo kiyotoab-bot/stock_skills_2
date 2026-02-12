@@ -549,3 +549,52 @@ class TestFormatRecommendationsReport:
         output = format_recommendations_report(_make_recommendations())
         assert "[相関]" in output
         assert "[集中度]" in output
+
+
+# ---------------------------------------------------------------------------
+# Bug fix tests (KIK-353)
+# ---------------------------------------------------------------------------
+
+class TestKIK353BugFixes:
+    """Tests for KIK-353 bug fixes."""
+
+    def test_var_report_without_amounts(self):
+        """VaR report should work without amount data (Bug 1 fix)."""
+        var = {
+            "daily_var": {0.95: -0.023, 0.99: -0.041},
+            "monthly_var": {0.95: -0.105, 0.99: -0.188},
+            "portfolio_volatility": 0.22,
+            "observation_days": 245,
+        }
+        output = format_var_report(var)
+        assert "日次VaR" in output
+        assert "月次VaR" in output
+        # Should show "-" for amount columns when no amounts
+        assert output.count("-") >= 4
+
+    def test_sensitivity_with_flat_keys(self):
+        """format_sensitivity_report should render flat-key data correctly (Bug 2 fix)."""
+        sensitivities = [
+            {
+                "symbol": "TEST",
+                "name": "Test Corp",
+                "fundamental_score": 0.85,
+                "technical_score": 0.70,
+                "quadrant": "堅実",
+                "composite_shock": -0.15,
+            },
+        ]
+        output = format_sensitivity_report(sensitivities)
+        assert "TEST" in output
+        assert "0.85" in output
+        assert "0.70" in output
+        assert "堅実" in output
+        assert "-15.00%" in output
+
+    def test_sensitivity_with_missing_keys_shows_dash(self):
+        """format_sensitivity_report should show '-' for missing keys."""
+        sensitivities = [{"symbol": "X", "name": ""}]
+        output = format_sensitivity_report(sensitivities)
+        assert "X" in output
+        # Missing scores should be rendered as "-"
+        assert output.count("- |") >= 2

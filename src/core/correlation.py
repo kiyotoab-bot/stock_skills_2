@@ -228,12 +228,31 @@ def decompose_factors(
             [np.array(fr[-min_len:]) for fr in available_factor_returns]
         )
 
+        # Skip columns with zero variance (constant series)
+        valid_cols = []
+        valid_factors = []
+        for k in range(X.shape[1]):
+            if np.std(X[:, k]) > 0:
+                valid_cols.append(k)
+                valid_factors.append(available_factors[k])
+
+        if not valid_cols or np.std(y) == 0:
+            results.append(_empty_factor_result(sym))
+            continue
+
+        X_filtered = X[:, valid_cols]
+
         # Add intercept
-        X_with_intercept = np.column_stack([np.ones(min_len), X])
+        X_with_intercept = np.column_stack([np.ones(min_len), X_filtered])
 
         try:
-            betas = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
-            y_pred = X_with_intercept @ betas
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                betas = np.linalg.lstsq(X_with_intercept, y, rcond=None)[0]
+                if not np.all(np.isfinite(betas)):
+                    results.append(_empty_factor_result(sym))
+                    continue
+                y_pred = X_with_intercept @ betas
+
             ss_res = float(np.sum((y - y_pred) ** 2))
             ss_tot = float(np.sum((y - np.mean(y)) ** 2))
             r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
@@ -242,14 +261,16 @@ def decompose_factors(
 
             factor_results = []
             stock_std = float(np.std(y))
-            for k, factor in enumerate(available_factors):
+            for k, factor in enumerate(valid_factors):
                 beta_val = float(betas[k + 1])  # skip intercept
-                factor_std = float(np.std(X[:, k]))
+                factor_std = float(np.std(X_filtered[:, k]))
                 contribution = (
                     abs(beta_val) * factor_std / stock_std
                     if stock_std > 0
                     else 0.0
                 )
+                if not math.isfinite(contribution):
+                    contribution = 0.0
                 factor_results.append({
                     "name": factor["name"],
                     "symbol": factor["symbol"],
