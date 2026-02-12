@@ -343,6 +343,58 @@ class TestDecomposeFactors:
             for i in range(len(factors) - 1):
                 assert abs(factors[i]["contribution"]) >= abs(factors[i + 1]["contribution"])
 
+    def test_constant_factor_column_skipped(self):
+        """Factor with zero variance (constant prices) should be skipped without error (KIK-353)."""
+        rng = np.random.RandomState(42)
+        stock_prices = [100.0]
+        for _ in range(100):
+            stock_prices.append(stock_prices[-1] * (1 + rng.normal(0.001, 0.01)))
+
+        # One normal factor, one constant factor
+        normal_factor = [100.0]
+        for _ in range(100):
+            normal_factor.append(normal_factor[-1] * (1 + rng.normal(0, 0.01)))
+
+        constant_factor = [50.0] * 101  # constant -> zero variance returns
+
+        portfolio = [{"symbol": "TEST", "price_history": stock_prices}]
+        factor_histories = {"^GSPC": normal_factor, "CL=F": constant_factor}
+        results = decompose_factors(portfolio, factor_histories)
+        assert len(results) == 1
+        # Should not crash; should have result with at least the normal factor
+        assert results[0]["symbol"] == "TEST"
+        factor_names = [f["symbol"] for f in results[0]["factors"]]
+        assert "CL=F" not in factor_names  # constant factor filtered out
+
+    def test_all_constant_factors_returns_empty(self):
+        """When all factors are constant, should return empty result (KIK-353)."""
+        rng = np.random.RandomState(42)
+        stock_prices = [100.0]
+        for _ in range(100):
+            stock_prices.append(stock_prices[-1] * (1 + rng.normal(0.001, 0.01)))
+
+        portfolio = [{"symbol": "TEST", "price_history": stock_prices}]
+        factor_histories = {
+            "^GSPC": [100.0] * 101,
+            "^N225": [200.0] * 101,
+        }
+        results = decompose_factors(portfolio, factor_histories)
+        assert results[0]["factors"] == []
+        assert results[0]["r_squared"] == 0.0
+
+    def test_zero_variance_stock_returns_empty(self):
+        """Stock with zero variance returns should return empty result (KIK-353)."""
+        rng = np.random.RandomState(42)
+        factor_prices = [100.0]
+        for _ in range(100):
+            factor_prices.append(factor_prices[-1] * (1 + rng.normal(0, 0.01)))
+
+        # Stock with constant price -> zero variance returns
+        portfolio = [{"symbol": "TEST", "price_history": [100.0] * 101}]
+        factor_histories = {"^GSPC": factor_prices}
+        results = decompose_factors(portfolio, factor_histories)
+        assert results[0]["factors"] == []
+
 
 # ===================================================================
 # compute_var tests

@@ -429,6 +429,27 @@ def main():
         print()
 
     # ------------------------------------------------------------------
+    # Flatten sensitivities for the formatter (KIK-353 bug fix)
+    # analyze_stock_sensitivity() returns nested dicts but
+    # format_sensitivity_report() expects flat keys.
+    # ------------------------------------------------------------------
+    flat_sensitivities = []
+    for i, sens in enumerate(sensitivities):
+        flat = dict(sens)
+        flat["symbol"] = portfolio[i].get("symbol", "?") if i < len(portfolio) else "?"
+        flat["name"] = portfolio[i].get("name", "") if i < len(portfolio) else ""
+        # Flatten nested keys
+        fund = sens.get("fundamental", {})
+        tech = sens.get("technical", {})
+        integ = sens.get("integrated", {})
+        flat["fundamental_score"] = fund.get("score")
+        flat["technical_score"] = tech.get("score")
+        quad = integ.get("quadrant", {})
+        flat["quadrant"] = f"{quad.get('emoji', '')} {quad.get('quadrant', '-')}".strip() if isinstance(quad, dict) else str(quad)
+        flat["composite_shock"] = integ.get("adjusted_shock")
+        flat_sensitivities.append(flat)
+
+    # ------------------------------------------------------------------
     # KIK-352: Correlation analysis + VaR + Recommendations
     # ------------------------------------------------------------------
     corr_result = None
@@ -458,17 +479,16 @@ def main():
 
     if compute_var is not None:
         print("VaR算出中...")
-        # Estimate total portfolio value for absolute VaR
-        total_value = sum(
-            (s.get("price") or 0) * (s.get("weight") or 0)
-            for s in portfolio
-        )
-        # Use market_cap-weighted total if available
+        # total_value is only meaningful when called from portfolio_bridge
+        # (with actual holding amounts). --portfolio direct invocation has no
+        # real portfolio value, so we pass None to suppress absolute amounts.
+        var_total = None
         total_mv = sum(
-            (s.get("market_value_jpy") or s.get("market_cap") or 0) * (s.get("weight") or 0)
+            (s.get("market_value_jpy") or 0) * (s.get("weight") or 0)
             for s in portfolio
         )
-        var_total = total_mv if total_mv > 0 else (total_value if total_value > 0 else None)
+        if total_mv > 0:
+            var_total = total_mv
         var_result = compute_var(
             portfolio, final_weights, total_value=var_total
         )
@@ -480,7 +500,7 @@ def main():
             correlation_pairs=high_pairs,
             var_result=var_result,
             scenario_result=scenario_result,
-            sensitivities=sensitivities if sensitivities else None,
+            sensitivities=sensitivities or None,
         )
 
     print()
@@ -496,7 +516,7 @@ def main():
         report = format_full_stress_report(
             portfolio_summary=portfolio_summary,
             concentration=conc,
-            sensitivities=sensitivities,
+            sensitivities=flat_sensitivities,
             scenario_result=scenario_result,
             correlation=corr_result,
             high_correlation_pairs=high_pairs,
