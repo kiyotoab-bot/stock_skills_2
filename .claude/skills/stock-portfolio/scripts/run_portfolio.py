@@ -47,10 +47,18 @@ try:
         format_position_list,
         format_structure_analysis,
         format_trade_result,
+        format_health_check,
     )
     HAS_PORTFOLIO_FORMATTER = True
 except ImportError:
     HAS_PORTFOLIO_FORMATTER = False
+
+# KIK-356: Health check module
+try:
+    from src.core.health_check import run_health_check as hc_run_health_check
+    HAS_HEALTH_CHECK = True
+except ImportError:
+    HAS_HEALTH_CHECK = False
 
 # Concentration analysis (already exists in the codebase)
 try:
@@ -443,6 +451,46 @@ def cmd_analyze(csv_path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Command: health (KIK-356)
+# ---------------------------------------------------------------------------
+
+def cmd_health(csv_path: str) -> None:
+    """Run health check on portfolio holdings."""
+    if not HAS_HEALTH_CHECK:
+        print("Error: health_check モジュールが見つかりません。")
+        sys.exit(1)
+
+    print("ヘルスチェック実行中（価格・財務データ取得）...\n")
+
+    health_data = hc_run_health_check(csv_path, yahoo_client)
+    positions = health_data.get("positions", [])
+
+    if not positions:
+        print("ポートフォリオにデータがありません。")
+        return
+
+    if HAS_PORTFOLIO_FORMATTER:
+        print(format_health_check(health_data))
+    else:
+        # Fallback text output
+        print("## 保有銘柄ヘルスチェック\n")
+        print("| 銘柄 | 損益 | トレンド | 変化の質 | アラート |")
+        print("|:-----|-----:|:-------|:--------|:------------|")
+        for pos in positions:
+            symbol = pos.get("symbol", "-")
+            pnl_pct = pos.get("pnl_pct", 0)
+            pnl_str = f"{pnl_pct * 100:+.1f}%" if pnl_pct else "-"
+            trend = pos.get("trend_health", {}).get("trend", "不明")
+            quality = pos.get("change_quality", {}).get("quality_label", "-")
+            alert = pos.get("alert", {})
+            alert_label = alert.get("label", "なし")
+            emoji = alert.get("emoji", "")
+            alert_str = f"{emoji} {alert_label}".strip() if emoji else "なし"
+            print(f"| {symbol} | {pnl_str} | {trend} | {quality} | {alert_str} |")
+        print()
+
+
+# ---------------------------------------------------------------------------
 # Main: argparse with subcommands
 # ---------------------------------------------------------------------------
 
@@ -481,6 +529,9 @@ def main():
     # list
     subparsers.add_parser("list", help="保有銘柄一覧表示")
 
+    # health (KIK-356)
+    subparsers.add_parser("health", help="保有銘柄ヘルスチェック")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -507,6 +558,8 @@ def main():
         cmd_analyze(csv_path)
     elif args.command == "list":
         cmd_list(csv_path)
+    elif args.command == "health":
+        cmd_health(csv_path)
     else:
         parser.print_help()
         sys.exit(1)
