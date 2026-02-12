@@ -418,10 +418,10 @@ def compute_stock_scenario_impact(
     base_shock = _safe_float(scenario.get("base_shock"))
     causal_chain: list[str] = []
 
-    # 1. base_shock をbetaで調整
-    direct_impact = base_shock * beta
+    # 1. base_shock をbetaで調整（フォールバック用）
+    beta_impact = base_shock * beta
     causal_chain.append(
-        f"ベースショック {base_shock:+.1%} x beta({beta:.2f}) = {direct_impact:+.1%}"
+        f"ベースショック {base_shock:+.1%} x beta({beta:.2f}) = {beta_impact:+.1%}"
     )
 
     # 2. primary/secondary effects のマッチング
@@ -438,10 +438,21 @@ def compute_stock_scenario_impact(
                     f"[{effect_group}] {target}: {sign}{impact:.1%} ({reason})"
                 )
 
-    # マッチした影響の平均を direct_impact に加算
+    # マッチした影響がある場合はその平均を採用し、betaで微調整する
+    # セクター影響は base_shock を既に内包しているため加算ではなく置換する
+    # beta調整は抑制（dampened）: multiplier = 0.7 + 0.3 * beta
+    #   beta=1.0 → 1.0（中立）, beta=0.5 → 0.85, beta=2.0 → 1.30
     if matched_impacts:
         avg_matched = sum(matched_impacts) / len(matched_impacts)
-        direct_impact += avg_matched
+        beta_multiplier = 0.7 + 0.3 * beta
+        direct_impact = avg_matched * beta_multiplier
+        causal_chain.append(
+            f"セクター影響平均: {avg_matched:+.1%} x beta調整({beta_multiplier:.2f})"
+            f" = {direct_impact:+.1%}"
+        )
+    else:
+        direct_impact = beta_impact
+        causal_chain.append("マッチするセクター影響なし → ベースショック×beta を使用")
 
     # 3. sensitivity による調整（利用可能な場合）
     composite_shock = _safe_float(sensitivity.get("composite_shock"))
