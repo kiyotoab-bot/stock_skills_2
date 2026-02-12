@@ -39,6 +39,27 @@ try:
 except ImportError:
     format_full_stress_report = None
 
+# KIK-352 modules
+try:
+    from src.core.correlation import (
+        compute_correlation_matrix,
+        find_high_correlation_pairs,
+        decompose_factors,
+        compute_var,
+        MACRO_FACTORS,
+    )
+except ImportError:
+    compute_correlation_matrix = None
+    find_high_correlation_pairs = None
+    decompose_factors = None
+    compute_var = None
+    MACRO_FACTORS = []
+
+try:
+    from src.core.recommender import generate_recommendations
+except ImportError:
+    generate_recommendations = None
+
 
 # ---------------------------------------------------------------------------
 # Country inference from ticker suffix
@@ -408,6 +429,63 @@ def main():
         print()
 
     # ------------------------------------------------------------------
+    # KIK-352: Correlation analysis + VaR + Recommendations
+    # ------------------------------------------------------------------
+    corr_result = None
+    high_pairs = None
+    factor_results = None
+    var_result = None
+    recommendations = None
+
+    if compute_correlation_matrix is not None and len(portfolio) >= 2:
+        print("相関分析中...")
+        corr_result = compute_correlation_matrix(portfolio)
+        high_pairs = find_high_correlation_pairs(corr_result)
+
+        # Factor decomposition -- fetch macro factor data
+        if decompose_factors is not None and MACRO_FACTORS:
+            factor_histories: dict[str, list[float]] = {}
+            for factor in MACRO_FACTORS:
+                fsym = factor["symbol"]
+                try:
+                    hist = yahoo_client.get_price_history(fsym, period="1y")
+                    if hist is not None and not hist.empty and "Close" in hist.columns:
+                        factor_histories[fsym] = hist["Close"].dropna().tolist()
+                except Exception as e:
+                    print(f"[stress-test] Warning: factor {fsym} fetch error: {e}")
+            if factor_histories:
+                factor_results = decompose_factors(portfolio, factor_histories)
+
+    if compute_var is not None:
+        print("VaR算出中...")
+        # Estimate total portfolio value for absolute VaR
+        total_value = sum(
+            (s.get("price") or 0) * (s.get("weight") or 0)
+            for s in portfolio
+        )
+        # Use market_cap-weighted total if available
+        total_mv = sum(
+            (s.get("market_value_jpy") or s.get("market_cap") or 0) * (s.get("weight") or 0)
+            for s in portfolio
+        )
+        var_total = total_mv if total_mv > 0 else (total_value if total_value > 0 else None)
+        var_result = compute_var(
+            portfolio, final_weights, total_value=var_total
+        )
+
+    if generate_recommendations is not None:
+        print("推奨アクション生成中...")
+        recommendations = generate_recommendations(
+            concentration=conc,
+            correlation_pairs=high_pairs,
+            var_result=var_result,
+            scenario_result=scenario_result,
+            sensitivities=sensitivities if sensitivities else None,
+        )
+
+    print()
+
+    # ------------------------------------------------------------------
     # Step 8: Report output
     # ------------------------------------------------------------------
     if format_full_stress_report is not None and scenario_result is not None:
@@ -420,6 +498,11 @@ def main():
             concentration=conc,
             sensitivities=sensitivities,
             scenario_result=scenario_result,
+            correlation=corr_result,
+            high_correlation_pairs=high_pairs,
+            factor_decomposition=factor_results,
+            var_result=var_result,
+            recommendations=recommendations,
         )
         print(report)
     elif scenario_result is not None:
