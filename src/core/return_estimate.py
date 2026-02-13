@@ -11,6 +11,8 @@ Optionally integrates Grok API sentiment data when XAI_API_KEY is set.
 import math
 from typing import Optional
 
+_grok_warned = [False]
+
 
 def _is_etf(stock_detail: dict) -> bool:
     """Check if a symbol is likely an ETF (no analyst coverage)."""
@@ -61,6 +63,10 @@ def _estimate_from_analyst(stock_detail: dict) -> dict:
     if target_low is not None:
         pessimistic = (target_low - price) / price + dividend_yield
 
+    # Extract analyst count early (needed for spread logic below)
+    analyst_count_val = stock_detail.get("number_of_analyst_opinions")
+    analyst_count = int(analyst_count_val) if analyst_count_val is not None else None
+
     # Fallback: if some targets are missing, use available ones
     if base is None and optimistic is not None and pessimistic is not None:
         base = (optimistic + pessimistic) / 2
@@ -69,8 +75,12 @@ def _estimate_from_analyst(stock_detail: dict) -> dict:
     if pessimistic is None and base is not None:
         pessimistic = base * 0.5 if base > 0 else base * 1.5
 
-    analyst_count_val = stock_detail.get("number_of_analyst_opinions")
-    analyst_count = int(analyst_count_val) if analyst_count_val is not None else None
+    # Spread fix: when all targets are identical or too few analysts,
+    # generate meaningful spread around base
+    if base is not None and optimistic is not None and pessimistic is not None:
+        if optimistic == pessimistic or (analyst_count is not None and analyst_count < 3):
+            optimistic = base * 1.2 if base > 0 else base * 0.8
+            pessimistic = base * 0.8 if base > 0 else base * 1.2
 
     return {
         "optimistic": optimistic,
@@ -89,13 +99,15 @@ def _estimate_from_analyst(stock_detail: dict) -> dict:
 def _estimate_from_history(stock_detail: dict) -> dict:
     """Estimate returns from historical price data (for ETFs).
 
-    Uses monthly returns from price_history to compute percentile-based
-    scenarios, annualized.
+    Uses CAGR (Compound Annual Growth Rate) from the full price history
+    as the base case, with ±1 standard deviation spread for scenarios.
+    Dividends are already reflected in yfinance's adjusted close prices,
+    so dividend_yield is not added.
 
     Formula:
-        optimistic = 75th percentile monthly return * 12 + dividend_yield
-        base       = 50th percentile (median) monthly return * 12 + dividend_yield
-        pessimistic = 25th percentile monthly return * 12 + dividend_yield
+        base        = CAGR = (end/start)^(12/months) - 1
+        optimistic  = base + annualized_std
+        pessimistic = base - annualized_std
 
     Returns
     -------
@@ -104,7 +116,6 @@ def _estimate_from_history(stock_detail: dict) -> dict:
          "method": "historical", ...}
     """
     price_history = stock_detail.get("price_history")
-    dividend_yield = stock_detail.get("dividend_yield") or 0.0
 
     if not price_history or len(price_history) < 22:
         # Not enough data (need at least ~1 month of daily prices)
@@ -122,27 +133,36 @@ def _estimate_from_history(stock_detail: dict) -> dict:
     if not monthly_returns:
         return _empty_estimate("historical")
 
-    # Sort for percentile calculation
-    sorted_returns = sorted(monthly_returns)
-    n = len(sorted_returns)
+    n = len(monthly_returns)
 
-    def percentile(p: float) -> float:
-        """Compute p-th percentile (0-100)."""
-        idx = (p / 100.0) * (n - 1)
-        lower = int(math.floor(idx))
-        upper = min(lower + 1, n - 1)
-        frac = idx - lower
-        return sorted_returns[lower] * (1 - frac) + sorted_returns[upper] * frac
+    # CAGR: annualized total return over the full period
+    start_price = price_history[0]
+    end_price = price_history[-1]
+    if start_price <= 0:
+        return _empty_estimate("historical")
 
-    # Annualize monthly returns (multiply by 12)
-    p75 = percentile(75) * 12
-    p50 = percentile(50) * 12
-    p25 = percentile(25) * 12
+    total_months = n  # approximate months of data
+    total_return = end_price / start_price
+    if total_months > 0 and total_return > 0:
+        cagr = total_return ** (12.0 / total_months) - 1
+    else:
+        cagr = 0.0
+
+    # Annualized volatility from monthly returns (std * sqrt(12))
+    mean_monthly = sum(monthly_returns) / n
+    variance = sum((r - mean_monthly) ** 2 for r in monthly_returns) / max(n - 1, 1)
+    monthly_std = math.sqrt(variance)
+    annual_std = monthly_std * math.sqrt(12)
+
+    # Scenarios: base ± 1 standard deviation, capped at ±50%
+    base = max(-0.50, min(0.50, cagr))
+    optimistic = max(-0.50, min(0.50, cagr + annual_std))
+    pessimistic = max(-0.50, min(0.50, cagr - annual_std))
 
     return {
-        "optimistic": p75 + dividend_yield,
-        "base": p50 + dividend_yield,
-        "pessimistic": p25 + dividend_yield,
+        "optimistic": optimistic,
+        "base": base,
+        "pessimistic": pessimistic,
         "method": "historical",
         "analyst_count": None,
         "target_high": None,
@@ -216,6 +236,10 @@ def estimate_stock_return(
         estimate = _estimate_from_history(stock_detail)
     else:
         estimate = _estimate_from_analyst(stock_detail)
+        # Fallback: if analyst method produced no estimates (no coverage),
+        # try historical method if price_history is available
+        if estimate.get("base") is None and stock_detail.get("price_history"):
+            estimate = _estimate_from_history(stock_detail)
 
     return {
         "symbol": symbol,
@@ -284,7 +308,30 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
 
         # Get detailed stock data (includes analyst fields)
         stock_detail = yahoo_client_module.get_stock_detail(symbol)
-        if stock_detail is None:
+        if stock_detail is None or not stock_detail.get("price"):
+            position_estimates.append({
+                "symbol": symbol,
+                "name": "",
+                "price": None,
+                "currency": pos.get("cost_currency", "JPY"),
+                "optimistic": None,
+                "base": None,
+                "pessimistic": None,
+                "method": "no_data",
+                "analyst_count": None,
+                "target_high": None,
+                "target_mean": None,
+                "target_low": None,
+                "recommendation_mean": None,
+                "forward_per": None,
+                "dividend_yield": None,
+                "news": [],
+                "x_sentiment": None,
+                "shares": pos["shares"],
+                "cost_price": pos["cost_price"],
+                "cost_currency": pos.get("cost_currency", "JPY"),
+                "value_jpy": 0,
+            })
             continue
 
         # Get news
@@ -296,8 +343,14 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
             company_name = stock_detail.get("name") or ""
             try:
                 x_sentiment = grok_client.search_x_sentiment(symbol, company_name)
-            except Exception:
-                pass
+            except Exception as e:
+                if not _grok_warned[0]:
+                    import sys as _sys
+                    print(
+                        f"[return_estimate] Grok API error (subsequent errors suppressed): {e}",
+                        file=_sys.stderr,
+                    )
+                    _grok_warned[0] = True
 
         # Estimate returns
         estimate = estimate_stock_return(symbol, stock_detail, news, x_sentiment)

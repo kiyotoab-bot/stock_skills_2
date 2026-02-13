@@ -10,6 +10,7 @@ search_x_sentiment() returns an empty result (graceful degradation).
 
 import json
 import os
+import sys
 from typing import Optional
 
 import requests
@@ -17,6 +18,7 @@ import requests
 
 _API_URL = "https://api.x.ai/v1/responses"
 _DEFAULT_MODEL = "grok-4-1-fast-non-reasoning"
+_error_warned = [False]
 
 
 def is_available() -> bool:
@@ -100,10 +102,13 @@ def search_x_sentiment(
         )
 
         if response.status_code != 200:
-            print(
-                f"[grok_client] API error for {symbol}: "
-                f"status={response.status_code}"
-            )
+            if not _error_warned[0]:
+                print(
+                    f"[grok_client] API error for {symbol}: "
+                    f"status={response.status_code} (subsequent errors suppressed)",
+                    file=sys.stderr,
+                )
+                _error_warned[0] = True
             return empty_result
 
         data = response.json()
@@ -144,11 +149,17 @@ def search_x_sentiment(
         return result
 
     except requests.exceptions.Timeout:
-        print(f"[grok_client] Timeout for {symbol}")
+        if not _error_warned[0]:
+            print(f"[grok_client] Timeout for {symbol} (subsequent errors suppressed)", file=sys.stderr)
+            _error_warned[0] = True
         return empty_result
     except requests.exceptions.RequestException as e:
-        print(f"[grok_client] Request error for {symbol}: {e}")
+        if not _error_warned[0]:
+            print(f"[grok_client] Request error for {symbol}: {e} (subsequent errors suppressed)", file=sys.stderr)
+            _error_warned[0] = True
         return empty_result
     except Exception as e:
-        print(f"[grok_client] Unexpected error for {symbol}: {e}")
+        if not _error_warned[0]:
+            print(f"[grok_client] Unexpected error for {symbol}: {e} (subsequent errors suppressed)", file=sys.stderr)
+            _error_warned[0] = True
         return empty_result
