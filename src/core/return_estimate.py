@@ -313,6 +313,36 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
     for pos in portfolio:
         symbol = pos["symbol"]
 
+        # Skip cash positions (e.g., JPY.CASH, USD.CASH)
+        if symbol.upper().endswith(".CASH"):
+            cash_currency = symbol.upper().replace(".CASH", "")
+            fx_rate = fx_rates.get(cash_currency, 1.0)
+            value_jpy = pos["cost_price"] * pos["shares"] * fx_rate
+            position_estimates.append({
+                "symbol": symbol,
+                "name": f"現金 ({cash_currency})",
+                "price": pos["cost_price"],
+                "currency": cash_currency,
+                "optimistic": 0.0,
+                "base": 0.0,
+                "pessimistic": 0.0,
+                "method": "cash",
+                "analyst_count": None,
+                "target_high": None,
+                "target_mean": None,
+                "target_low": None,
+                "recommendation_mean": None,
+                "forward_per": None,
+                "dividend_yield": 0.0,
+                "news": [],
+                "x_sentiment": None,
+                "shares": pos["shares"],
+                "cost_price": pos["cost_price"],
+                "cost_currency": pos.get("cost_currency", cash_currency),
+                "value_jpy": round(value_jpy, 0),
+            })
+            continue
+
         # Get detailed stock data (includes analyst fields)
         stock_detail = yahoo_client_module.get_stock_detail(symbol)
         if stock_detail is None or not stock_detail.get("price"):

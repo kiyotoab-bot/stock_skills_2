@@ -441,3 +441,41 @@ class TestEstimatePortfolioReturn:
                 sys.stderr = old_stderr
                 re_mod._grok_warned[0] = False  # Reset for other tests
         assert "[return_estimate] Grok API error" in captured.getvalue()
+
+    @patch("src.core.portfolio_manager._infer_currency")
+    @patch("src.core.portfolio_manager.get_fx_rates")
+    @patch("src.core.portfolio_manager.load_portfolio")
+    def test_cash_position_skips_api(self, mock_load, mock_fx, mock_infer):
+        """Cash positions (.CASH) should not trigger API calls (KIK-361)."""
+        mock_load.return_value = [
+            {"symbol": "JPY.CASH", "shares": 1, "cost_price": 500000.0, "cost_currency": "JPY"},
+            {"symbol": "AAPL", "shares": 10, "cost_price": 150.0, "cost_currency": "USD"},
+        ]
+        mock_fx.return_value = {"JPY": 1.0, "USD": 150.0}
+        mock_infer.return_value = "USD"
+        mock_client = MagicMock()
+        mock_client.get_stock_detail.return_value = {
+            "price": 200.0, "name": "Apple", "currency": "USD",
+            "target_mean_price": 220.0, "target_high_price": 250.0,
+            "target_low_price": 180.0, "dividend_yield": 0.005,
+            "number_of_analyst_opinions": 30, "recommendation_mean": 2.0,
+            "forward_per": 28.0, "sector": "Technology",
+        }
+        mock_client.get_stock_news.return_value = []
+
+        with patch.dict("sys.modules", {"src.data.grok_client": MagicMock(is_available=lambda: False)}):
+            result = estimate_portfolio_return("/fake/path.csv", mock_client)
+
+        assert len(result["positions"]) == 2
+        cash_pos = result["positions"][0]
+        assert cash_pos["symbol"] == "JPY.CASH"
+        assert cash_pos["method"] == "cash"
+        assert cash_pos["base"] == 0.0
+        assert cash_pos["optimistic"] == 0.0
+        assert cash_pos["pessimistic"] == 0.0
+        assert cash_pos["value_jpy"] == 500000.0
+
+        # Verify get_stock_detail was only called for AAPL, not JPY.CASH
+        detail_calls = [c[0][0] for c in mock_client.get_stock_detail.call_args_list]
+        assert "JPY.CASH" not in detail_calls
+        assert "AAPL" in detail_calls
