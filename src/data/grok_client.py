@@ -16,7 +16,7 @@ import requests
 
 
 _API_URL = "https://api.x.ai/v1/responses"
-_DEFAULT_MODEL = "grok-4-1-fast"
+_DEFAULT_MODEL = "grok-4-1-fast-non-reasoning"
 
 
 def is_available() -> bool:
