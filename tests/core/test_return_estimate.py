@@ -196,9 +196,9 @@ class TestEstimateFromHistory:
             assert abs(result["base"] - 0.0) < 0.01
 
     def test_cagr_annualization(self):
-        """Base return uses CAGR (compound annual growth rate)."""
-        # 24 months of 10% monthly growth: total = 1.1^24 ≈ 9.85
-        # CAGR = 9.85^(12/24) - 1 ≈ 2.14 (but capped at 50%)
+        """Base return uses CAGR, capped with spread preserved."""
+        # 24 months of 10% monthly growth: CAGR very high (>50%)
+        # Optimistic caps at 50%, base shifts down to preserve spread
         prices = [100.0]
         for month in range(24):
             start = prices[-1]
@@ -210,9 +210,13 @@ class TestEstimateFromHistory:
             "dividend_yield": 0.0,
         }
         result = _estimate_from_history(detail)
-        # CAGR is very high here but capped at 50%
-        assert result["base"] == 0.50  # capped at max
-        assert result["base"] is not None
+        # Optimistic capped at 50%
+        assert result["optimistic"] == 0.50
+        # Spread preserved: all 3 scenarios different
+        assert result["optimistic"] > result["base"]
+        assert result["base"] > result["pessimistic"]
+        # Base shifted down from cap to make room for spread
+        assert result["base"] < 0.50
 
     def test_moderate_growth_cagr(self):
         """CAGR for moderate growth produces reasonable estimate."""
