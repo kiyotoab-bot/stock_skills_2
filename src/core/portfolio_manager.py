@@ -182,7 +182,7 @@ def load_portfolio(csv_path: str = DEFAULT_CSV_PATH) -> list[dict]:
         for row in reader:
             position = {
                 "symbol": row.get("symbol", "").strip(),
-                "shares": int(row.get("shares", 0)),
+                "shares": int(float(row.get("shares", 0))),
                 "cost_price": float(row.get("cost_price", 0.0)),
                 "cost_currency": row.get("cost_currency", "JPY").strip(),
                 "purchase_date": row.get("purchase_date", "").strip(),
