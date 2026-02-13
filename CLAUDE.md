@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-割安株スクリーニングシステム。Yahoo Finance API（yfinance）を使って日本株・米国株・ASEAN株から割安銘柄をスクリーニングする。Claude Code Skills として動作し、`/screen-stocks`、`/stock-report`、`/watchlist`、`/stress-test`、`/stock-portfolio` コマンドで利用する。
+割安株スクリーニングシステム。Yahoo Finance API（yfinance）を使って日本株・米国株・ASEAN株・香港株・韓国株・台湾株等60地域から割安銘柄をスクリーニングする。Claude Code Skills として動作し、`/screen-stocks`、`/stock-report`、`/watchlist`、`/stress-test`、`/stock-portfolio` コマンドで利用する。
 
 ## Commands
 
@@ -16,24 +16,8 @@ python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --pres
 # sector (optional): Technology / Financial Services / Healthcare / Consumer Cyclical / Industrials
 #                     Communication Services / Consumer Defensive / Energy / Basic Materials
 #                     Real Estate / Utilities
-
-# セクター指定の例
-python3 .claude/skills/screen-stocks/scripts/run_screen.py --region us --preset high-dividend --sector Technology
-
-# Legacy モード（銘柄リスト方式、japan/us/asean のみ）
-python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset value --mode legacy
-
-# 押し目買い型スクリーニング
-python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset pullback
-
-# アルファシグナル（割安＋変化＋押し目の統合スクリーニング）
-python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset alpha
-
-# 割安株 + 押し目フィルタ
-python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset value --with-pullback
-
-# 後方互換: --market も使用可能
-python3 .claude/skills/screen-stocks/scripts/run_screen.py --market japan --preset value
+# --with-pullback: 任意プリセットに押し目フィルタを追加（例: --preset value --with-pullback）
+# --mode legacy: 銘柄リスト方式（japan/us/asean のみ）
 
 # 個別銘柄レポート
 python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
@@ -42,141 +26,156 @@ python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
 python3 .claude/skills/watchlist/scripts/manage_watchlist.py list
 python3 .claude/skills/watchlist/scripts/manage_watchlist.py add my-list 7203.T AAPL
 python3 .claude/skills/watchlist/scripts/manage_watchlist.py show my-list
-python3 .claude/skills/watchlist/scripts/manage_watchlist.py remove my-list 7203.T
 
 # ストレステスト実行
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,AAPL,D05.SI
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,9984.T --scenario トリプル安
-python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,AAPL --weights 0.6,0.4 --scenario 米国リセッション
 
 # ポートフォリオ管理
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py snapshot
-python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py buy --symbol 7203.T --shares 100 --price 2850 --currency JPY --date 2025-06-15 --memo トヨタ
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py buy --symbol 7203.T --shares 100 --price 2850 --currency JPY
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py sell --symbol AAPL --shares 5
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py analyze
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py health
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py forecast
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
+
+# テスト
+python3 -m pytest tests/ -q                       # 全件実行（約600テスト, ~1秒）
+python3 -m pytest tests/core/test_indicators.py -v # 特定モジュール
+python3 -m pytest tests/ -k "test_value_score"     # キーワード指定
 
 # 依存インストール
 pip install -r requirements.txt
 ```
 
-テストは pytest で実行する。テストを追加する場合は `tests/` に配置する。
-
-```bash
-# テスト全件実行
-pytest tests/
-
-# 特定モジュールのテスト
-pytest tests/core/test_indicators.py -v
-```
-
 ## Architecture
 
 ```
-Skills Layer (.claude/skills/*/SKILL.md)
-  → Claudeへの指示書。ユーザーの /command を受けてスクリプトを実行する
+Skills (.claude/skills/*/SKILL.md → scripts/*.py)
+  │  ユーザーの /command を受けてスクリプトを実行
+  │
+  ├─ screen-stocks/run_screen.py   … --region --preset --sector --with-pullback
+  ├─ stock-report/generate_report.py
+  ├─ watchlist/manage_watchlist.py
+  ├─ stress-test/run_stress_test.py
+  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/list
       │
-Script Layer (.claude/skills/*/scripts/*.py)
-  → エントリーポイント。CLIでも直接実行可能
-  → sys.path.insert で project root を追加して src/ を import する
-      │
-  ┌───┴────────────────────┐
-  │                        │
-Core Layer (src/core/)     Market Layer (src/markets/)
-  │                        │
-  ├─ screener.py           ├─ base.py    … 抽象基底クラス Market
-  │   ValueScreener +      ├─ japan.py   … .T suffix, get_region()="jp"
-  │   QueryScreener +      ├─ us.py      … get_region()="us"
-  │   PullbackScreener +   └─ asean.py   … get_region()=["sg","th",...]
-  │   AlphaScreener
-  │
-  ├─ query_builder.py      Config Layer (config/)
-  │   build_query() →       ├─ screening_presets.yaml
-  │   EquityQuery 構築      └─ exchanges.yaml … 取引所ナレッジ
-  │
-  ├─ filters.py
-  │   apply_filters()
-  │
-  ├─ indicators.py
-  │   calculate_value_score() → 0-100点
-  │
-  ├─ sharpe.py
-  │   calculate_hv() / calculate_upside_downside_vol()
-  │
-  ├─ concentration.py
-  │   compute_hhi() / analyze_concentration()
-  │   セクター・地域・通貨の3軸HHI算出
-  │
-  ├─ shock_sensitivity.py  (Team 2)
-  │   compute_shock_sensitivity()
-  │
-  ├─ scenario_analysis.py  (Team 3)
-  │   analyze_scenario()
-  │
-  ├─ portfolio_manager.py  (Team 2 - PF管理)
-  │   load_portfolio() / save_portfolio()
-  │   add_position() / sell_position()
-  │
-  ├─ alpha.py
-  │   compute_change_score() → 変化スコア(0-100)
-  │
-  └─ technicals.py
-      detect_pullback_in_uptrend()
-      compute_rsi() / compute_bollinger_bands()
-      │
-Data Layer (src/data/)     Output Layer (src/output/)
-  └─ yahoo_client.py         ├─ formatter.py
-      get_stock_info()        │   format_markdown()
-      get_stock_detail()      │   format_query_markdown()
-      screen_stocks()         │   format_pullback_markdown()
-      get_price_history()     │   format_alpha_markdown()
-      24時間TTLのJSONキャッシュ│
-                              ├─ stress_formatter.py (Team 3)
-                              │   format_stress_report()
-                              │
-                              └─ portfolio_formatter.py (Team 3 - PF管理)
-                                  format_snapshot() / format_structure_analysis()
+      │  sys.path.insert で project root を追加して src/ を import
+      ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │ Core (src/core/)                                        │
+  │  screener.py ─ 4つのスクリーナーエンジン                     │
+  │  indicators.py ─ バリュースコア(0-100点)                    │
+  │  filters.py ─ ファンダメンタルズ条件フィルタ                   │
+  │  query_builder.py ─ EquityQuery 構築                     │
+  │  alpha.py ─ 変化スコア(アクルーアルズ/売上加速/FCF/ROE趨勢)    │
+  │  technicals.py ─ 押し目判定(RSI/BB/バウンススコア)           │
+  │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート)       │
+  │  return_estimate.py ─ 推定利回り(アナリスト+過去リターン+ニュース) │
+  │  concentration.py ─ HHI集中度分析                          │
+  │  correlation.py ─ 日次リターン・相関行列・因子分解              │
+  │  shock_sensitivity.py ─ ショック感応度スコア                  │
+  │  scenario_analysis.py ─ シナリオ分析(8シナリオ+ETF資産クラス)  │
+  │  recommender.py ─ ルールベース推奨アクション                   │
+  │  portfolio_manager.py ─ CSV ベースのポートフォリオ管理         │
+  │  portfolio_bridge.py ─ ポートフォリオCSV→ストレステスト連携     │
+  └─────────────────────────────────────────────────────────┘
+      │                    │                    │
+  Markets            Data                  Output
+  src/markets/       src/data/             src/output/
+  base.py (ABC)      yahoo_client.py       formatter.py
+  japan.py           (24h JSON cache,      stress_formatter.py
+  us.py               EquityQuery,         portfolio_formatter.py
+  asean.py            1秒ディレイ,
+                      異常値ガード)
+                     grok_client.py
+                     (Grok API X Search,
+                      XAI_API_KEY 環境変数,
+                      未設定時スキップ)
+
+  Config: config/screening_presets.yaml (7プリセット)
+          config/exchanges.yaml (60+地域の取引所・閾値)
 ```
 
 ## Four Screening Engines
 
-### QueryScreener（EquityQuery方式 - デフォルト）
-yfinance の EquityQuery API を使い、銘柄リストなしで Yahoo Finance のスクリーナーに直接条件を送信。`query_builder.build_query()` で region/exchange/sector/criteria を EquityQuery に変換し、`yahoo_client.screen_stocks()` で実行。結果は `_normalize_quote()` で正規化後、`calculate_value_score()` でスコア付け。対応地域は約60（jp, us, sg, th, my, id, ph, hk, kr, tw, cn 等）。`--mode query` (デフォルト) で使用。
+### QueryScreener（デフォルト）
+`build_query()` → `screen_stocks()` [EquityQuery bulk API] → `_normalize_quote()` → `calculate_value_score()` → ソート。`--with-pullback` で押し目フィルタ追加可能。
 
-### ValueScreener（バリュースコア方式 - Legacy）
-`config/screening_presets.yaml` の criteria で `apply_filters()` → `calculate_value_score()` の順に処理。スコアは100点満点: PER(25) + PBR(25) + 配当利回り(20) + ROE(15) + 売上成長率(15)。`get_stock_info()` の基本データのみ使用。`--mode legacy` で使用。
+### ValueScreener（Legacy, `--mode legacy`）
+銘柄リスト1件ずつ `get_stock_info()` → `apply_filters()` → `calculate_value_score()`。japan/us/asean のみ。
 
-### PullbackScreener（押し目買い型）
-2段パイプライン: EquityQuery(ファンダ) → テクニカル判定(detect_pullback_in_uptrend)。value_score でスコアリング。
-上昇トレンド中の一時調整（-5%〜-20%）を検出。3条件: (1)株価>200日MA＋50日MA>200日MA、
-(2)60日高値から-5%〜-20%、(3)RSI30-40反転＋出来高低下 or BB下限タッチ。`--preset pullback` で使用。
+### PullbackScreener（`--preset pullback`）
+3段パイプライン: EquityQuery → `detect_pullback_in_uptrend()` → value_score。上昇トレンド中の一時調整を検出。"full"（完全一致）と"partial"（部分一致, bounce_score≥30）の2種類。
 
-### AlphaScreener（アルファシグナル方式）
-4段パイプライン: EquityQuery(割安足切り) → 変化の質チェック(alpha.py) → 押し目判定(technicals.py) → 2軸スコアリング。
-割安スコア(100点) + 変化スコア(100点) = 総合スコア(200点満点 + 押し目ボーナス)。
-4指標で変化の質を判定: アクルーアルズ(利益の質) + 売上成長加速度 + FCF利回り + ROE改善トレンド。
-3つ以上◎で通過。`--preset alpha` で使用。
+### AlphaScreener（`--preset alpha`）
+4段パイプライン: EquityQuery(割安足切り) → `compute_change_score()` (3/4指標≥15点で通過) → 押し目判定 → 2軸スコアリング(value 100pt + change 100pt + 押し目ボーナス)。
 
 ## yahoo_client のデータ取得パターン
 
-2つのレベルがある:
-- **`get_stock_info(symbol)`**: `ticker.info` のみ。バリュースクリーニング用。キャッシュは `{symbol}.json`。
-- **`get_stock_detail(symbol)`**: `get_stock_info` + price_history(6ヶ月) + balance_sheet + cashflow + income_stmt。拡張分析用。キャッシュは `{symbol}_detail.json`。
+- **`get_stock_info(symbol)`**: `ticker.info` のみ。キャッシュ `{symbol}.json` (24h TTL)
+- **`get_stock_detail(symbol)`**: info + price_history + balance_sheet + cashflow + income_stmt。キャッシュ `{symbol}_detail.json`
+- **`screen_stocks(query)`**: EquityQuery ベースのバルクスクリーニング（キャッシュなし）
+- **`get_price_history(symbol, period)`**: OHLCV DataFrame（キャッシュなし、デフォルト1年分）
+- **`_sanitize_anomalies()`**: 異常値ガード — 配当利回り>15%、PBR<0.1/PBR>100、PER<0/PER>500、ROE>200% を None にサニタイズ
+
+## Health Check (KIK-356/357)
+
+`/stock-portfolio health` で保有銘柄の投資仮説検証。テクニカル（日次）とファンダ（四半期）の2軸で判定。
+
+- **check_trend_health()**: SMA50/200, RSI から「上昇/横ばい/下降」を判定。SMA50割れ、RSI急落、デッドクロスを検出。
+- **check_change_quality()**: alpha.py の `compute_change_score()` を再利用。passed_count で「良好/1指標↓/複数悪化」に分類。ETFは `_is_etf()` で検出し `quality_label="対象外"` を返す。
+- **compute_alert_level()**: 3段階 — 早期警告（SMA50割れ等）、注意（SMA接近+指標悪化）、撤退（デッドクロス+複数悪化）。撤退にはテクニカル崩壊+ファンダ悪化の両方が必要（ファンダ良好ならCAUTION止まり）。
+- **ETF判定**: `_is_etf()` は `bool()` truthiness チェック（`is not None` ではなく）。`[]`, `0`, `""` も falsy として扱う。
+
+## Scenario Analysis (KIK-354/358)
+
+8シナリオ: トリプル安、ドル高円安、米国リセッション、日銀利上げ、米中対立、インフレ再燃、テック暴落、円高ドル安。日本語エイリアス（`SCENARIO_ALIASES`）で自然言語入力に対応。
+
+- **ETF資産クラスマッチング (KIK-358)**: `_ETF_ASSET_CLASS` マッピングで16銘柄を金・長期債・株式インカムに分類。`_match_target()` が `etf_asset_class` パラメータでETFをシナリオターゲットにマッチ。非株式ETF（金・債券）は自分の資産クラスのみマッチ。
+- **`_match_target()`**: 地域→通貨→輸出/内需→ETF資産クラス→非テック→セクターの優先順でマッチング。
+
+## Return Estimation (KIK-359/360)
+
+`/stock-portfolio forecast` で保有銘柄の推定利回りを楽観/ベース/悲観の3シナリオで提示。
+
+- **株式（アナリストカバレッジあり）**: yfinance の `targetHighPrice`/`targetMeanPrice`/`targetLowPrice` から期待リターン算出。`numberOfAnalystOpinions` で信頼度を3段階表示。アナリスト少数時（3名未満）はスプレッド±20%を適用。
+- **ETF（カバレッジなし）**: 過去2年の月次リターンからCAGR（複利年率）を算出し、±1σでシナリオ分岐。キャップ±30%。
+- **ニュース**: yfinance `ticker.news` で各銘柄の公式メディアニュース（タイトル・要約）を取得。
+- **Xセンチメント**: Grok API（`grok-4-1-fast-non-reasoning` + X Search）で銘柄のXポストを分析。`XAI_API_KEY` 未設定時はスキップ（グレースフルデグレード）。
+- **`grok_client.py`**: `is_available()` で `XAI_API_KEY` 環境変数を確認。`search_x_sentiment()` でポジティブ/ネガティブ要因を返す。
 
 ## Key Design Decisions
 
-- **yahoo_client はモジュール関数**（クラスではない）。`from src.data import yahoo_client` で import し、`yahoo_client.get_stock_info(symbol)` のように使う。
-- **配当利回りの正規化**: yfinance v1.1.0 は `dividendYield` をパーセント値（例: 2.56）で返すことがある。`_normalize_ratio()` が値 > 1 の場合に 100 で割って比率に変換する。
-- **フィールド名のエイリアス**: indicators.py は yfinance 生キー（`trailingPE`, `priceToBook`）と正規化済みキー（`per`, `pbr`）の両方を `or` で対応する。
-- **Market クラス**: 各市場は `format_ticker()`、`get_default_symbols()`、`get_thresholds()`、`get_region()`、`get_exchanges()` を提供。`get_thresholds()` は `rf`（無リスク金利）も含む（日本:0.5%, 米国:4%, ASEAN:3%）。
-- **キャッシュ**: `data/cache/` に銘柄ごとのJSONファイル。TTL 24時間。API呼び出しの間に1秒のディレイ。
-- **プリセット**: `config/screening_presets.yaml` で定義。
+- **yahoo_client はモジュール関数**。`from src.data import yahoo_client` → `yahoo_client.get_stock_info(symbol)`。クラスではないため monkeypatch でモック容易。
+- **配当利回りの正規化**: yfinance が `dividendYield` をパーセント値（例: 2.56）で返すことがある。`_normalize_ratio()` が値 > 1 の場合 100 で割って比率に変換。
+- **フィールド名のエイリアス**: indicators.py は yfinance 生キー（`trailingPE`, `priceToBook`）と正規化済みキー（`per`, `pbr`）の両方を対応。
+- **Market クラス**: `format_ticker()`, `get_default_symbols()`, `get_thresholds()`, `get_region()`, `get_exchanges()` を提供。Legacy モード専用。
+- **キャッシュ**: `data/cache/` に銘柄ごと JSON。TTL 24時間。API 間 1秒ディレイ。
+- **プリセット**: `config/screening_presets.yaml` で定義。criteria の閾値を YAML で管理。
+- **バリュースコア配分**: PER(25) + PBR(25) + 配当利回り(20) + ROE(15) + 売上成長率(15) = 100点。
+- **HAS_MODULE パターン**: スクリプト層（run_*.py）は `try/except ImportError` で各モジュールの存在を確認し、`HAS_*` フラグで graceful degradation。
+
+## Testing
+
+- `python3 -m pytest tests/ -q` で全テスト実行（約640テスト、~1秒）
+- `tests/conftest.py` に共通フィクスチャ: `stock_info_data`, `stock_detail_data`, `price_history_df`, `mock_yahoo_client`
+- `tests/fixtures/` に JSON/CSV テストデータ（Toyota 7203.T ベース）
+- `mock_yahoo_client` は monkeypatch で yahoo_client モジュール関数をモック。`return_value` を設定して使用
+- テストファイルは `tests/core/`, `tests/data/`, `tests/output/` に機能別に配置
+
+## Git Workflow
+
+- Linear issue（KIK-NNN）ごとに `git worktree add` でワークツリーを作成: `~/stock-skills-kik{NNN}`
+- ブランチ名: `feature/kik-{NNN}-{short-desc}`
+- 完了後: `git merge --no-ff` → `git push` → `git worktree remove` → `git branch -d` → Linear を Done に更新
 
 ## Development Rules
 
-- Python 3.10+、依存は yfinance, pyyaml, numpy
+- Python 3.10+、依存は yfinance, pyyaml, numpy, pandas, pytest
+- Grok API 利用時は `XAI_API_KEY` 環境変数を設定（未設定でも動作する）
 - データ取得は必ず `src/data/yahoo_client.py` 経由（直接 yfinance を呼ばない）
 - 新しい市場を追加する場合は `src/markets/base.py` の `Market` を継承
 - `data/cache/`、`data/watchlists/`、`data/screening_results/` は gitignore 済み
-- テストは `pytest` で実行。`tests/conftest.py` に共通フィクスチャあり
-- yahoo_client のモックは `conftest.py` の `mock_yahoo_client` を使用
+- ポートフォリオデータ: `.claude/skills/stock-portfolio/data/portfolio.csv`
