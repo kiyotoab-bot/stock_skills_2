@@ -90,7 +90,7 @@ def search_x_sentiment(
 
         payload = {
             "model": _DEFAULT_MODEL,
-            "tools": [{"type": "x_search"}],
+            "tools": [{"type": "x_search"}, {"type": "web_search"}],
             "input": _build_sentiment_prompt(symbol, company_name),
         }
 
