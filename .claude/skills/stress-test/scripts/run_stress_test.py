@@ -510,8 +510,17 @@ def main():
     # ------------------------------------------------------------------
     if format_full_stress_report is not None and scenario_result is not None:
         portfolio_summary = {
-            "symbols": [s["symbol"] for s in portfolio],
-            "total_stocks": len(portfolio),
+            "stock_count": len(portfolio),
+            "stocks": [
+                {
+                    "symbol": s.get("symbol", ""),
+                    "name": s.get("name", ""),
+                    "weight": s.get("weight", 0),
+                    "price": s.get("price") or s.get("current_price"),
+                    "sector": s.get("sector", ""),
+                }
+                for s in portfolio
+            ],
         }
         report = format_full_stress_report(
             portfolio_summary=portfolio_summary,

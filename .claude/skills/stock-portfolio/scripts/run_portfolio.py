@@ -258,7 +258,13 @@ def cmd_snapshot(csv_path: str) -> None:
     print("| 銘柄 | 保有数 | 取得単価 | 現在価格 | 損益率 |")
     print("|:-----|------:|--------:|--------:|------:|")
     for h in holdings:
-        info = yahoo_client.get_stock_info(h["symbol"])
+        symbol = h["symbol"]
+        # Skip cash positions
+        if symbol.upper().endswith(".CASH"):
+            currency = symbol.upper().replace(".CASH", "")
+            print(f"| {symbol} | {h['shares']} | {h['cost_price']:.2f} | {h['cost_price']:.2f} | - |")
+            continue
+        info = yahoo_client.get_stock_info(symbol)
         price = info.get("price") if info else None
         price_str = f"{price:.2f}" if price else "-"
         if price and h["cost_price"] > 0:
@@ -266,7 +272,7 @@ def cmd_snapshot(csv_path: str) -> None:
             pnl_str = f"{pnl_pct:+.1f}%"
         else:
             pnl_str = "-"
-        print(f"| {h['symbol']} | {h['shares']} | {h['cost_price']:.2f} | {price_str} | {pnl_str} |")
+        print(f"| {symbol} | {h['shares']} | {h['cost_price']:.2f} | {price_str} | {pnl_str} |")
     print()
 
 
@@ -422,6 +428,9 @@ def cmd_analyze(csv_path: str) -> None:
     portfolio_data = []
     for h in holdings:
         symbol = h["symbol"]
+        # Skip cash positions
+        if symbol.upper().endswith(".CASH"):
+            continue
         info = yahoo_client.get_stock_info(symbol)
         if info is None:
             print(f"Warning: {symbol} のデータ取得に失敗しました。スキップします。")

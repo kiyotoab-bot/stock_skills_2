@@ -105,8 +105,29 @@ _FX_PAIRS = [
 ]
 
 
+def _is_cash(symbol: str) -> bool:
+    """Check if symbol represents a cash position (e.g., JPY.CASH, USD.CASH)."""
+    return symbol.upper().endswith(".CASH")
+
+
+def _cash_currency(symbol: str) -> str:
+    """Extract currency from cash symbol (e.g., 'JPY.CASH' -> 'JPY')."""
+    return symbol.upper().replace(".CASH", "")
+
+
 def _infer_country(symbol: str) -> str:
     """Infer the country/region from the ticker symbol suffix."""
+    if _is_cash(symbol):
+        currency = _cash_currency(symbol)
+        # Reverse lookup: find country for this currency
+        for suffix, cur in _SUFFIX_TO_CURRENCY.items():
+            if cur == currency:
+                return _SUFFIX_TO_COUNTRY.get(suffix, "Unknown")
+        if currency == "USD":
+            return "United States"
+        if currency == "JPY":
+            return "Japan"
+        return "Unknown"
     for suffix, country in _SUFFIX_TO_COUNTRY.items():
         if symbol.upper().endswith(suffix.upper()):
             return country
@@ -118,6 +139,8 @@ def _infer_country(symbol: str) -> str:
 
 def _infer_currency(symbol: str) -> str:
     """Infer the currency from the ticker symbol suffix."""
+    if _is_cash(symbol):
+        return _cash_currency(symbol)
     for suffix, currency in _SUFFIX_TO_CURRENCY.items():
         if symbol.upper().endswith(suffix.upper()):
             return currency
@@ -441,6 +464,34 @@ def get_snapshot(csv_path: str, client) -> dict:
         shares = pos["shares"]
         cost_price = pos["cost_price"]
         cost_currency = pos.get("cost_currency", "JPY")
+
+        # Cash positions: skip API call, use cost_price as current price
+        if _is_cash(symbol):
+            cash_currency = _cash_currency(symbol)
+            fx_rate = _get_fx_rate_for_currency(cash_currency, fx_rates)
+            value_jpy = cost_price * shares * fx_rate
+            cost_jpy = value_jpy  # cash has no P&L
+            total_value_jpy += value_jpy
+            total_cost_jpy += cost_jpy
+            positions.append({
+                "symbol": symbol,
+                "name": f"現金 ({cash_currency})",
+                "sector": "Cash",
+                "shares": shares,
+                "cost_price": cost_price,
+                "cost_currency": cost_currency,
+                "current_price": cost_price,
+                "market_currency": cash_currency,
+                "evaluation": cost_price * shares,
+                "evaluation_jpy": round(value_jpy, 0),
+                "cost_jpy": round(cost_jpy, 0),
+                "pnl": 0.0,
+                "pnl_pct": 0.0,
+                "pnl_jpy": 0.0,
+                "purchase_date": pos.get("purchase_date", ""),
+                "memo": pos.get("memo", ""),
+            })
+            continue
 
         # Get current market data
         info = client.get_stock_info(symbol)

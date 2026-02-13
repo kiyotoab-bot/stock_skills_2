@@ -12,6 +12,8 @@ from src.core.portfolio_manager import (
     CSV_COLUMNS,
     _infer_country,
     _infer_currency,
+    _is_cash,
+    _cash_currency,
 )
 
 
@@ -362,3 +364,94 @@ class TestInferCurrency:
 
     def test_unknown_suffix_defaults_usd(self):
         assert _infer_currency("UNKNOWN.XX") == "USD"
+
+    def test_cash_jpy(self):
+        assert _infer_currency("JPY.CASH") == "JPY"
+
+    def test_cash_usd(self):
+        assert _infer_currency("USD.CASH") == "USD"
+
+
+# ===================================================================
+# _is_cash / _cash_currency helpers (KIK-361)
+# ===================================================================
+
+
+class TestIsCash:
+    def test_jpy_cash(self):
+        assert _is_cash("JPY.CASH") is True
+
+    def test_usd_cash(self):
+        assert _is_cash("USD.CASH") is True
+
+    def test_lowercase_cash(self):
+        assert _is_cash("jpy.cash") is True
+
+    def test_normal_stock(self):
+        assert _is_cash("7203.T") is False
+
+    def test_us_stock(self):
+        assert _is_cash("AAPL") is False
+
+
+class TestCashCurrency:
+    def test_jpy(self):
+        assert _cash_currency("JPY.CASH") == "JPY"
+
+    def test_usd(self):
+        assert _cash_currency("USD.CASH") == "USD"
+
+    def test_sgd(self):
+        assert _cash_currency("SGD.CASH") == "SGD"
+
+
+class TestInferCountryCash:
+    def test_jpy_cash_country(self):
+        assert _infer_country("JPY.CASH") == "Japan"
+
+    def test_usd_cash_country(self):
+        assert _infer_country("USD.CASH") == "United States"
+
+    def test_sgd_cash_country(self):
+        assert _infer_country("SGD.CASH") == "Singapore"
+
+
+# ===================================================================
+# get_snapshot with .CASH (KIK-361)
+# ===================================================================
+
+
+class TestGetSnapshotCash:
+    def test_cash_position_skips_api(self, csv_path):
+        """Cash positions should not trigger API calls."""
+        from src.core.portfolio_manager import get_snapshot
+
+        portfolio = [
+            {"symbol": "JPY.CASH", "shares": 1, "cost_price": 500000.0,
+             "cost_currency": "JPY", "purchase_date": "2025-01-01", "memo": "現金"},
+        ]
+        save_portfolio(portfolio, csv_path)
+
+        # Mock client that should NOT be called for cash
+        class MockClient:
+            def __init__(self):
+                self.called = False
+
+            def get_stock_info(self, symbol):
+                if symbol.upper().endswith(".CASH"):
+                    self.called = True
+                    raise AssertionError(f"API should not be called for {symbol}")
+                # Return FX rate data for USDJPY=X etc.
+                return {"price": 150.0}
+
+        client = MockClient()
+        result = get_snapshot(csv_path, client)
+
+        assert len(result["positions"]) == 1
+        pos = result["positions"][0]
+        assert pos["symbol"] == "JPY.CASH"
+        assert pos["name"] == "現金 (JPY)"
+        assert pos["sector"] == "Cash"
+        assert pos["pnl"] == 0.0
+        assert pos["pnl_pct"] == 0.0
+        assert not client.called

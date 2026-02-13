@@ -319,6 +319,11 @@ def run_health_check(csv_path: str, client) -> dict:
     for pos in positions:
         symbol = pos["symbol"]
 
+        # Skip cash positions (e.g., JPY.CASH, USD.CASH)
+        from src.core.portfolio_manager import _is_cash
+        if _is_cash(symbol):
+            continue
+
         # 1. Trend analysis
         hist = client.get_price_history(symbol, period="1y")
         trend_health = check_trend_health(hist)
