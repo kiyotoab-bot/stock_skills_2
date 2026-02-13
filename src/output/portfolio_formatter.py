@@ -624,7 +624,10 @@ def format_return_estimate(estimate: dict) -> str:
         lines.append("")
 
         # Quantitative section
-        if method == "analyst":
+        if method == "no_data":
+            lines.append("\u3010\u5b9a\u91cf\u3011\u30c7\u30fc\u30bf\u53d6\u5f97\u5931\u6557")
+            lines.append("  \u2192 \u60b2\u89b3 - / \u30d9\u30fc\u30b9 - / \u697d\u89b3 -")
+        elif method == "analyst":
             target_mean = pos.get("target_mean")
             analyst_count = pos.get("analyst_count")
             forward_per = pos.get("forward_per")
@@ -648,36 +651,38 @@ def format_return_estimate(estimate: dict) -> str:
                 f"\uff08{data_months}\u30f6\u6708\u5206\uff09"
             )
 
-        # News section
-        news = pos.get("news", [])
-        if news:
-            lines.append("\u3010\u30cb\u30e5\u30fc\u30b9\u3011")
-            for item in news[:5]:
-                title = item.get("title", "")
-                publisher = item.get("publisher", "")
-                if title:
-                    pub_str = f" ({publisher})" if publisher else ""
-                    lines.append(f"  - {title}{pub_str}")
+        # News and sentiment sections (skip for no_data)
+        if method != "no_data":
+            # News section
+            news = pos.get("news", [])
+            if news:
+                lines.append("\u3010\u30cb\u30e5\u30fc\u30b9\u3011")
+                for item in news[:5]:
+                    title = item.get("title", "")
+                    publisher = item.get("publisher", "")
+                    if title:
+                        pub_str = f" ({publisher})" if publisher else ""
+                        lines.append(f"  - {title}{pub_str}")
 
-        # X Sentiment section
-        x_sentiment = pos.get("x_sentiment")
-        if x_sentiment and (x_sentiment.get("positive") or x_sentiment.get("negative")):
-            lines.append("\u3010X \u30bb\u30f3\u30c1\u30e1\u30f3\u30c8\u3011")
-            for factor in (x_sentiment.get("positive") or [])[:3]:
-                lines.append(f"  \u25b2 {factor}")
-            for factor in (x_sentiment.get("negative") or [])[:3]:
-                lines.append(f"  \u25bc {factor}")
+            # X Sentiment section
+            x_sentiment = pos.get("x_sentiment")
+            if x_sentiment and (x_sentiment.get("positive") or x_sentiment.get("negative")):
+                lines.append("\u3010X \u30bb\u30f3\u30c1\u30e1\u30f3\u30c8\u3011")
+                for factor in (x_sentiment.get("positive") or [])[:3]:
+                    lines.append(f"  \u25b2 {factor}")
+                for factor in (x_sentiment.get("negative") or [])[:3]:
+                    lines.append(f"  \u25bc {factor}")
 
-        # 3-scenario summary
-        opt = pos.get("optimistic")
-        base_r = pos.get("base")
-        pess = pos.get("pessimistic")
-        if opt is not None and base_r is not None and pess is not None:
-            lines.append(
-                f"  \u2192 \u60b2\u89b3 {_fmt_pct_sign(pess)} / "
-                f"\u30d9\u30fc\u30b9 {_fmt_pct_sign(base_r)} / "
-                f"\u697d\u89b3 {_fmt_pct_sign(opt)}"
-            )
+            # 3-scenario summary
+            opt = pos.get("optimistic")
+            base_r = pos.get("base")
+            pess = pos.get("pessimistic")
+            if opt is not None and base_r is not None and pess is not None:
+                lines.append(
+                    f"  \u2192 \u60b2\u89b3 {_fmt_pct_sign(pess)} / "
+                    f"\u30d9\u30fc\u30b9 {_fmt_pct_sign(base_r)} / "
+                    f"\u697d\u89b3 {_fmt_pct_sign(opt)}"
+                )
 
         lines.append("")
 

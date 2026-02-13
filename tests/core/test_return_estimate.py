@@ -117,6 +117,38 @@ class TestEstimateFromAnalyst:
         result = _estimate_from_analyst(detail)
         assert result["analyst_count"] == 3
 
+    def test_identical_targets_get_spread(self):
+        """When all 3 targets are identical, apply synthetic spread."""
+        detail = {
+            "price": 673.0,
+            "target_high_price": 1002.0,
+            "target_mean_price": 1002.0,
+            "target_low_price": 1002.0,
+            "dividend_yield": 0.0,
+            "number_of_analyst_opinions": 2,
+        }
+        result = _estimate_from_analyst(detail)
+        assert result is not None
+        assert result["optimistic"] != result["pessimistic"]
+        assert result["optimistic"] > result["base"]
+        assert result["pessimistic"] < result["base"]
+
+    def test_few_analysts_get_spread(self):
+        """When analyst count < 3, apply synthetic spread even if targets differ."""
+        detail = {
+            "price": 100.0,
+            "target_high_price": 130.0,
+            "target_mean_price": 120.0,
+            "target_low_price": 110.0,
+            "dividend_yield": 0.0,
+            "number_of_analyst_opinions": 2,
+        }
+        result = _estimate_from_analyst(detail)
+        # With < 3 analysts, spread should be applied using base*1.2 / base*0.8
+        base = result["base"]  # (120-100)/100 = 0.2
+        assert abs(result["optimistic"] - base * 1.2) < 0.01
+        assert abs(result["pessimistic"] - base * 0.8) < 0.01
+
 
 # ---------------------------------------------------------------------------
 # _estimate_from_history
@@ -153,15 +185,53 @@ class TestEstimateFromHistory:
         result = _estimate_from_history(detail)
         assert result["optimistic"] is None
 
-    def test_includes_dividend_yield(self):
-        """Dividend yield is added to percentile returns."""
+    def test_dividend_not_double_counted(self):
+        """Dividends are in adjusted close, so dividend_yield is NOT added."""
         # Flat prices → monthly return = 0
         prices = [100.0] * 130
         detail = {"price_history": prices, "dividend_yield": 0.05}
         result = _estimate_from_history(detail)
-        # All percentiles should be 0 + 0.05 = 0.05
+        # All percentiles should be 0.0 (no dividend_yield addition)
         if result["base"] is not None:
-            assert abs(result["base"] - 0.05) < 0.01
+            assert abs(result["base"] - 0.0) < 0.01
+
+    def test_cagr_annualization(self):
+        """Base return uses CAGR (compound annual growth rate)."""
+        # 24 months of 10% monthly growth: total = 1.1^24 ≈ 9.85
+        # CAGR = 9.85^(12/24) - 1 ≈ 2.14 (but capped at 50%)
+        prices = [100.0]
+        for month in range(24):
+            start = prices[-1]
+            for day in range(21):
+                prices.append(start * (1.10 ** ((day + 1) / 21)))
+        detail = {
+            "price": prices[-1],
+            "price_history": prices,
+            "dividend_yield": 0.0,
+        }
+        result = _estimate_from_history(detail)
+        # CAGR is very high here but capped at 50%
+        assert result["base"] == 0.50  # capped at max
+        assert result["base"] is not None
+
+    def test_moderate_growth_cagr(self):
+        """CAGR for moderate growth produces reasonable estimate."""
+        # 24 months of ~1% monthly growth: total ≈ 1.01^24 ≈ 1.27
+        # CAGR = 1.27^(12/24) - 1 ≈ 0.127 (12.7%)
+        prices = [100.0]
+        for month in range(24):
+            start = prices[-1]
+            for day in range(21):
+                prices.append(start * (1.01 ** ((day + 1) / 21)))
+        detail = {
+            "price": prices[-1],
+            "price_history": prices,
+            "dividend_yield": 0.0,
+        }
+        result = _estimate_from_history(detail)
+        assert 0.05 < result["base"] < 0.25  # reasonable annual return
+        assert result["optimistic"] > result["base"]
+        assert result["pessimistic"] < result["base"]
 
 
 # ---------------------------------------------------------------------------
@@ -296,3 +366,74 @@ class TestEstimatePortfolioReturn:
         result = estimate_portfolio_return("/fake/path.csv", mock_client)
         assert result["positions"] == []
         assert result["portfolio"]["base"] is None
+
+    @patch("src.core.portfolio_manager._infer_currency")
+    @patch("src.core.portfolio_manager.get_fx_rates")
+    @patch("src.core.portfolio_manager.load_portfolio")
+    def test_failed_fetch_none_shows_no_data(self, mock_load, mock_fx, mock_infer):
+        """Stock with None detail appears with method='no_data'."""
+        mock_load.return_value = [
+            {"symbol": "FAIL.T", "shares": 100, "cost_price": 1000.0, "cost_currency": "JPY"},
+        ]
+        mock_fx.return_value = {"JPY": 1.0}
+        mock_infer.return_value = "JPY"
+        mock_client = MagicMock()
+        mock_client.get_stock_detail.return_value = None
+        with patch("src.data.grok_client.is_available", return_value=False):
+            result = estimate_portfolio_return("/fake/path.csv", mock_client)
+        assert len(result["positions"]) == 1
+        assert result["positions"][0]["method"] == "no_data"
+        assert result["positions"][0]["base"] is None
+
+    @patch("src.core.portfolio_manager._infer_currency")
+    @patch("src.core.portfolio_manager.get_fx_rates")
+    @patch("src.core.portfolio_manager.load_portfolio")
+    def test_failed_fetch_no_price_shows_no_data(self, mock_load, mock_fx, mock_infer):
+        """Stock with price=None in detail also appears as 'no_data'."""
+        mock_load.return_value = [
+            {"symbol": "9856.T", "shares": 100, "cost_price": 500.0, "cost_currency": "JPY"},
+        ]
+        mock_fx.return_value = {"JPY": 1.0}
+        mock_infer.return_value = "JPY"
+        mock_client = MagicMock()
+        mock_client.get_stock_detail.return_value = {"price": None, "name": "Test"}
+        with patch("src.data.grok_client.is_available", return_value=False):
+            result = estimate_portfolio_return("/fake/path.csv", mock_client)
+        assert len(result["positions"]) == 1
+        assert result["positions"][0]["method"] == "no_data"
+        assert result["positions"][0]["base"] is None
+
+    @patch("src.core.portfolio_manager._infer_currency")
+    @patch("src.core.portfolio_manager.get_fx_rates")
+    @patch("src.core.portfolio_manager.load_portfolio")
+    def test_grok_error_prints_warning(self, mock_load, mock_fx, mock_infer):
+        """Grok API error prints warning to stderr once."""
+        mock_load.return_value = [
+            {"symbol": "AAPL", "shares": 10, "cost_price": 150.0, "cost_currency": "USD"},
+        ]
+        mock_fx.return_value = {"USD": 150.0}
+        mock_infer.return_value = "USD"
+        mock_client = MagicMock()
+        mock_client.get_stock_detail.return_value = {
+            "price": 200.0, "target_mean_price": 250.0,
+            "target_high_price": 280.0, "target_low_price": 220.0,
+            "dividend_yield": 0.01, "number_of_analyst_opinions": 30,
+            "recommendation_mean": 2.0, "forward_per": 25.0,
+        }
+        mock_client.get_stock_news.return_value = []
+
+        import src.core.return_estimate as re_mod
+        re_mod._grok_warned[0] = False  # Reset warning flag
+
+        with patch("src.data.grok_client.is_available", return_value=True), \
+             patch("src.data.grok_client.search_x_sentiment", side_effect=RuntimeError("API error")):
+            import io, sys
+            captured = io.StringIO()
+            old_stderr = sys.stderr
+            sys.stderr = captured
+            try:
+                result = estimate_portfolio_return("/fake/path.csv", mock_client)
+            finally:
+                sys.stderr = old_stderr
+                re_mod._grok_warned[0] = False  # Reset for other tests
+        assert "[return_estimate] Grok API error" in captured.getvalue()

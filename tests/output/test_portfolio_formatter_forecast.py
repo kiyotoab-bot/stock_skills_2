@@ -188,6 +188,23 @@ class TestFormatReturnEstimate:
         result = format_return_estimate(estimate)
         assert "センチメント" not in result
 
+    def test_no_data_stock_display(self):
+        """Stocks with method='no_data' show 'データ取得失敗'."""
+        estimate = {
+            "summary": {"optimistic": 0.1, "base": 0.05, "pessimistic": -0.02},
+            "total_value_jpy": 1000000,
+            "positions": [{
+                "symbol": "FAIL.T", "name": "", "price": None,
+                "optimistic": None, "base": None, "pessimistic": None,
+                "method": "no_data", "analyst_count": None,
+                "news": [], "x_sentiment": None,
+            }],
+            "portfolio": {"optimistic": 0.1, "base": 0.05, "pessimistic": -0.02},
+        }
+        output = format_return_estimate(estimate)
+        assert "データ取得失敗" in output
+        assert "FAIL.T" in output
+
     def test_pnl_amount_calculation(self):
         """PnL amount = return rate * total_value_jpy."""
         estimate = {

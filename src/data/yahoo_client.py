@@ -283,10 +283,10 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         time.sleep(1)  # rate-limit consistent with existing pattern
         ticker = yf.Ticker(symbol)
 
-        # --- Price history (6 months) ---
+        # --- Price history (2 years for ~24 monthly returns) ---
         price_history: Optional[list[float]] = None
         try:
-            hist = ticker.history(period="6mo")
+            hist = ticker.history(period="2y")
             if hist is not None and not hist.empty and "Close" in hist.columns:
                 price_history = [float(v) for v in hist["Close"].tolist()]
         except Exception:
