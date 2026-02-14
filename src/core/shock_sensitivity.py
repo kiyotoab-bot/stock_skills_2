@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from typing import Optional
 
+from src.core.common import safe_float as _safe_float
 from src.core.technicals import compute_rsi
 
 
@@ -21,19 +22,6 @@ from src.core.technicals import compute_rsi
 def _clamp(value: float, lo: float = 0.5, hi: float = 2.0) -> float:
     """Clamp *value* to [lo, hi]."""
     return max(lo, min(hi, value))
-
-
-def _safe_float(value, default: float = 0.0) -> float:
-    """Convert *value* to float safely, returning *default* on failure."""
-    if value is None:
-        return default
-    try:
-        f = float(value)
-        if np.isnan(f) or np.isinf(f):
-            return default
-        return f
-    except (TypeError, ValueError):
-        return default
 
 
 # ---------------------------------------------------------------------------

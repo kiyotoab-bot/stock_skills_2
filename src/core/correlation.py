@@ -11,6 +11,8 @@ from typing import Optional
 
 import numpy as np
 
+from src.core.common import safe_float as _safe_float
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,19 +27,6 @@ def _compute_daily_returns(prices: list[float]) -> list[float]:
         if prices[i - 1] != 0:
             returns.append((prices[i] - prices[i - 1]) / prices[i - 1])
     return returns
-
-
-def _safe_float(value, default: float = 0.0) -> float:
-    """Convert value to float safely, returning default on failure."""
-    if value is None:
-        return default
-    try:
-        f = float(value)
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except (TypeError, ValueError):
-        return default
 
 
 # ---------------------------------------------------------------------------

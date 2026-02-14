@@ -13,6 +13,8 @@ Uses existing modules:
 
 from typing import Optional
 
+from src.core.common import is_cash as _is_cash
+
 
 # ---------------------------------------------------------------------------
 # Default constraints
@@ -49,10 +51,6 @@ _STRATEGY_PRESETS = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _is_cash(symbol: str) -> bool:
-    """Check if symbol is a cash position."""
-    return symbol.upper().endswith(".CASH")
 
 
 def _build_constraints(

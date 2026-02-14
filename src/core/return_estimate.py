@@ -11,22 +11,21 @@ Optionally integrates Grok API sentiment data when XAI_API_KEY is set.
 import math
 from typing import Optional
 
+from src.core.common import is_etf as _is_etf_base
+
 _grok_warned = [False]
 
 
 def _is_etf(stock_detail: dict) -> bool:
-    """Check if a symbol is likely an ETF (no analyst coverage)."""
-    # ETFs typically have no analyst target prices
+    """Check if a symbol is likely an ETF (no analyst coverage).
+
+    Extends the common is_etf() with an additional check: stocks that
+    have analyst target prices are never treated as ETFs for return
+    estimation purposes (they use the analyst method instead).
+    """
     if stock_detail.get("target_mean_price") is not None:
         return False
-    # quoteType from yfinance info
-    quote_type = stock_detail.get("quoteType", "")
-    if quote_type == "ETF":
-        return True
-    # No sector is a strong ETF signal
-    if not stock_detail.get("sector"):
-        return True
-    return False
+    return _is_etf_base(stock_detail)
 
 
 def _estimate_from_analyst(stock_detail: dict) -> dict:
@@ -287,7 +286,8 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
             "fx_rates": dict,
         }
     """
-    from src.core.portfolio_manager import load_portfolio, get_fx_rates, _infer_currency
+    from src.core.portfolio_manager import load_portfolio, get_fx_rates
+    from src.core.ticker_utils import infer_currency as _infer_currency
 
     # Optional: Grok API
     try:

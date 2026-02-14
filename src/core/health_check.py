@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 from typing import Optional
 
+from src.core.common import is_cash as _is_cash, is_etf as _is_etf
+
 # Alert level constants
 ALERT_NONE = "none"
 ALERT_EARLY_WARNING = "early_warning"
@@ -110,20 +112,6 @@ def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
         "sma50": round(current_sma50, 2),
         "sma200": round(current_sma200, 2),
     }
-
-
-def _is_etf(stock_detail: dict) -> bool:
-    """Return True if stock_detail looks like an ETF (lacks fundamental data)."""
-    if stock_detail.get("quoteType") == "ETF":
-        return True
-    info = stock_detail.get("info", stock_detail)
-    has_sector = bool(info.get("sector"))
-    has_net_income = bool(stock_detail.get("net_income_stmt"))
-    has_operating_cf = bool(stock_detail.get("operating_cashflow"))
-    has_revenue_hist = bool(stock_detail.get("revenue_history"))
-    if not has_sector and not has_net_income and not has_operating_cf and not has_revenue_hist:
-        return True
-    return False
 
 
 def check_change_quality(stock_detail: dict) -> dict:
@@ -320,7 +308,6 @@ def run_health_check(csv_path: str, client) -> dict:
         symbol = pos["symbol"]
 
         # Skip cash positions (e.g., JPY.CASH, USD.CASH)
-        from src.core.portfolio_manager import _is_cash
         if _is_cash(symbol):
             continue
 

@@ -3,6 +3,12 @@
 import math
 from typing import Optional
 
+from src.core.common import safe_float as _safe_float
+from src.core.ticker_utils import (
+    SUFFIX_TO_CURRENCY as _SUFFIX_TO_CURRENCY_FULL,
+    infer_currency as _infer_currency,
+)
+
 
 # プリセットシナリオ定義
 SCENARIOS = {
@@ -254,16 +260,6 @@ _TARGET_TO_SECTORS = {
     "金・安全資産": None,  # 非株式
 }
 
-# ティッカーサフィックス → 通貨
-_SUFFIX_TO_CURRENCY = {
-    ".T": "JPY",
-    ".SI": "SGD",
-    ".BK": "THB",
-    ".KL": "MYR",
-    ".JK": "IDR",
-    ".PS": "PHP",
-}
-
 # ティッカーサフィックス → 地域ラベル
 _SUFFIX_TO_REGION = {
     ".T": "Japan",
@@ -310,18 +306,6 @@ def _get_etf_asset_class(symbol: str, stock_info: dict) -> Optional[str]:
     return None
 
 
-def _infer_currency(symbol: str, stock_info: dict) -> str:
-    """銘柄の通貨を推定する。stock_info['currency'] があればそちら優先。"""
-    currency = stock_info.get("currency")
-    if currency:
-        return currency
-    for suffix, cur in _SUFFIX_TO_CURRENCY.items():
-        if symbol.endswith(suffix):
-            return cur
-    # サフィックスなし → USD と推定
-    return "USD"
-
-
 def _infer_region(symbol: str, stock_info: dict) -> str:
     """銘柄の地域を推定する。"""
     country = stock_info.get("country") or stock_info.get("region")
@@ -331,19 +315,6 @@ def _infer_region(symbol: str, stock_info: dict) -> str:
         if symbol.endswith(suffix):
             return region
     return "US"
-
-
-def _safe_float(value, default: float = 0.0) -> float:
-    """None/NaN を安全にfloatに変換する。"""
-    if value is None:
-        return default
-    try:
-        f = float(value)
-        if math.isnan(f) or math.isinf(f):
-            return default
-        return f
-    except (TypeError, ValueError):
-        return default
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,15 @@ import os
 from datetime import datetime
 from typing import Optional
 
+from src.core.common import is_cash as _is_cash
+from src.core.ticker_utils import (
+    SUFFIX_TO_COUNTRY as _SUFFIX_TO_COUNTRY,
+    SUFFIX_TO_CURRENCY as _SUFFIX_TO_CURRENCY,
+    cash_currency as _cash_currency,
+    infer_country as _infer_country,
+    infer_currency as _infer_currency,
+)
+
 # CSV path (default)
 DEFAULT_CSV_PATH = os.path.join(
     os.path.dirname(__file__),
@@ -31,59 +40,6 @@ CSV_COLUMNS = [
     "memo",
 ]
 
-# ---------------------------------------------------------------------------
-# Country inference from ticker suffix (same pattern as stress-test)
-# ---------------------------------------------------------------------------
-
-_SUFFIX_TO_COUNTRY = {
-    ".T": "Japan",
-    ".SI": "Singapore",
-    ".BK": "Thailand",
-    ".KL": "Malaysia",
-    ".JK": "Indonesia",
-    ".PS": "Philippines",
-    ".HK": "Hong Kong",
-    ".KS": "South Korea",
-    ".KQ": "South Korea",
-    ".TW": "Taiwan",
-    ".TWO": "Taiwan",
-    ".SS": "China",
-    ".SZ": "China",
-    ".L": "United Kingdom",
-    ".DE": "Germany",
-    ".PA": "France",
-    ".TO": "Canada",
-    ".AX": "Australia",
-    ".SA": "Brazil",
-    ".NS": "India",
-    ".BO": "India",
-}
-
-# Suffix -> currency mapping for region inference
-_SUFFIX_TO_CURRENCY = {
-    ".T": "JPY",
-    ".SI": "SGD",
-    ".BK": "THB",
-    ".KL": "MYR",
-    ".JK": "IDR",
-    ".PS": "PHP",
-    ".HK": "HKD",
-    ".KS": "KRW",
-    ".KQ": "KRW",
-    ".TW": "TWD",
-    ".TWO": "TWD",
-    ".SS": "CNY",
-    ".SZ": "CNY",
-    ".L": "GBP",
-    ".DE": "EUR",
-    ".PA": "EUR",
-    ".TO": "CAD",
-    ".AX": "AUD",
-    ".SA": "BRL",
-    ".NS": "INR",
-    ".BO": "INR",
-}
-
 # FX pairs to fetch for JPY conversion
 _FX_PAIRS = [
     "USDJPY=X",
@@ -103,51 +59,6 @@ _FX_PAIRS = [
     "BRLJPY=X",
     "INRJPY=X",
 ]
-
-
-def _is_cash(symbol: str) -> bool:
-    """Check if symbol represents a cash position (e.g., JPY.CASH, USD.CASH)."""
-    return symbol.upper().endswith(".CASH")
-
-
-def _cash_currency(symbol: str) -> str:
-    """Extract currency from cash symbol (e.g., 'JPY.CASH' -> 'JPY')."""
-    return symbol.upper().replace(".CASH", "")
-
-
-def _infer_country(symbol: str) -> str:
-    """Infer the country/region from the ticker symbol suffix."""
-    if _is_cash(symbol):
-        currency = _cash_currency(symbol)
-        # Reverse lookup: find country for this currency
-        for suffix, cur in _SUFFIX_TO_CURRENCY.items():
-            if cur == currency:
-                return _SUFFIX_TO_COUNTRY.get(suffix, "Unknown")
-        if currency == "USD":
-            return "United States"
-        if currency == "JPY":
-            return "Japan"
-        return "Unknown"
-    for suffix, country in _SUFFIX_TO_COUNTRY.items():
-        if symbol.upper().endswith(suffix.upper()):
-            return country
-    # No suffix typically means US stock
-    if "." not in symbol:
-        return "United States"
-    return "Unknown"
-
-
-def _infer_currency(symbol: str) -> str:
-    """Infer the currency from the ticker symbol suffix."""
-    if _is_cash(symbol):
-        return _cash_currency(symbol)
-    for suffix, currency in _SUFFIX_TO_CURRENCY.items():
-        if symbol.upper().endswith(suffix.upper()):
-            return currency
-    # No suffix typically means USD
-    if "." not in symbol:
-        return "USD"
-    return "USD"
 
 
 def _fx_symbol_for_currency(currency: str) -> Optional[str]:
