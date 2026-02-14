@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-割安株スクリーニングシステム。Yahoo Finance API（yfinance）を使って日本株・米国株・ASEAN株・香港株・韓国株・台湾株等60地域から割安銘柄をスクリーニングする。Claude Code Skills として動作し、`/screen-stocks`、`/stock-report`、`/watchlist`、`/stress-test`、`/stock-portfolio` コマンドで利用する。
+割安株スクリーニングシステム。Yahoo Finance API（yfinance）を使って日本株・米国株・ASEAN株・香港株・韓国株・台湾株等60地域から割安銘柄をスクリーニングする。Claude Code Skills として動作し、`/screen-stocks`、`/stock-report`、`/watchlist`、`/stress-test`、`/stock-portfolio`、`/market-research` コマンドで利用する。
 
 ## Commands
 
@@ -18,6 +18,11 @@ python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
 # ウォッチリスト操作
 python3 .claude/skills/watchlist/scripts/manage_watchlist.py list
 
+# 深掘りリサーチ（銘柄/業界/マーケット）
+python3 .claude/skills/market-research/scripts/run_research.py stock 7203.T
+python3 .claude/skills/market-research/scripts/run_research.py industry 半導体
+python3 .claude/skills/market-research/scripts/run_research.py market 日経平均
+
 # ストレステスト実行
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,AAPL,D05.SI
 
@@ -29,6 +34,7 @@ python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py analyze
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py health
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py forecast
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py rebalance
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py simulate --years 5 --monthly-add 50000 --target 15000000
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
 
 # テスト
@@ -46,14 +52,18 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │
   ├─ screen-stocks/run_screen.py   … --region --preset --sector --with-pullback
   ├─ stock-report/generate_report.py
+  ├─ market-research/run_research.py … stock/industry/market (Grok API深掘り)
   ├─ watchlist/manage_watchlist.py
   ├─ stress-test/run_stress_test.py
-  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/list
+  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/simulate/list
       │
       │  sys.path.insert で project root を追加して src/ を import
       ▼
   ┌─────────────────────────────────────────────────────────┐
   │ Core (src/core/)                                        │
+  │  models.py ─ dataclass定義(Position/ForecastResult/HealthResult等) │
+  │  common.py ─ 共通ユーティリティ(is_cash/is_etf/safe_float)   │
+  │  ticker_utils.py ─ ティッカー推論(通貨/国マッピング)          │
   │  screener.py ─ 4つのスクリーナーエンジン                     │
   │  indicators.py ─ バリュースコア(0-100点)                    │
   │  filters.py ─ ファンダメンタルズ条件フィルタ                   │
@@ -62,14 +72,17 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │  technicals.py ─ 押し目判定(RSI/BB/バウンススコア)           │
   │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート)       │
   │  return_estimate.py ─ 推定利回り(アナリスト+過去リターン+ニュース) │
+  │  simulator.py ─ 複利シミュレーション(3シナリオ+配当再投資+積立) │
   │  concentration.py ─ HHI集中度分析                          │
   │  correlation.py ─ 日次リターン・相関行列・因子分解              │
   │  shock_sensitivity.py ─ ショック感応度スコア                  │
-  │  scenario_analysis.py ─ シナリオ分析(8シナリオ+ETF資産クラス)  │
+  │  scenario_analysis.py ─ シナリオ分析(実行ロジック)            │
+  │  scenario_definitions.py ─ シナリオ定義(8シナリオ+ETF資産クラス) │
   │  recommender.py ─ ルールベース推奨アクション                   │
   │  rebalancer.py ─ リスク制約付きリバランス提案エンジン            │
   │  portfolio_manager.py ─ CSV ベースのポートフォリオ管理         │
   │  portfolio_bridge.py ─ ポートフォリオCSV→ストレステスト連携     │
+  │  researcher.py ─ 深掘りリサーチ(yfinance+Grok API統合)         │
   └─────────────────────────────────────────────────────────┘
       │                    │                    │
   Markets            Data                  Output
@@ -77,12 +90,13 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   base.py (ABC)      yahoo_client.py       formatter.py
   japan.py           (24h JSON cache,      stress_formatter.py
   us.py               EquityQuery,         portfolio_formatter.py
-  asean.py            1秒ディレイ,
+  asean.py            1秒ディレイ,         research_formatter.py
                       異常値ガード)
                      grok_client.py
-                     (Grok API X Search,
+                     (Grok API X/Web Search,
                       XAI_API_KEY 環境変数,
-                      未設定時スキップ)
+                      未設定時スキップ,
+                      銘柄/業界/市場リサーチ)
 
   Config: config/screening_presets.yaml (7プリセット)
           config/exchanges.yaml (60+地域の取引所・閾値)
