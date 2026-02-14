@@ -103,6 +103,20 @@ try:
 except ImportError:
     HAS_SIMULATION_FORMATTER = False
 
+# KIK-368: History store
+try:
+    from src.data.history_store import save_trade, save_health
+    HAS_HISTORY = True
+except ImportError:
+    HAS_HISTORY = False
+
+# KIK-368: Backtest module
+try:
+    from src.core.backtest import run_backtest
+    HAS_BACKTEST = True
+except ImportError:
+    HAS_BACKTEST = False
+
 # Correlation module (for high-correlation pairs)
 try:
     from src.core.correlation import (
@@ -343,6 +357,11 @@ def cmd_buy(
                 "avg_cost": result.get("cost_price"),
                 "memo": memo,
             }, "buy"))
+            if HAS_HISTORY:
+                try:
+                    save_trade(symbol, "buy", shares, price, currency, purchase_date, memo)
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
             return
     else:
         holdings = _fallback_load_csv(csv_path)
@@ -375,6 +394,12 @@ def cmd_buy(
     if memo:
         print(f"  メモ: {memo}")
 
+    if HAS_HISTORY:
+        try:
+            save_trade(symbol, "buy", shares, price, currency, purchase_date, memo)
+        except Exception as e:
+            print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
+
 
 # ---------------------------------------------------------------------------
 # Command: sell
@@ -390,6 +415,11 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
                 print(f"売却完了: {symbol} {shares}株 (全株売却 -- ポートフォリオから削除)")
             else:
                 print(f"売却記録を追加しました: {symbol} {shares}株 (残り {remaining}株)")
+            if HAS_HISTORY:
+                try:
+                    save_trade(symbol, "sell", shares, 0.0, "", date.today().isoformat())
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
             return
         except ValueError as e:
             print(f"Error: {e}")
@@ -414,6 +444,12 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
         print(f"売却記録を追加しました: {symbol} {shares}株 (残り {h['shares']}株)")
 
     _fallback_save_csv(csv_path, holdings)
+
+    if HAS_HISTORY:
+        try:
+            save_trade(symbol, "sell", shares, 0.0, "", date.today().isoformat())
+        except Exception as e:
+            print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -543,6 +579,12 @@ def cmd_health(csv_path: str) -> None:
             alert_str = f"{emoji} {alert_label}".strip() if emoji else "なし"
             print(f"| {symbol} | {pnl_str} | {trend} | {quality} | {alert_str} |")
         print()
+
+    if HAS_HISTORY:
+        try:
+            save_health(health_data)
+        except Exception as e:
+            print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -757,6 +799,92 @@ def cmd_simulate(
 
 
 # ---------------------------------------------------------------------------
+# Command: backtest (KIK-368)
+# ---------------------------------------------------------------------------
+
+def cmd_backtest(
+    preset: Optional[str] = None,
+    region: Optional[str] = None,
+    days: int = 90,
+) -> None:
+    """Run backtest on accumulated screening history."""
+    if not HAS_BACKTEST:
+        print("Error: backtest モジュールが見つかりません。")
+        sys.exit(1)
+
+    print("バックテスト実行中（蓄積データ + 現在価格取得）...\n")
+
+    result = run_backtest(
+        yahoo_client_module=yahoo_client,
+        category="screen",
+        preset=preset,
+        region=region,
+        days_back=days,
+    )
+
+    stocks = result.get("stocks", [])
+    period = result.get("period", {})
+
+    if not stocks:
+        print("対象期間のスクリーニング履歴がありません。")
+        print(f"期間: {period.get('start', '?')} → {period.get('end', '?')}")
+        if preset:
+            print(f"プリセット: {preset}")
+        if region:
+            print(f"リージョン: {region}")
+        return
+
+    # Header
+    print(f"## バックテスト結果（過去{days}日）")
+    print(f"期間: {period.get('start', '?')} → {period.get('end', '?')}")
+    if preset:
+        print(f"プリセット: {preset}")
+    if region:
+        print(f"リージョン: {region}")
+    print(f"対象スクリーニング回数: {result.get('total_screens', 0)}")
+    print()
+
+    # Stock table
+    print("| 銘柄 | 名称 | スクリーニング日 | 当時スコア | 当時価格 | 現在価格 | リターン |")
+    print("|:-----|:-----|:--------------|--------:|-------:|-------:|------:|")
+    for s in stocks:
+        ret_str = f"{s['return_pct'] * 100:+.2f}%"
+        print(
+            f"| {s['symbol']} | {s.get('name', '')} "
+            f"| {s['screen_date']} | {s['score_at_screen']:.1f} "
+            f"| {s['price_at_screen']:.2f} | {s['price_now']:.2f} | {ret_str} |"
+        )
+    print()
+
+    # Summary
+    print("### サマリー")
+    print(f"- 対象銘柄数: {result.get('total_stocks', 0)}")
+    print(f"- 平均リターン: {result.get('avg_return', 0) * 100:+.2f}%")
+    print(f"- 中央値リターン: {result.get('median_return', 0) * 100:+.2f}%")
+    print(f"- 勝率: {result.get('win_rate', 0) * 100:.1f}%")
+
+    benchmark = result.get("benchmark", {})
+    nikkei = benchmark.get("nikkei")
+    sp500 = benchmark.get("sp500")
+    if nikkei is not None:
+        print(f"- ベンチマーク（日経225）: {nikkei * 100:+.2f}%")
+    else:
+        print("- ベンチマーク（日経225）: 取得不可")
+    if sp500 is not None:
+        print(f"- ベンチマーク（S&P500）: {sp500 * 100:+.2f}%")
+    else:
+        print("- ベンチマーク（S&P500）: 取得不可")
+
+    alpha_n = result.get("alpha_nikkei")
+    alpha_s = result.get("alpha_sp500")
+    if alpha_n is not None:
+        print(f"- α（対日経225）: {alpha_n * 100:+.2f}%")
+    if alpha_s is not None:
+        print(f"- α（対S&P500）: {alpha_s * 100:+.2f}%")
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Main: argparse with subcommands
 # ---------------------------------------------------------------------------
 
@@ -863,6 +991,21 @@ def main():
         help="配当再投資しない",
     )
 
+    # backtest (KIK-368)
+    backtest_parser = subparsers.add_parser("backtest", help="スクリーニング履歴のバックテスト")
+    backtest_parser.add_argument(
+        "--preset", default=None,
+        help="対象プリセット (例: value, alpha)",
+    )
+    backtest_parser.add_argument(
+        "--region", default=None,
+        help="対象リージョン (例: jp, us)",
+    )
+    backtest_parser.add_argument(
+        "--days", type=int, default=90,
+        help="何日前までの履歴を対象にするか (デフォルト: 90)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -912,6 +1055,12 @@ def main():
             monthly_add=args.monthly_add,
             target=args.target,
             reinvest_dividends=args.reinvest_dividends,
+        )
+    elif args.command == "backtest":
+        cmd_backtest(
+            preset=args.preset,
+            region=args.region,
+            days=args.days,
         )
     else:
         parser.print_help()
