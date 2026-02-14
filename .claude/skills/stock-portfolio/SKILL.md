@@ -58,6 +58,24 @@ python3 .../run_portfolio.py health
 - **注意**: SMA50がSMA200に接近 + 指標悪化 / 変化スコア複数悪化
 - **撤退**: デッドクロス / トレンド崩壊 + 変化スコア悪化
 
+### rebalance -- リバランス提案
+
+現在のポートフォリオ構造を分析し、集中リスクの低減と目標配分への調整案を提示する。
+
+```bash
+python3 .../run_portfolio.py rebalance [options]
+```
+
+CLIオプション:
+- `--strategy defensive|balanced|aggressive` (デフォルト: balanced)
+- `--reduce-sector SECTOR` (例: Technology)
+- `--reduce-currency CURRENCY` (例: USD)
+- `--max-single-ratio RATIO` (例: 0.15)
+- `--max-sector-hhi HHI` (例: 0.25)
+- `--max-region-hhi HHI` (例: 0.30)
+- `--additional-cash AMOUNT` (円, 例: 1000000)
+- `--min-dividend-yield YIELD` (例: 0.03)
+
 ### list -- 保有銘柄一覧
 
 portfolio.csv の内容をそのまま表示する。
@@ -77,6 +95,7 @@ python3 .../run_portfolio.py list
 | 「〇〇を△株売った」「〇〇を売却」 | sell |
 | 「構造分析」「偏りを調べて」「集中度」「HHI」 | analyze |
 | 「ヘルスチェック」「健全性チェック」「利確判断」「損切り判断」 | health |
+| 「リバランス」「偏りを直したい」「配分調整」「リスクを抑えたい」 | rebalance |
 | 「一覧」「リスト」「CSV」 | list |
 
 ### buy コマンドの自然言語変換例
@@ -95,6 +114,17 @@ python3 .../run_portfolio.py list
 |:-----------|:--------|
 | 「トヨタを100株売った」 | `sell --symbol 7203.T --shares 100` |
 | 「AAPLを5株売却」 | `sell --symbol AAPL --shares 5` |
+
+### rebalance コマンドの自然言語変換例
+
+| ユーザー入力 | 変換結果 |
+|:-----------|:--------|
+| 「リスクを抑えたい」 | `rebalance --strategy defensive` |
+| 「もっと攻めたい」 | `rebalance --strategy aggressive` |
+| 「配当で安定させたい」 | `rebalance --min-dividend-yield 0.03` |
+| 「テック偏重を直したい」 | `rebalance --reduce-sector Technology` |
+| 「円安ヘッジしたい」 | `rebalance --reduce-currency USD` |
+| 「100万円追加投入したい」 | `rebalance --additional-cash 1000000` |
 
 ## 制約事項
 
@@ -119,6 +149,12 @@ python3 .../run_portfolio.py list
 - 銘柄 / 損益率 / トレンド（上昇/横ばい/下降） / 変化の質（良好/1指標↓/複数悪化） / アラート
 - アラートがある銘柄の詳細（理由、SMA/RSI値、変化スコア、推奨アクション）
 
+### rebalance の出力項目
+- 現状のHHI（セクター/地域/通貨）と目標HHI
+- 売却候補（銘柄・株数・理由）
+- 購入候補（銘柄・株数・理由・配当利回り）
+- リバランス後のHHI予測値
+
 ## 実行例
 
 ```bash
@@ -139,4 +175,9 @@ python3 .../run_portfolio.py list
 
 # ヘルスチェック
 python3 .../run_portfolio.py health
+
+# リバランス提案
+python3 .../run_portfolio.py rebalance
+python3 .../run_portfolio.py rebalance --strategy defensive
+python3 .../run_portfolio.py rebalance --reduce-sector Technology --additional-cash 1000000
 ```
