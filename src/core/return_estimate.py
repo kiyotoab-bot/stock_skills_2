@@ -5,7 +5,8 @@ using two methods:
 - Stocks with analyst coverage: target price-based returns
 - ETFs (no analyst coverage): historical percentile-based returns
 
-Optionally integrates Grok API sentiment data when XAI_API_KEY is set.
+Per-stock estimates accept optional x_sentiment for /market-research deep-dives,
+but portfolio-level estimation does not call Grok API (KIK-369).
 """
 
 import math
@@ -17,7 +18,6 @@ from src.core.common import is_etf as _is_etf_base
 RETURN_CAP = 0.30  # Max annualized return cap (±30%)
 MIN_SPREAD = 0.05  # Minimum spread for optimistic/pessimistic scenarios
 
-_grok_warned = [False]
 
 
 def _is_etf(stock_detail: dict) -> bool:
@@ -292,13 +292,6 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
     from src.core.portfolio_manager import load_portfolio, get_fx_rates
     from src.core.ticker_utils import infer_currency as _infer_currency
 
-    # Optional: Grok API
-    try:
-        from src.data import grok_client
-        use_grok = grok_client.is_available()
-    except ImportError:
-        use_grok = False
-
     portfolio = load_portfolio(csv_path)
     if not portfolio:
         return {
@@ -377,20 +370,9 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
         # Get news
         news = yahoo_client_module.get_stock_news(symbol)
 
-        # Get X sentiment (if available)
+        # X sentiment: always None in portfolio context (KIK-369).
+        # Grok API is reserved for /market-research individual deep-dives.
         x_sentiment = None
-        if use_grok:
-            company_name = stock_detail.get("name") or ""
-            try:
-                x_sentiment = grok_client.search_x_sentiment(symbol, company_name)
-            except Exception as e:
-                if not _grok_warned[0]:
-                    import sys as _sys
-                    print(
-                        f"[return_estimate] Grok API error (subsequent errors suppressed): {e}",
-                        file=_sys.stderr,
-                    )
-                    _grok_warned[0] = True
 
         # Estimate returns
         estimate = estimate_stock_return(symbol, stock_detail, news, x_sentiment)

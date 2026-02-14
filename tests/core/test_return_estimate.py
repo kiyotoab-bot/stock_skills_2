@@ -410,8 +410,8 @@ class TestEstimatePortfolioReturn:
     @patch("src.core.portfolio_manager._infer_currency")
     @patch("src.core.portfolio_manager.get_fx_rates")
     @patch("src.core.portfolio_manager.load_portfolio")
-    def test_grok_error_prints_warning(self, mock_load, mock_fx, mock_infer):
-        """Grok API error prints warning to stderr once."""
+    def test_forecast_never_calls_grok(self, mock_load, mock_fx, mock_infer):
+        """Forecast should never call Grok API (KIK-369)."""
         mock_load.return_value = [
             {"symbol": "AAPL", "shares": 10, "cost_price": 150.0, "cost_currency": "USD"},
         ]
@@ -426,21 +426,12 @@ class TestEstimatePortfolioReturn:
         }
         mock_client.get_stock_news.return_value = []
 
-        import src.core.return_estimate as re_mod
-        re_mod._grok_warned[0] = False  # Reset warning flag
+        mock_grok = MagicMock()
+        with patch.dict("sys.modules", {"src.data.grok_client": mock_grok}):
+            result = estimate_portfolio_return("/fake/path.csv", mock_client)
 
-        with patch("src.data.grok_client.is_available", return_value=True), \
-             patch("src.data.grok_client.search_x_sentiment", side_effect=RuntimeError("API error")):
-            import io, sys
-            captured = io.StringIO()
-            old_stderr = sys.stderr
-            sys.stderr = captured
-            try:
-                result = estimate_portfolio_return("/fake/path.csv", mock_client)
-            finally:
-                sys.stderr = old_stderr
-                re_mod._grok_warned[0] = False  # Reset for other tests
-        assert "[return_estimate] Grok API error" in captured.getvalue()
+        mock_grok.search_x_sentiment.assert_not_called()
+        assert result["positions"][0]["x_sentiment"] is None
 
     @patch("src.core.portfolio_manager._infer_currency")
     @patch("src.core.portfolio_manager.get_fx_rates")
