@@ -35,6 +35,7 @@ python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py health
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py forecast
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py rebalance
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py simulate --years 5 --monthly-add 50000 --target 15000000
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py backtest --preset alpha --region jp --days 90
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
 
 # テスト
@@ -55,7 +56,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   ├─ market-research/run_research.py … stock/industry/market (Grok API深掘り)
   ├─ watchlist/manage_watchlist.py
   ├─ stress-test/run_stress_test.py
-  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/simulate/list
+  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/simulate/backtest/list
       │
       │  sys.path.insert で project root を追加して src/ を import
       ▼
@@ -80,6 +81,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │  scenario_definitions.py ─ シナリオ定義(8シナリオ+ETF資産クラス) │
   │  recommender.py ─ ルールベース推奨アクション                   │
   │  rebalancer.py ─ リスク制約付きリバランス提案エンジン            │
+  │  backtest.py ─ 蓄積データからリターン検証・ベンチマーク比較       │
   │  portfolio_manager.py ─ CSV ベースのポートフォリオ管理         │
   │  portfolio_bridge.py ─ ポートフォリオCSV→ストレステスト連携     │
   │  researcher.py ─ 深掘りリサーチ(yfinance+Grok API統合)         │
@@ -97,6 +99,10 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       XAI_API_KEY 環境変数,
                       未設定時スキップ,
                       銘柄/業界/市場リサーチ)
+                     history_store.py
+                     (スキル実行時の自動蓄積,
+                      data/history/ へ日付付きJSON,
+                      screen/report/trade/health)
 
   Config: config/screening_presets.yaml (7プリセット)
           config/exchanges.yaml (60+地域の取引所・閾値)
