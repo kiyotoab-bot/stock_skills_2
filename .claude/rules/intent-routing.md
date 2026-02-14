@@ -17,6 +17,7 @@
 | 買った、購入、〇〇株買った | `/stock-portfolio buy` | 銘柄・株数・価格を文脈から抽出 |
 | 売った、売却、〇〇手放した | `/stock-portfolio sell` | 銘柄・株数を文脈から抽出 |
 | ウォッチ、監視、気になる銘柄 | `/watchlist` | add/show/list を文脈から判定 |
+| リサーチ、深掘り、詳しく調べて、最新情報、ニュース、業界動向、マーケット概況、相場 | `/market-research` | stock/industry/market を文脈から推定。ティッカーや企業名があれば stock、業界名やテーマがあれば industry、マーケットや指数名があれば market |
 
 ## region 推定ルール
 
@@ -84,3 +85,37 @@
 → 1. /stock-portfolio forecast を実行
 → 2. /stock-portfolio simulate --years 5 で将来推移を表示
 ```
+
+### パターン6: リサーチ → スクリーニング
+```
+「半導体業界を調べて、有望な銘柄を探して」
+→ 1. /market-research industry 半導体
+→ 2. key_players から候補を抽出し /screen-stocks --sector で絞り込み
+```
+
+### パターン7: リサーチ → ポートフォリオ判断
+```
+「今の相場状況を確認して、PF大丈夫か見て」
+→ 1. /market-research market 日本株市場
+→ 2. /stock-portfolio health
+→ 3. マーケット状況を踏まえた判断を補足
+```
+
+## リサーチタイプ推定ルール
+
+| ユーザー入力 | command |
+|:---|:---|
+| ティッカーシンボル or 企業名 + 「リサーチ/深掘り/詳しく/最新情報」 | stock |
+| 業界名・テーマ + 「動向/リサーチ/調査」 | industry |
+| マーケット名・指数名 + 「概況/状況/どうなってる」 | market |
+| 「相場」「マーケット」のみ | market（デフォルト: 日本株市場） |
+
+## /stock-report vs /market-research stock の使い分け
+
+| 意図 | 実行スキル |
+|:---|:---|
+| バリュエーション分析、割安度判定 | `/stock-report` |
+| 最新ニュース・センチメント・深掘り | `/market-research stock` |
+| 「〇〇ってどう？」（簡易） | `/stock-report` |
+| 「〇〇を詳しくリサーチして」「〇〇の最新情報」 | `/market-research stock` |
+| 「〇〇について調べて」 | `/stock-report`（既存ルール維持。明示的に「リサーチ」「深掘り」がある場合のみ /market-research） |
