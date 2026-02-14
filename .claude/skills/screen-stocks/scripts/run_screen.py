@@ -273,7 +273,7 @@ def main():
     parser.add_argument(
         "--preset",
         default="value",
-        choices=["value", "high-dividend", "growth-value", "deep-value", "quality", "pullback", "alpha", "trending"],
+        choices=["value", "high-dividend", "growth-value", "deep-value", "quality", "pullback", "alpha", "trending", "long-term"],
     )
     parser.add_argument(
         "--sector",

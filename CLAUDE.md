@@ -16,6 +16,9 @@ python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --pres
 python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset trending --top 10
 python3 .claude/skills/screen-stocks/scripts/run_screen.py --region us --preset trending --theme "AI" --top 10
 
+# 長期投資候補スクリーニング（高ROE・EPS成長・高配当・安定大型株）
+python3 .claude/skills/screen-stocks/scripts/run_screen.py --region japan --preset long-term --top 10
+
 # 個別銘柄レポート
 python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
 

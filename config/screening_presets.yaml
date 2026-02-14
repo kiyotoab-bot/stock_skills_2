@@ -50,3 +50,13 @@ presets:
   trending:
     description: "Xトレンド銘柄（SNSで話題の銘柄をファンダメンタルズ評価）"
     mode: "trending"
+
+  long-term:
+    description: "長期投資適性（高ROE・EPS成長・高配当・安定企業）"
+    criteria:
+      max_per: 25
+      max_pbr: 3.0
+      min_roe: 0.15
+      min_dividend_yield: 0.02
+      min_earnings_growth: 0.10
+      min_market_cap: 100000000000

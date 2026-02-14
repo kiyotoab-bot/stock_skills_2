@@ -251,5 +251,5 @@ class TestConstants:
 
     def test_criteria_field_map_keys(self):
         """_CRITERIA_FIELD_MAP should have the expected keys."""
-        expected = {"max_per", "max_pbr", "min_dividend_yield", "min_roe", "min_revenue_growth"}
+        expected = {"max_per", "max_pbr", "min_dividend_yield", "min_roe", "min_revenue_growth", "min_earnings_growth", "min_market_cap"}
         assert set(_CRITERIA_FIELD_MAP.keys()) == expected
