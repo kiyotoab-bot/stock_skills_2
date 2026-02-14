@@ -49,6 +49,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 | 「押し目」「pullback」 | pullback |
 | 「アルファ」「alpha」「割安＋変化」 | alpha |
 | 「トレンド」「trending」「話題」「Xで話題」「SNSで注目」 | trending [--theme "テーマ"] |
+| 「長期」「長期投資」「じっくり」「バイ＆ホールド」 | long-term |
 | 「割安で押し目」「バリュー+押し目」 | value --with-pullback |
 | 「高配当で押し目」 | high-dividend --with-pullback |
 
@@ -105,6 +106,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 - `pullback` : 押し目買い型（上昇トレンド中の一時調整でエントリー。EquityQuery→テクニカル→SR の3段パイプライン。実行に時間がかかります）
 - `alpha` : アルファシグナル（割安＋変化の質＋押し目の3軸統合。EquityQuery→変化の質→押し目判定→2軸スコアリングの4段パイプライン。実行に時間がかかります）
 - `trending` : Xトレンド銘柄（Grok API でX上の話題銘柄を発見→Yahoo Financeでファンダメンタルズ評価。`--theme` でテーマ絞り込み可。XAI_API_KEY 必須）
+- `long-term` : 長期投資適性（高ROE≧15%・EPS成長≧10%・配当≧2%・PER≦25・PBR≦3・時価総額1000億以上。長期保有に適した安定成長銘柄を検索）
 
 ## 出力
 
@@ -166,4 +168,10 @@ python3 .../run_screen.py --region us --preset trending --theme "AI"
 
 # X で話題の半導体関連銘柄
 python3 .../run_screen.py --region japan --preset trending --theme "半導体"
+
+# 日本の長期投資候補
+python3 .../run_screen.py --region japan --preset long-term
+
+# 米国の長期投資候補
+python3 .../run_screen.py --region us --preset long-term
 ```

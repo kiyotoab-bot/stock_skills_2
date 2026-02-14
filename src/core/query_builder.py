@@ -16,6 +16,8 @@ _CRITERIA_FIELD_MAP: dict[str, tuple[str, str]] = {
     "min_dividend_yield":   ("forward_dividend_yield",               "gt"),
     "min_roe":              ("returnonequity.lasttwelvemonths",      "gt"),
     "min_revenue_growth":   ("totalrevenues1yrgrowth.lasttwelvemonths", "gt"),
+    "min_earnings_growth":  ("epsgrowth.lasttwelvemonths",           "gt"),
+    "min_market_cap":       ("intradaymarketcap",                    "gt"),
 }
 
 # ---------------------------------------------------------------------------

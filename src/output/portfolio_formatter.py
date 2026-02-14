@@ -383,9 +383,10 @@ def format_health_check(health_data: dict) -> str:
     # Summary table
     lines.append(
         "| \u9298\u67c4 | \u640d\u76ca | \u30c8\u30ec\u30f3\u30c9 "
-        "| \u5909\u5316\u306e\u8cea | \u30a2\u30e9\u30fc\u30c8 |"
+        "| \u5909\u5316\u306e\u8cea | \u30a2\u30e9\u30fc\u30c8 "
+        "| \u9577\u671f\u9069\u6027 |"
     )
-    lines.append("|:-----|-----:|:-------|:--------|:------------|")
+    lines.append("|:-----|-----:|:-------|:--------|:------------|:--------|")
 
     for pos in positions:
         symbol = pos.get("symbol", "-")
@@ -403,8 +404,12 @@ def format_health_check(health_data: dict) -> str:
         else:
             alert_str = "なし"
 
+        # Long-term suitability (KIK-371)
+        lt = pos.get("long_term", {})
+        lt_label = lt.get("label", "-")
+
         lines.append(
-            f"| {symbol} | {pnl_str} | {trend} | {quality} | {alert_str} |"
+            f"| {symbol} | {pnl_str} | {trend} | {quality} | {alert_str} | {lt_label} |"
         )
 
     lines.append("")
@@ -462,6 +467,16 @@ def format_health_check(health_data: dict) -> str:
                 f"- \u5909\u5316\u306e\u8cea: {quality_label}"
                 f"\uff08\u5909\u5316\u30b9\u30b3\u30a2 {change_score:.0f}/100\uff09"
             )
+
+            # Long-term suitability context (KIK-371)
+            lt = pos.get("long_term", {})
+            lt_label = lt.get("label", "-")
+            lt_summary = lt.get("summary", "")
+            if lt_label not in ("対象外", "-"):
+                lines.append(
+                    f"- \u9577\u671f\u9069\u6027: {lt_label}"
+                    f"\uff08{lt_summary}\uff09"
+                )
 
             # Action suggestion based on alert level
             level = alert.get("level", "none")

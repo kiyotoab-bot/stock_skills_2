@@ -195,3 +195,59 @@ class TestApplyFiltersBoundary:
             "min_roe": 0.05,
         }
         assert apply_filters(stock, criteria) is False
+
+
+# ===================================================================
+# Earnings growth filter tests (KIK-371)
+# ===================================================================
+
+class TestApplyFiltersEarningsGrowth:
+    """Tests for min_earnings_growth filter."""
+
+    def test_earnings_growth_passes(self):
+        stock = {"earnings_growth": 0.15}
+        criteria = {"min_earnings_growth": 0.10}
+        assert apply_filters(stock, criteria) is True
+
+    def test_earnings_growth_fails(self):
+        stock = {"earnings_growth": 0.05}
+        criteria = {"min_earnings_growth": 0.10}
+        assert apply_filters(stock, criteria) is False
+
+    def test_earnings_growth_none_skips(self):
+        stock = {"earnings_growth": None}
+        criteria = {"min_earnings_growth": 0.10}
+        assert apply_filters(stock, criteria) is True
+
+    def test_earnings_growth_exactly_at_min(self):
+        stock = {"earnings_growth": 0.10}
+        criteria = {"min_earnings_growth": 0.10}
+        assert apply_filters(stock, criteria) is True
+
+
+# ===================================================================
+# Market cap filter tests (KIK-371)
+# ===================================================================
+
+class TestApplyFiltersMarketCap:
+    """Tests for min_market_cap filter."""
+
+    def test_market_cap_passes(self):
+        stock = {"market_cap": 200_000_000_000}
+        criteria = {"min_market_cap": 100_000_000_000}
+        assert apply_filters(stock, criteria) is True
+
+    def test_market_cap_fails(self):
+        stock = {"market_cap": 50_000_000_000}
+        criteria = {"min_market_cap": 100_000_000_000}
+        assert apply_filters(stock, criteria) is False
+
+    def test_market_cap_none_skips(self):
+        stock = {"market_cap": None}
+        criteria = {"min_market_cap": 100_000_000_000}
+        assert apply_filters(stock, criteria) is True
+
+    def test_market_cap_exactly_at_min(self):
+        stock = {"market_cap": 100_000_000_000}
+        criteria = {"min_market_cap": 100_000_000_000}
+        assert apply_filters(stock, criteria) is True
