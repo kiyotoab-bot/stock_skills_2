@@ -13,6 +13,27 @@ Uses existing modules:
 
 from typing import Optional
 
+from src.core.common import is_cash as _is_cash
+
+# ---------------------------------------------------------------------------
+# Thresholds
+# ---------------------------------------------------------------------------
+
+SELL_RETURN_THRESHOLD = -0.10  # Sell if base expected return below this
+SECTOR_CURRENCY_REDUCE_RATIO = 0.30  # Reduce 30% of sector/currency holdings
+MAX_ALLOC_PER_POSITION = 0.40  # Max 40% of remaining cash per position
+MIN_ALLOC_JPY = 10000  # Minimum allocation in JPY
+
+
+def _pos_value_jpy(pos: dict) -> float:
+    """Extract JPY value from a position dict, handling key aliases."""
+    return pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+
+
+def _pos_currency(pos: dict) -> str:
+    """Extract currency from a position dict, handling key aliases."""
+    return pos.get("currency") or pos.get("market_currency") or "Unknown"
+
 
 # ---------------------------------------------------------------------------
 # Default constraints
@@ -49,10 +70,6 @@ _STRATEGY_PRESETS = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _is_cash(symbol: str) -> bool:
-    """Check if symbol is a cash position."""
-    return symbol.upper().endswith(".CASH")
 
 
 def _build_constraints(
@@ -101,7 +118,7 @@ def _compute_current_metrics(positions: list[dict], total_value_jpy: float) -> d
 
     for pos in positions:
         symbol = pos.get("symbol", "")
-        value_jpy = pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+        value_jpy = _pos_value_jpy(pos)
         w = value_jpy / total_value_jpy if total_value_jpy > 0 else 0
         weights[symbol] = w
 
@@ -111,7 +128,7 @@ def _compute_current_metrics(positions: list[dict], total_value_jpy: float) -> d
         country = pos.get("country") or "Unknown"
         region_weights[country] = region_weights.get(country, 0) + w
 
-        currency = pos.get("currency") or pos.get("market_currency") or "Unknown"
+        currency = _pos_currency(pos)
         currency_weights[currency] = currency_weights.get(currency, 0) + w
 
         base_ret = pos.get("base")
@@ -169,21 +186,21 @@ def _generate_sell_actions(
                 "name": pos.get("name", ""),
                 "ratio": 1.0,
                 "reason": f"ヘルスチェック撤退: {reason_str}",
-                "value_jpy": pos.get("value_jpy") or pos.get("evaluation_jpy") or 0,
+                "value_jpy": _pos_value_jpy(pos),
                 "priority": 1,
             })
             continue
 
-        # Rule 2: base return < -10%
+        # Rule 2: base return below threshold
         base_ret = pos.get("base")
-        if base_ret is not None and base_ret < -0.10:
+        if base_ret is not None and base_ret < SELL_RETURN_THRESHOLD:
             actions.append({
                 "action": "sell",
                 "symbol": symbol,
                 "name": pos.get("name", ""),
                 "ratio": 1.0,
                 "reason": f"ベース期待値 {base_ret*100:.1f}% (大幅マイナス)",
-                "value_jpy": pos.get("value_jpy") or pos.get("evaluation_jpy") or 0,
+                "value_jpy": _pos_value_jpy(pos),
                 "priority": 2,
             })
 
@@ -221,7 +238,7 @@ def _generate_reduce_actions(
         symbol = pos.get("symbol", "")
         if symbol in sell_symbols or _is_cash(symbol):
             continue
-        value_jpy = pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+        value_jpy = _pos_value_jpy(pos)
         weight_map[symbol] = value_jpy / total_value_jpy
 
     already_reduced = set()
@@ -235,7 +252,7 @@ def _generate_reduce_actions(
         if w > max_single:
             target_w = max_single
             reduce_ratio = 1 - (target_w / w) if w > 0 else 0
-            value_jpy = pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+            value_jpy = _pos_value_jpy(pos)
             actions.append({
                 "action": "reduce",
                 "symbol": symbol,
@@ -270,7 +287,7 @@ def _generate_reduce_actions(
                     target_w = weight_map.get(target_sym, 0)
                     reduce_ratio = min(excess / target_w, 0.5) if target_w > 0 else 0
                     corr_val = pair_info.get("correlation", 0)
-                    value_jpy = target_pos.get("value_jpy") or target_pos.get("evaluation_jpy") or 0
+                    value_jpy = _pos_value_jpy(target_pos)
                     actions.append({
                         "action": "reduce",
                         "symbol": target_sym,
@@ -291,8 +308,8 @@ def _generate_reduce_actions(
             sector = pos.get("sector") or ""
             if sector.lower() == reduce_sector.lower():
                 w = weight_map.get(symbol, 0)
-                reduce_ratio = 0.3  # reduce 30% of sector holdings
-                value_jpy = pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+                reduce_ratio = SECTOR_CURRENCY_REDUCE_RATIO
+                value_jpy = _pos_value_jpy(pos)
                 actions.append({
                     "action": "reduce",
                     "symbol": symbol,
@@ -310,11 +327,11 @@ def _generate_reduce_actions(
             symbol = pos.get("symbol", "")
             if symbol in sell_symbols or symbol in already_reduced or _is_cash(symbol):
                 continue
-            currency = pos.get("currency") or pos.get("market_currency") or ""
+            currency = _pos_currency(pos)
             if currency.upper() == reduce_currency.upper():
                 w = weight_map.get(symbol, 0)
-                reduce_ratio = 0.3
-                value_jpy = pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+                reduce_ratio = SECTOR_CURRENCY_REDUCE_RATIO
+                value_jpy = _pos_value_jpy(pos)
                 actions.append({
                     "action": "reduce",
                     "symbol": symbol,
@@ -382,7 +399,7 @@ def _generate_increase_actions(
         if allocated >= available_cash:
             break
         symbol = pos.get("symbol", "")
-        value_jpy = pos.get("value_jpy") or pos.get("evaluation_jpy") or 0
+        value_jpy = _pos_value_jpy(pos)
         current_w = value_jpy / total_value_jpy if total_value_jpy > 0 else 0
 
         # How much can we add before hitting the limit?
@@ -390,9 +407,9 @@ def _generate_increase_actions(
         if max_add <= 0:
             continue
 
-        # Allocate up to 40% of remaining cash per position
-        alloc = min(available_cash - allocated, max_add, available_cash * 0.4)
-        if alloc < 10000:  # minimum allocation ¥10,000
+        # Allocate up to MAX_ALLOC_PER_POSITION of remaining cash per position
+        alloc = min(available_cash - allocated, max_add, available_cash * MAX_ALLOC_PER_POSITION)
+        if alloc < MIN_ALLOC_JPY:
             continue
 
         base_ret = pos.get("base", 0)

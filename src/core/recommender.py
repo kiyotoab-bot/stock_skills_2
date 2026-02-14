@@ -10,6 +10,19 @@ Generates actionable recommendations from:
 
 from typing import Optional
 
+# ---------------------------------------------------------------------------
+# Thresholds for recommendation rules
+# ---------------------------------------------------------------------------
+
+HHI_DANGER = 0.50  # HHI above this is "danger"
+HHI_MODERATE = 0.25  # HHI above this is "moderate concern"
+CORR_VERY_HIGH = 0.85  # Very strong correlation
+CORR_HIGH = 0.70  # High correlation
+VAR_SEVERE = -0.15  # Monthly VaR(95%) severe threshold
+VAR_WARNING = -0.10  # Monthly VaR(95%) warning threshold
+VOLATILITY_HIGH = 0.30  # Annualized portfolio volatility threshold
+STRESS_SEVERE_IMPACT = -0.30  # Individual stock stress impact threshold
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -99,7 +112,7 @@ def _check_concentration(concentration: dict) -> list[dict]:
     # Sector concentration
     sector_hhi = concentration.get("sector_hhi", 0)
     sector_breakdown = concentration.get("sector_breakdown", {})
-    if sector_hhi > 0.50 and sector_breakdown:
+    if sector_hhi > HHI_DANGER and sector_breakdown:
         top_sector = max(sector_breakdown, key=sector_breakdown.get)
         top_weight = sector_breakdown.get(top_sector, 0)
         suggestion = _suggest_diversification_sector(sector_breakdown)
@@ -113,7 +126,7 @@ def _check_concentration(concentration: dict) -> list[dict]:
             ),
             "action": f"異なるセクター（例: {suggestion}）の銘柄追加を検討",
         })
-    elif sector_hhi > 0.25 and sector_breakdown:
+    elif sector_hhi > HHI_MODERATE and sector_breakdown:
         top_sector = max(sector_breakdown, key=sector_breakdown.get)
         recs.append({
             "priority": "medium",
@@ -126,7 +139,7 @@ def _check_concentration(concentration: dict) -> list[dict]:
     # Region concentration
     region_hhi = concentration.get("region_hhi", 0)
     region_breakdown = concentration.get("region_breakdown", {})
-    if region_hhi > 0.50 and region_breakdown:
+    if region_hhi > HHI_DANGER and region_breakdown:
         top_region = max(region_breakdown, key=region_breakdown.get)
         top_weight = region_breakdown.get(top_region, 0)
         recs.append({
@@ -139,7 +152,7 @@ def _check_concentration(concentration: dict) -> list[dict]:
             ),
             "action": "他の地域（米国/ASEAN/欧州）の銘柄追加を検討",
         })
-    elif region_hhi > 0.25:
+    elif region_hhi > HHI_MODERATE:
         recs.append({
             "priority": "low",
             "category": "concentration",
@@ -151,7 +164,7 @@ def _check_concentration(concentration: dict) -> list[dict]:
     # Currency concentration
     currency_hhi = concentration.get("currency_hhi", 0)
     currency_breakdown = concentration.get("currency_breakdown", {})
-    if currency_hhi > 0.50 and currency_breakdown:
+    if currency_hhi > HHI_DANGER and currency_breakdown:
         top_currency = max(currency_breakdown, key=currency_breakdown.get)
         recs.append({
             "priority": "medium",
@@ -174,7 +187,7 @@ def _check_correlations(pairs: list[dict]) -> list[dict]:
     for pair_info in pairs:
         pair = pair_info.get("pair", ["?", "?"])
         corr = pair_info.get("correlation", 0)
-        if abs(corr) >= 0.85:
+        if abs(corr) >= CORR_VERY_HIGH:
             recs.append({
                 "priority": "high",
                 "category": "correlation",
@@ -182,7 +195,7 @@ def _check_correlations(pairs: list[dict]) -> list[dict]:
                 "detail": "両銘柄の価格が非常に強く連動しており、分散効果が限定的です。",
                 "action": "片方のポジションを縮小し、非連動セクターへの分散を検討",
             })
-        elif abs(corr) >= 0.7:
+        elif abs(corr) >= CORR_HIGH:
             recs.append({
                 "priority": "medium",
                 "category": "correlation",
@@ -203,7 +216,7 @@ def _check_var(var_result: dict) -> list[dict]:
     monthly_var = var_result.get("monthly_var", {})
     var_95 = monthly_var.get(0.95, 0)
 
-    if var_95 < -0.15:
+    if var_95 < VAR_SEVERE:
         recs.append({
             "priority": "high",
             "category": "var",
@@ -211,7 +224,7 @@ def _check_var(var_result: dict) -> list[dict]:
             "detail": "月間で15%超の損失が統計的に5%の確率で発生し得ます。",
             "action": "ポジションサイズの縮小またはヘッジ手段の導入を検討",
         })
-    elif var_95 < -0.10:
+    elif var_95 < VAR_WARNING:
         recs.append({
             "priority": "medium",
             "category": "var",
@@ -221,7 +234,7 @@ def _check_var(var_result: dict) -> list[dict]:
         })
 
     portfolio_vol = var_result.get("portfolio_volatility", 0)
-    if portfolio_vol > 0.30:
+    if portfolio_vol > VOLATILITY_HIGH:
         recs.append({
             "priority": "medium",
             "category": "var",
@@ -259,7 +272,7 @@ def _check_stress(scenario_result: dict) -> list[dict]:
     stock_impacts = scenario_result.get("stock_impacts", [])
     for si in stock_impacts:
         total_impact = si.get("total_impact", 0)
-        if total_impact < -0.30:
+        if total_impact < STRESS_SEVERE_IMPACT:
             sym = si.get("symbol", "?")
             recs.append({
                 "priority": "high",
