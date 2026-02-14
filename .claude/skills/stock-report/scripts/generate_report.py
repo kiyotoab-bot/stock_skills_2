@@ -9,6 +9,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 from src.data.yahoo_client import get_stock_info
 from src.core.indicators import calculate_value_score
 
+try:
+    from src.data.history_store import save_report as history_save_report
+    HAS_HISTORY = True
+except ImportError:
+    HAS_HISTORY = False
+
 
 def main():
     if len(sys.argv) < 2:
@@ -67,6 +73,12 @@ def main():
     print("## 割安度判定")
     print(f"- **スコア**: {score:.1f} / 100")
     print(f"- **判定**: {verdict}")
+
+    if HAS_HISTORY:
+        try:
+            history_save_report(symbol, data, score, verdict)
+        except Exception as e:
+            print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

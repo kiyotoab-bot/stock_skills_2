@@ -20,6 +20,12 @@ from src.markets.japan import JapanMarket
 from src.markets.us import USMarket
 from src.markets.asean import ASEANMarket
 
+try:
+    from src.data.history_store import save_screening
+    HAS_HISTORY = True
+except ImportError:
+    HAS_HISTORY = False
+
 
 # Legacy market classes
 MARKETS = {
@@ -103,6 +109,11 @@ def run_query_mode(args):
             results = screener.screen(region=region_code, top_n=args.top)
             print(f"Step 2-3 完了: {len(results)}銘柄が条件に合致\n")
             print(format_pullback_markdown(results))
+            if HAS_HISTORY and results:
+                try:
+                    save_screening(preset="pullback", region=region_code, results=results)
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
             print()
         return
 
@@ -116,6 +127,11 @@ def run_query_mode(args):
             results = screener.screen(region=region_code, top_n=args.top)
             print(f"Step 2-4 完了: {len(results)}銘柄がアルファ条件に合致\n")
             print(format_alpha_markdown(results))
+            if HAS_HISTORY and results:
+                try:
+                    save_screening(preset="alpha", region=region_code, results=results)
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
             print()
         return
 
@@ -136,6 +152,11 @@ def run_query_mode(args):
             pullback_label = " + 押し目フィルタ"
             print(f"\n## {region_name} - {args.preset}{sector_label}{pullback_label} スクリーニング結果 (EquityQuery)\n")
             print(format_pullback_markdown(results))
+            if HAS_HISTORY and results:
+                try:
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         else:
             results = screener.screen(
                 region=region_code,
@@ -145,6 +166,11 @@ def run_query_mode(args):
             )
             print(f"\n## {region_name} - {args.preset}{sector_label} スクリーニング結果 (EquityQuery)\n")
             print(format_query_markdown(results))
+            if HAS_HISTORY and results:
+                try:
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         print()
 
 
@@ -181,6 +207,11 @@ def run_legacy_mode(args):
         results = screener.screen(preset=args.preset, top_n=args.top)
         print(f"\n## {market.name} - {args.preset} スクリーニング結果\n")
         print(format_markdown(results))
+        if HAS_HISTORY and results:
+            try:
+                save_screening(preset=args.preset, region=market_name, results=results)
+            except Exception as e:
+                print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         print()
 
 
