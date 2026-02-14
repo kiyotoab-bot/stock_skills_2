@@ -11,9 +11,14 @@ search_x_sentiment() returns an empty result (graceful degradation).
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 import requests
+from dotenv import load_dotenv
+
+# Load .env from project root
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 
 _API_URL = "https://api.x.ai/v1/responses"
