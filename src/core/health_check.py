@@ -22,6 +22,11 @@ ALERT_EARLY_WARNING = "early_warning"
 ALERT_CAUTION = "caution"
 ALERT_EXIT = "exit"
 
+# Technical thresholds
+SMA_APPROACHING_GAP = 0.02  # SMA50 within 2% of SMA200
+RSI_PREV_THRESHOLD = 50  # Previous RSI level for drop detection
+RSI_DROP_THRESHOLD = 40  # Current RSI level indicating a drop
+
 
 def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
     """Analyze trend health from price history.
@@ -82,13 +87,13 @@ def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
         if current_sma200 > 0
         else 0
     )
-    sma50_approaching = sma_gap < 0.02
+    sma50_approaching = sma_gap < SMA_APPROACHING_GAP
 
     # RSI drop: was > 50 five days ago and now < 40
     rsi_drop = False
     if len(rsi_series) >= 6:
         prev_rsi = float(rsi_series.iloc[-6])
-        if not np.isnan(prev_rsi) and prev_rsi > 50 and current_rsi < 40:
+        if not np.isnan(prev_rsi) and prev_rsi > RSI_PREV_THRESHOLD and current_rsi < RSI_DROP_THRESHOLD:
             rsi_drop = True
 
     # Trend determination

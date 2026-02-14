@@ -15,6 +15,15 @@ from typing import Optional
 
 from src.core.common import is_cash as _is_cash
 
+# ---------------------------------------------------------------------------
+# Thresholds
+# ---------------------------------------------------------------------------
+
+SELL_RETURN_THRESHOLD = -0.10  # Sell if base expected return below this
+SECTOR_CURRENCY_REDUCE_RATIO = 0.30  # Reduce 30% of sector/currency holdings
+MAX_ALLOC_PER_POSITION = 0.40  # Max 40% of remaining cash per position
+MIN_ALLOC_JPY = 10000  # Minimum allocation in JPY
+
 
 def _pos_value_jpy(pos: dict) -> float:
     """Extract JPY value from a position dict, handling key aliases."""
@@ -182,9 +191,9 @@ def _generate_sell_actions(
             })
             continue
 
-        # Rule 2: base return < -10%
+        # Rule 2: base return below threshold
         base_ret = pos.get("base")
-        if base_ret is not None and base_ret < -0.10:
+        if base_ret is not None and base_ret < SELL_RETURN_THRESHOLD:
             actions.append({
                 "action": "sell",
                 "symbol": symbol,
@@ -299,7 +308,7 @@ def _generate_reduce_actions(
             sector = pos.get("sector") or ""
             if sector.lower() == reduce_sector.lower():
                 w = weight_map.get(symbol, 0)
-                reduce_ratio = 0.3  # reduce 30% of sector holdings
+                reduce_ratio = SECTOR_CURRENCY_REDUCE_RATIO
                 value_jpy = _pos_value_jpy(pos)
                 actions.append({
                     "action": "reduce",
@@ -321,7 +330,7 @@ def _generate_reduce_actions(
             currency = _pos_currency(pos)
             if currency.upper() == reduce_currency.upper():
                 w = weight_map.get(symbol, 0)
-                reduce_ratio = 0.3
+                reduce_ratio = SECTOR_CURRENCY_REDUCE_RATIO
                 value_jpy = _pos_value_jpy(pos)
                 actions.append({
                     "action": "reduce",
@@ -398,9 +407,9 @@ def _generate_increase_actions(
         if max_add <= 0:
             continue
 
-        # Allocate up to 40% of remaining cash per position
-        alloc = min(available_cash - allocated, max_add, available_cash * 0.4)
-        if alloc < 10000:  # minimum allocation ¥10,000
+        # Allocate up to MAX_ALLOC_PER_POSITION of remaining cash per position
+        alloc = min(available_cash - allocated, max_add, available_cash * MAX_ALLOC_PER_POSITION)
+        if alloc < MIN_ALLOC_JPY:
             continue
 
         base_ret = pos.get("base", 0)

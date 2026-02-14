@@ -13,6 +13,10 @@ from typing import Optional
 
 from src.core.common import is_etf as _is_etf_base
 
+# Historical return estimation thresholds
+RETURN_CAP = 0.30  # Max annualized return cap (±30%)
+MIN_SPREAD = 0.05  # Minimum spread for optimistic/pessimistic scenarios
+
 _grok_warned = [False]
 
 
@@ -153,12 +157,11 @@ def _estimate_from_history(stock_detail: dict) -> dict:
     monthly_std = math.sqrt(variance)
     annual_std = monthly_std * math.sqrt(12)
 
-    # Scenarios: base ± 1 standard deviation, capped at ±30%
-    _CAP = 0.30
-    spread = max(0.05, annual_std) if annual_std > 0 else 0.05
-    base = max(-_CAP, min(_CAP, cagr))
-    optimistic = min(_CAP, base + spread)
-    pessimistic = max(-_CAP, base - spread)
+    # Scenarios: base +/- 1 standard deviation, capped at RETURN_CAP
+    spread = max(MIN_SPREAD, annual_std) if annual_std > 0 else MIN_SPREAD
+    base = max(-RETURN_CAP, min(RETURN_CAP, cagr))
+    optimistic = min(RETURN_CAP, base + spread)
+    pessimistic = max(-RETURN_CAP, base - spread)
 
     # If base is at cap, shift down to make room for spread
     if optimistic == base:

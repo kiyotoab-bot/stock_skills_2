@@ -11,7 +11,35 @@ from typing import Optional
 
 @dataclass
 class Position:
-    """A single portfolio position."""
+    """A single portfolio position.
+
+    Attributes
+    ----------
+    symbol : str
+        Ticker symbol (e.g., "7203.T", "AAPL", "JPY.CASH").
+    shares : int
+        Number of shares held.
+    cost_price : float
+        Average acquisition price per share (in cost_currency).
+    cost_currency : str
+        Currency of the cost_price (e.g., "JPY", "USD").
+    current_price : float
+        Latest market price per share (in market_currency).
+    value_jpy : float
+        Current position value in JPY.
+    sector : str
+        GICS sector name (e.g., "Technology").
+    country : str
+        Country of domicile.
+    market_currency : str
+        Trading currency on the exchange.
+    name : str
+        Company/fund display name.
+    purchase_date : str
+        Date of last purchase (YYYY-MM-DD).
+    memo : str
+        Free-form note.
+    """
 
     symbol: str
     shares: int
@@ -54,10 +82,24 @@ class Position:
 
 @dataclass
 class ForecastResult:
-    """Return estimate for a single stock."""
+    """Return estimate for a single stock.
+
+    Attributes
+    ----------
+    symbol : str
+        Ticker symbol.
+    method : str
+        Estimation method: "analyst", "historical", "no_data", or "cash".
+    base : float or None
+        Base-case annualized return estimate.
+    optimistic : float or None
+        Optimistic annualized return estimate.
+    pessimistic : float or None
+        Pessimistic annualized return estimate.
+    """
 
     symbol: str
-    method: str  # "analyst" | "historical" | "no_data" | "cash"
+    method: str
     base: Optional[float] = None
     optimistic: Optional[float] = None
     pessimistic: Optional[float] = None
@@ -78,12 +120,26 @@ class ForecastResult:
 
 @dataclass
 class HealthResult:
-    """Health check result for a single holding."""
+    """Health check result for a single holding.
+
+    Attributes
+    ----------
+    symbol : str
+        Ticker symbol.
+    trend : str
+        Price trend direction: "上昇", "横ばい", or "下降".
+    quality_label : str
+        Fundamental quality: "良好", "1指標↓", "複数悪化", or "対象外".
+    alert_level : str
+        Alert severity: "", "early_warning", "caution", or "exit".
+    reasons : list
+        Human-readable alert reason strings.
+    """
 
     symbol: str
-    trend: str = ""  # "上昇" | "横ばい" | "下降"
+    trend: str = ""
     quality_label: str = ""
-    alert_level: str = ""  # "" | "early_warning" | "caution" | "exit"
+    alert_level: str = ""
     reasons: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -103,9 +159,27 @@ class HealthResult:
 
 @dataclass
 class RebalanceAction:
-    """A single rebalancing action proposal."""
+    """A single rebalancing action proposal.
 
-    action: str  # "sell" | "reduce" | "increase" | "buy"
+    Attributes
+    ----------
+    action : str
+        Action type: "sell", "reduce", "increase", or "buy".
+    symbol : str
+        Ticker symbol.
+    name : str
+        Company/fund display name.
+    ratio : float
+        Proportion to sell/reduce (0.0-1.0) for sell/reduce actions.
+    amount_jpy : float
+        Amount in JPY for increase actions.
+    reason : str
+        Human-readable justification.
+    priority : int
+        Execution priority (1=highest, 99=default).
+    """
+
+    action: str
     symbol: str
     name: str = ""
     ratio: float = 0.0
