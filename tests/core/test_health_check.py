@@ -63,38 +63,48 @@ def _make_sma50_break_hist(n: int = 300) -> pd.DataFrame:
     })
 
 
-def _make_golden_cross_hist(cross_days_ago: int = 5, n: int = 300) -> pd.DataFrame:
-    """Build price data where SMA50 crosses above SMA200 at cross_days_ago.
+def _make_golden_cross_hist(reversal_offset: int = 5, n: int = 300) -> pd.DataFrame:
+    """Build price data where SMA50 crosses above SMA200 within the lookback.
 
-    Strategy: Start declining (SMA50 < SMA200), then reverse upward
-    so that at `n - cross_days_ago` the SMA50 line overtakes SMA200.
+    Starts declining (SMA50 < SMA200), then reverses upward sharply.
+    The actual SMA crossover occurs with lag relative to the price
+    reversal point due to the nature of moving averages.
+
+    Parameters
+    ----------
+    reversal_offset : int
+        Approximate number of bars before the end when the price
+        reversal phase ends. The SMA crossover happens with lag.
     """
-    # First ~200 bars: decline (SMA50 < SMA200)
-    decline_len = n - 50 - cross_days_ago
+    decline_len = n - 50 - reversal_offset
     prices = [200.0 - i * 0.15 for i in range(decline_len)]
-    # Then sharp rise for remaining bars so SMA50 overtakes SMA200
     last = prices[-1]
-    for i in range(50 + cross_days_ago):
-        prices.append(last + (i + 1) * 1.0)
+    for i in range(50 + reversal_offset):
+        prices.append(last + (i + 1) * 2.0)  # Steeper rise for faster SMA crossover
     return pd.DataFrame({
         "Close": prices,
         "Volume": [1_000_000] * len(prices),
     })
 
 
-def _make_death_cross_hist(cross_days_ago: int = 5, n: int = 300) -> pd.DataFrame:
-    """Build price data where SMA50 crosses below SMA200 at cross_days_ago.
+def _make_death_cross_hist(reversal_offset: int = 5, n: int = 300) -> pd.DataFrame:
+    """Build price data where SMA50 crosses below SMA200 within the lookback.
 
-    Strategy: Start rising (SMA50 > SMA200), then reverse downward
-    so that at `n - cross_days_ago` the SMA50 line drops below SMA200.
+    Starts rising (SMA50 > SMA200), then reverses downward sharply.
+    The actual SMA crossover occurs with lag relative to the price
+    reversal point due to the nature of moving averages.
+
+    Parameters
+    ----------
+    reversal_offset : int
+        Approximate number of bars before the end when the price
+        reversal phase ends. The SMA crossover happens with lag.
     """
-    # First ~200 bars: rise (SMA50 > SMA200)
-    rise_len = n - 50 - cross_days_ago
+    rise_len = n - 50 - reversal_offset
     prices = [100.0 + i * 0.15 for i in range(rise_len)]
-    # Then sharp decline for remaining bars so SMA50 drops below SMA200
     last = prices[-1]
-    for i in range(50 + cross_days_ago):
-        prices.append(last - (i + 1) * 1.0)
+    for i in range(50 + reversal_offset):
+        prices.append(last - (i + 1) * 2.0)  # Steeper fall for faster SMA crossover
     return pd.DataFrame({
         "Close": prices,
         "Volume": [1_000_000] * len(prices),
@@ -661,14 +671,14 @@ class TestCrossEventDetection:
     """Tests for golden cross / death cross event detection in check_trend_health."""
 
     def test_golden_cross_detected(self):
-        hist = _make_golden_cross_hist(cross_days_ago=5)
+        hist = _make_golden_cross_hist(reversal_offset=5)
         result = check_trend_health(hist)
         assert result["cross_signal"] == "golden_cross"
         assert result["days_since_cross"] is not None
         assert result["cross_date"] is not None
 
     def test_death_cross_detected(self):
-        hist = _make_death_cross_hist(cross_days_ago=5)
+        hist = _make_death_cross_hist(reversal_offset=5)
         result = check_trend_health(hist)
         assert result["cross_signal"] == "death_cross"
         assert result["days_since_cross"] is not None
@@ -676,7 +686,7 @@ class TestCrossEventDetection:
 
     def test_days_since_cross_within_range(self):
         """days_since_cross should be within the lookback window."""
-        hist = _make_golden_cross_hist(cross_days_ago=10)
+        hist = _make_golden_cross_hist(reversal_offset=10)
         result = check_trend_health(hist)
         assert result["cross_signal"] == "golden_cross"
         # SMA is a lagging indicator, so allow generous tolerance
@@ -684,7 +694,7 @@ class TestCrossEventDetection:
 
     def test_cross_date_is_string(self):
         """cross_date should be a non-empty string when cross is detected."""
-        hist = _make_golden_cross_hist(cross_days_ago=3)
+        hist = _make_golden_cross_hist(reversal_offset=3)
         result = check_trend_health(hist)
         assert result["cross_date"] is not None
         assert isinstance(result["cross_date"], str)
@@ -845,3 +855,91 @@ class TestCrossEventAlerts:
         result = compute_alert_level(trend, change)
         assert result["level"] == ALERT_EARLY_WARNING
         assert any("ゴールデンクロス" in r for r in result["reasons"])
+
+    def test_dc_today_adds_reason(self):
+        """Death cross at days_since_cross=0 (today) adds reason."""
+        trend = {
+            "trend": "下降",
+            "price_above_sma50": False,
+            "dead_cross": True,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "death_cross",
+            "days_since_cross": 0,
+            "cross_date": "2026-02-14",
+        }
+        change = {"quality_label": "複数悪化"}
+        result = compute_alert_level(trend, change)
+        assert any("デッドクロス発生（0日前" in r for r in result["reasons"])
+
+    def test_gc_at_boundary_20_days(self):
+        """Golden cross at exactly 20 days -> still triggers EARLY_WARNING."""
+        trend = {
+            "trend": "上昇",
+            "price_above_sma50": True,
+            "dead_cross": False,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 20,
+            "cross_date": "2026-01-25",
+        }
+        change = {"quality_label": "良好"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_EARLY_WARNING
+        assert any("ゴールデンクロス" in r for r in result["reasons"])
+
+    def test_gc_at_21_days_no_alert(self):
+        """Golden cross at 21 days -> no alert (just outside window)."""
+        trend = {
+            "trend": "上昇",
+            "price_above_sma50": True,
+            "dead_cross": False,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 21,
+            "cross_date": "2026-01-24",
+        }
+        change = {"quality_label": "良好"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_NONE
+
+    def test_dc_at_boundary_10_days(self):
+        """Death cross at exactly 10 days -> adds date reason."""
+        trend = {
+            "trend": "下降",
+            "price_above_sma50": False,
+            "dead_cross": True,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "death_cross",
+            "days_since_cross": 10,
+            "cross_date": "2026-02-04",
+        }
+        change = {"quality_label": "複数悪化"}
+        result = compute_alert_level(trend, change)
+        assert any("デッドクロス発生（10日前" in r for r in result["reasons"])
+
+    def test_dc_at_11_days_no_extra_reason(self):
+        """Death cross at 11 days -> no extra date reason."""
+        trend = {
+            "trend": "下降",
+            "price_above_sma50": False,
+            "dead_cross": True,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "death_cross",
+            "days_since_cross": 11,
+            "cross_date": "2026-02-03",
+        }
+        change = {"quality_label": "複数悪化"}
+        result = compute_alert_level(trend, change)
+        assert not any("デッドクロス発生" in r for r in result["reasons"])
+
+    def test_minimal_dataframe_201_rows(self):
+        """DataFrame with exactly 201 rows -> max_scan=0, no cross detected."""
+        prices = [100.0 + i * 0.1 for i in range(201)]
+        hist = pd.DataFrame({"Close": prices, "Volume": [1000] * 201})
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "none"
