@@ -25,7 +25,7 @@ class TestNormalizeQuote:
             "forwardPE": 9.8,
             "priceToBook": 0.95,
             "returnOnEquity": 0.12,
-            "dividendYield": 0.035,
+            "dividendYield": 2.52,  # yfinance percentage: 2.52%
             "revenueGrowth": 0.08,
             "earningsGrowth": 0.15,
             "exchange": "JPX",
@@ -38,23 +38,23 @@ class TestNormalizeQuote:
         assert result["forward_per"] == 9.8
         assert result["pbr"] == 0.95
         assert result["roe"] == 0.12
-        assert result["dividend_yield"] == 0.035
+        assert result["dividend_yield"] == pytest.approx(0.0252)
         assert result["price"] == 2850.0
         assert result["market_cap"] == 30_000_000_000_000
         assert result["sector"] == "Consumer Cyclical"
         assert result["exchange"] == "JPX"
 
     def test_dividend_yield_percentage_normalization(self):
-        """If dividendYield > 1, it should be divided by 100 (percentage -> ratio)."""
-        quote = {"dividendYield": 3.5}  # 3.5% as percentage
+        """dividendYield is always a percentage -> divided by 100."""
+        quote = {"dividendYield": 3.5}  # 3.5%
         result = QueryScreener._normalize_quote(quote)
         assert result["dividend_yield"] == pytest.approx(0.035)
 
-    def test_dividend_yield_ratio_preserved(self):
-        """If dividendYield <= 1, it should be kept as-is (already a ratio)."""
-        quote = {"dividendYield": 0.035}
+    def test_dividend_yield_sub_one_percent(self):
+        """Sub-1% yields (e.g. AAPL 0.41%) are correctly converted."""
+        quote = {"dividendYield": 0.41}  # 0.41%
         result = QueryScreener._normalize_quote(quote)
-        assert result["dividend_yield"] == 0.035
+        assert result["dividend_yield"] == pytest.approx(0.0041)
 
     def test_dividend_yield_none(self):
         """If dividendYield is None, dividend_yield should be None."""
@@ -181,16 +181,21 @@ class TestNormalizeQuoteAnomalyGuard:
     """Tests for anomaly value guards in _normalize_quote()."""
 
     def test_extreme_dividend_yield_sanitized(self):
-        quote = {"dividendYield": 0.78}  # 78% as ratio
+        quote = {"dividendYield": 20.0}  # 20% -> /100 -> 0.20 > 0.15 -> None
         assert QueryScreener._normalize_quote(quote)["dividend_yield"] is None
 
-    def test_extreme_dividend_yield_percentage_sanitized(self):
-        quote = {"dividendYield": 78.0}  # 78% as percentage -> /100 -> 0.78 -> sanitized
+    def test_extreme_dividend_yield_special_div_sanitized(self):
+        quote = {"dividendYield": 78.0}  # 78% -> /100 -> 0.78 -> sanitized
         assert QueryScreener._normalize_quote(quote)["dividend_yield"] is None
 
     def test_normal_dividend_yield_preserved(self):
-        quote = {"dividendYield": 0.035}
-        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == 0.035
+        quote = {"dividendYield": 3.5}  # 3.5% -> /100 -> 0.035
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == pytest.approx(0.035)
+
+    def test_sub_one_percent_dividend_preserved(self):
+        """Sub-1% yields like AAPL (0.41%) must NOT be sanitized."""
+        quote = {"dividendYield": 0.41}  # 0.41% -> /100 -> 0.0041
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == pytest.approx(0.0041)
 
     def test_extreme_low_pbr_sanitized(self):
         quote = {"priceToBook": 0.01}
@@ -216,7 +221,7 @@ class TestNormalizeQuoteAnomalyGuard:
     def test_combined_anomalies(self):
         quote = {
             "symbol": "ANOMALY",
-            "dividendYield": 0.68,
+            "dividendYield": 68.0,  # 68% -> /100 -> 0.68 > 0.15 -> None
             "priceToBook": 0.01,
             "trailingPE": 0.5,
             "returnOnEquity": 0.15,
@@ -230,8 +235,8 @@ class TestNormalizeQuoteAnomalyGuard:
         assert result["price"] == 100.0
 
     def test_boundary_dividend_yield_15_percent(self):
-        quote = {"dividendYield": 0.15}
-        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == 0.15
+        quote = {"dividendYield": 15.0}  # 15% -> /100 -> 0.15, NOT > 0.15 -> kept
+        assert QueryScreener._normalize_quote(quote)["dividend_yield"] == pytest.approx(0.15)
 
     def test_boundary_pbr_005(self):
         quote = {"priceToBook": 0.05}

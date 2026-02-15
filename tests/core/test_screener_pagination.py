@@ -23,7 +23,7 @@ def _make_raw_quotes(n: int) -> list[dict]:
             "regularMarketPrice": 100.0 + i,
             "trailingPE": 10.0,
             "priceToBook": 1.0,
-            "dividendYield": 0.03,
+            "dividendYield": 3.0,  # yfinance percentage: 3.0%
             "returnOnEquity": 0.12,
             "revenueGrowth": 0.08,
         }

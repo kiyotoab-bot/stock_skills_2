@@ -197,11 +197,10 @@ class TestDividendNormalization:
         assert 5.0 <= score <= 6.0
 
     def test_dividend_as_percentage_if_prenormalized(self):
-        """If the value is already pre-normalized (e.g., 2.5 -> 0.025 by
-        yahoo_client._normalize_ratio), the score should be the same as ratio."""
-        # This tests that indicators.py correctly handles the already-normalized value.
-        # yahoo_client normalizes: if value > 1 -> value/100
-        # So 2.5 -> 0.025. indicators.py receives 0.025.
+        """Pre-normalized value (e.g., 2.5% -> 0.025 by yahoo_client._normalize_ratio)
+        should score correctly."""
+        # yahoo_client normalizes: always value/100
+        # So 2.5 (percentage) -> 0.025 (ratio). indicators.py receives 0.025.
         stock_ratio = {"dividend_yield": 0.025}
         score = calculate_value_score(stock_ratio)
         assert score > 0

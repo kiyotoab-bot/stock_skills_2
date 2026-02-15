@@ -62,12 +62,14 @@ def _safe_get(info: dict, key: str) -> Any:
 
 
 def _normalize_ratio(value: Any) -> Optional[float]:
-    """Normalize a ratio value. If > 1, assume it's a percentage and convert."""
+    """Convert yfinance percentage value to ratio.
+
+    yfinance returns dividendYield as a percentage (e.g. 3.87 for 3.87%,
+    0.41 for 0.41%).  Always divide by 100 to get ratio form.
+    """
     if value is None:
         return None
-    if value > 1:
-        return value / 100.0
-    return value
+    return value / 100.0
 
 
 def _sanitize_anomalies(data: dict) -> dict:
@@ -137,7 +139,7 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             "roa": _safe_get(info, "returnOnAssets"),
             "profit_margin": _safe_get(info, "profitMargins"),
             "operating_margin": _safe_get(info, "operatingMargins"),
-            # Dividend (normalize: yfinance may return % like 2.56 instead of 0.0256)
+            # Dividend (yfinance returns percentage, e.g. 2.52 for 2.52%)
             "dividend_yield": _normalize_ratio(_safe_get(info, "dividendYield")),
             "payout_ratio": _safe_get(info, "payoutRatio"),
             # Growth

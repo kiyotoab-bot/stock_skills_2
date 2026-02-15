@@ -141,13 +141,10 @@ class QueryScreener:
         (e.g. 'per', 'pbr') so that ``calculate_value_score`` and other
         downstream code works seamlessly.
         """
-        # dividendYield from screen results may be a percentage or ratio
+        # dividendYield from yfinance is always a percentage (e.g. 3.5 for 3.5%)
         raw_div = quote.get("dividendYield")
         if raw_div is not None:
-            # Yahoo screen sometimes returns as ratio (0.035), sometimes
-            # as percentage (3.5).  Normalise: if > 1, divide by 100.
-            if raw_div > 1:
-                raw_div = raw_div / 100.0
+            raw_div = raw_div / 100.0
 
         # returnOnEquity similarly may need normalisation
         raw_roe = quote.get("returnOnEquity")

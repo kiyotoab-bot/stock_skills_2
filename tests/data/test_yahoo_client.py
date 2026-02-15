@@ -30,36 +30,42 @@ from src.data.yahoo_client import (
 # ---------------------------------------------------------------------------
 
 class TestNormalizeRatio:
-    """Tests for _normalize_ratio()."""
+    """Tests for _normalize_ratio().
+
+    yfinance always returns dividendYield as percentage (e.g. 3.87 for 3.87%).
+    _normalize_ratio always divides by 100 to convert to ratio.
+    """
 
     def test_none_returns_none(self):
         """None input returns None."""
         assert _normalize_ratio(None) is None
 
-    def test_value_less_than_one_unchanged(self):
-        """Values <= 1 are returned as-is (already a ratio)."""
-        assert _normalize_ratio(0.025) == 0.025
-        assert _normalize_ratio(0.5) == 0.5
-        assert _normalize_ratio(1.0) == 1.0
+    def test_typical_percentage(self):
+        """Typical dividend yield percentage (2.52%) -> ratio 0.0252."""
+        assert _normalize_ratio(2.52) == pytest.approx(0.0252)
 
-    def test_value_greater_than_one_divided_by_100(self):
-        """Values > 1 are assumed to be percentages and divided by 100."""
-        result = _normalize_ratio(2.56)
-        assert result == pytest.approx(0.0256)
+    def test_high_percentage(self):
+        """High dividend yield (5.36%) -> ratio 0.0536."""
+        assert _normalize_ratio(5.36) == pytest.approx(0.0536)
+
+    def test_sub_one_percent(self):
+        """Sub-1% yields (0.41% like AAPL) are correctly converted."""
+        assert _normalize_ratio(0.41) == pytest.approx(0.0041)
+        assert _normalize_ratio(0.7) == pytest.approx(0.007)
+        assert _normalize_ratio(0.25) == pytest.approx(0.0025)
+
+    def test_exactly_one_percent(self):
+        """1.0% -> 0.01."""
+        assert _normalize_ratio(1.0) == pytest.approx(0.01)
 
     def test_large_percentage_value(self):
         """Large percentage-like values are properly converted."""
         result = _normalize_ratio(50.0)
         assert result == pytest.approx(0.50)
 
-    def test_value_exactly_one(self):
-        """Value of exactly 1.0 is returned unchanged (not divided)."""
-        # _normalize_ratio: if value > 1 -> divide.  value == 1 -> unchanged.
-        assert _normalize_ratio(1.0) == 1.0
-
-    def test_small_positive_value(self):
-        """Small positive values (typical ratios) are unchanged."""
-        assert _normalize_ratio(0.001) == 0.001
+    def test_very_small_percentage(self):
+        """Very small percentage (0.025%) -> ratio 0.00025."""
+        assert _normalize_ratio(0.025) == pytest.approx(0.00025)
 
 
 # ---------------------------------------------------------------------------
