@@ -289,13 +289,15 @@ class TestCheckLongTermSuitability:
         assert result["label"] == "要検討"
 
     def test_nan_per_treated_as_unknown(self):
-        """NaN PER should be treated as None -> unknown."""
+        """NaN PER should be treated as None -> unknown and prevent 長期向き."""
         detail = {
             "symbol": "X.T", "roe": 0.18, "eps_growth": 0.15,
             "dividend_yield": 0.03, "per": float("nan"), "sector": "Tech",
         }
         result = check_long_term_suitability(detail)
         assert result["per_risk"] == "unknown"
+        # Even with all other metrics favorable, unknown PER prevents 長期向き
+        assert result["label"] == "要検討"
 
     def test_neg_inf_eps_growth_treated_as_unknown(self):
         """Negative infinity EPS growth -> unknown."""

@@ -305,7 +305,8 @@ def check_long_term_suitability(stock_detail: dict) -> dict:
 
     # --- Label determination ---
     if (roe_status == "high" and eps_growth_status == "growing"
-            and dividend_status == "high" and per_risk != "overvalued"):
+            and dividend_status == "high"
+            and per_risk not in ("overvalued", "unknown")):
         label = "長期向き"
     elif per_risk == "overvalued" or roe_status == "low":
         label = "短期向き"
