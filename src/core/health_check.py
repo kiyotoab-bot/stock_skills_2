@@ -246,10 +246,13 @@ def check_long_term_suitability(stock_detail: dict) -> dict:
     per = _finite_or_none(stock_detail.get("per"))
 
     # --- ROE classification ---
-    if roe is not None and roe >= _LT_ROE_HIGH:
+    if roe is None:
+        roe_status = "unknown"
+        roe_score = 0
+    elif roe >= _LT_ROE_HIGH:
         roe_status = "high"
         roe_score = 2
-    elif roe is not None and roe >= _LT_ROE_LOW:
+    elif roe >= _LT_ROE_LOW:
         roe_status = "medium"
         roe_score = 1
     else:
@@ -257,10 +260,13 @@ def check_long_term_suitability(stock_detail: dict) -> dict:
         roe_score = 0
 
     # --- EPS Growth classification ---
-    if eps_growth is not None and eps_growth >= _LT_EPS_GROWTH_HIGH:
+    if eps_growth is None:
+        eps_growth_status = "unknown"
+        eps_score = 0
+    elif eps_growth >= _LT_EPS_GROWTH_HIGH:
         eps_growth_status = "growing"
         eps_score = 2
-    elif eps_growth is not None and eps_growth >= 0:
+    elif eps_growth >= 0:
         eps_growth_status = "flat"
         eps_score = 1
     else:
@@ -268,10 +274,13 @@ def check_long_term_suitability(stock_detail: dict) -> dict:
         eps_score = 0
 
     # --- Dividend classification ---
-    if dividend_yield is not None and dividend_yield >= _LT_DIVIDEND_HIGH:
+    if dividend_yield is None:
+        dividend_status = "unknown"
+        div_score = 0
+    elif dividend_yield >= _LT_DIVIDEND_HIGH:
         dividend_status = "high"
         div_score = 1
-    elif dividend_yield is not None and dividend_yield > 0:
+    elif dividend_yield > 0:
         dividend_status = "medium"
         div_score = 0.5
     else:
@@ -279,10 +288,13 @@ def check_long_term_suitability(stock_detail: dict) -> dict:
         div_score = 0
 
     # --- PER risk classification ---
-    if per is not None and per > _LT_PER_OVERVALUED:
+    if per is None:
+        per_risk = "unknown"
+        per_score = 0
+    elif per > _LT_PER_OVERVALUED:
         per_risk = "overvalued"
         per_score = -1
-    elif per is not None and per <= _LT_PER_SAFE:
+    elif per <= _LT_PER_SAFE:
         per_risk = "safe"
         per_score = 1
     else:
@@ -314,6 +326,10 @@ def check_long_term_suitability(stock_detail: dict) -> dict:
         parts.append("高配当")
     if per_risk == "overvalued":
         parts.append("割高PER")
+    # Count unknown fields for summary
+    unknown_count = sum(1 for s in [roe_status, eps_growth_status, dividend_status, per_risk] if s == "unknown")
+    if unknown_count > 0:
+        parts.append(f"データ不足({unknown_count}項目)")
 
     summary = "・".join(parts) if parts else "データ不足"
 
