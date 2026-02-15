@@ -94,11 +94,13 @@ class TestFormatTrendingMarkdown:
             {"symbol": "A", "trending_reason": "a", "classification": "話題×割安", "value_score": 70.0},
             {"symbol": "B", "trending_reason": "b", "classification": "話題×適正", "value_score": 40.0},
             {"symbol": "C", "trending_reason": "c", "classification": "話題×割高", "value_score": 10.0},
+            {"symbol": "D", "trending_reason": "d", "classification": "話題×データ不足", "value_score": 0.0},
         ]
         output = format_trending_markdown(results)
         assert "🟢割安" in output
         assert "🟡適正" in output
         assert "🔴割高" in output
+        assert "⚪不足" in output
 
     def test_legend_present(self):
         results = [{
