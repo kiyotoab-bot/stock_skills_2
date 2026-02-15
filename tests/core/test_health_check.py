@@ -63,6 +63,44 @@ def _make_sma50_break_hist(n: int = 300) -> pd.DataFrame:
     })
 
 
+def _make_golden_cross_hist(cross_days_ago: int = 5, n: int = 300) -> pd.DataFrame:
+    """Build price data where SMA50 crosses above SMA200 at cross_days_ago.
+
+    Strategy: Start declining (SMA50 < SMA200), then reverse upward
+    so that at `n - cross_days_ago` the SMA50 line overtakes SMA200.
+    """
+    # First ~200 bars: decline (SMA50 < SMA200)
+    decline_len = n - 50 - cross_days_ago
+    prices = [200.0 - i * 0.15 for i in range(decline_len)]
+    # Then sharp rise for remaining bars so SMA50 overtakes SMA200
+    last = prices[-1]
+    for i in range(50 + cross_days_ago):
+        prices.append(last + (i + 1) * 1.0)
+    return pd.DataFrame({
+        "Close": prices,
+        "Volume": [1_000_000] * len(prices),
+    })
+
+
+def _make_death_cross_hist(cross_days_ago: int = 5, n: int = 300) -> pd.DataFrame:
+    """Build price data where SMA50 crosses below SMA200 at cross_days_ago.
+
+    Strategy: Start rising (SMA50 > SMA200), then reverse downward
+    so that at `n - cross_days_ago` the SMA50 line drops below SMA200.
+    """
+    # First ~200 bars: rise (SMA50 > SMA200)
+    rise_len = n - 50 - cross_days_ago
+    prices = [100.0 + i * 0.15 for i in range(rise_len)]
+    # Then sharp decline for remaining bars so SMA50 drops below SMA200
+    last = prices[-1]
+    for i in range(50 + cross_days_ago):
+        prices.append(last - (i + 1) * 1.0)
+    return pd.DataFrame({
+        "Close": prices,
+        "Volume": [1_000_000] * len(prices),
+    })
+
+
 def _make_rsi_drop_hist(n: int = 300) -> pd.DataFrame:
     """Rising with a sharp sudden drop in last 5 bars causing RSI to plummet.
 
@@ -137,6 +175,7 @@ class TestCheckTrendHealth:
             "trend", "price_above_sma50", "price_above_sma200",
             "sma50_above_sma200", "dead_cross", "sma50_approaching_sma200",
             "rsi", "rsi_drop", "current_price", "sma50", "sma200",
+            "cross_signal", "days_since_cross", "cross_date",
         }
         assert set(result.keys()) == expected_keys
 
@@ -612,3 +651,197 @@ class TestDeadCrossWithGoodFundamentals:
         change = {"quality_label": "対象外"}
         result = compute_alert_level(trend, change)
         assert result["level"] == ALERT_CAUTION
+
+
+# ===================================================================
+# Cross event detection tests (KIK-374)
+# ===================================================================
+
+class TestCrossEventDetection:
+    """Tests for golden cross / death cross event detection in check_trend_health."""
+
+    def test_golden_cross_detected(self):
+        hist = _make_golden_cross_hist(cross_days_ago=5)
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "golden_cross"
+        assert result["days_since_cross"] is not None
+        assert result["cross_date"] is not None
+
+    def test_death_cross_detected(self):
+        hist = _make_death_cross_hist(cross_days_ago=5)
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "death_cross"
+        assert result["days_since_cross"] is not None
+        assert result["cross_date"] is not None
+
+    def test_days_since_cross_within_range(self):
+        """days_since_cross should be within the lookback window."""
+        hist = _make_golden_cross_hist(cross_days_ago=10)
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "golden_cross"
+        # SMA is a lagging indicator, so allow generous tolerance
+        assert result["days_since_cross"] <= 60
+
+    def test_cross_date_is_string(self):
+        """cross_date should be a non-empty string when cross is detected."""
+        hist = _make_golden_cross_hist(cross_days_ago=3)
+        result = check_trend_health(hist)
+        assert result["cross_date"] is not None
+        assert isinstance(result["cross_date"], str)
+        assert len(result["cross_date"]) > 0
+
+    def test_no_cross_in_steady_uptrend(self):
+        hist = _make_uptrend_hist()
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "none"
+        assert result["days_since_cross"] is None
+        assert result["cross_date"] is None
+
+    def test_no_cross_in_steady_downtrend(self):
+        hist = _make_downtrend_hist()
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "none"
+        assert result["days_since_cross"] is None
+        assert result["cross_date"] is None
+
+    def test_default_when_insufficient_data(self):
+        """Short DataFrame -> default dict with cross_signal='none'."""
+        hist = pd.DataFrame({"Close": [100.0] * 100, "Volume": [1000] * 100})
+        result = check_trend_health(hist)
+        assert result["cross_signal"] == "none"
+        assert result["days_since_cross"] is None
+
+    def test_new_fields_in_return_dict(self):
+        """Ensure cross fields are always present in return dict."""
+        hist = _make_uptrend_hist()
+        result = check_trend_health(hist)
+        assert "cross_signal" in result
+        assert "days_since_cross" in result
+        assert "cross_date" in result
+
+
+# ===================================================================
+# Cross event alert tests (KIK-374)
+# ===================================================================
+
+class TestCrossEventAlerts:
+    """Tests for GC/DC alert integration in compute_alert_level."""
+
+    def test_recent_gc_triggers_early_warning(self):
+        """Recent golden cross (<=20 days) with no other issues -> EARLY_WARNING."""
+        trend = {
+            "trend": "上昇",
+            "price_above_sma50": True,
+            "dead_cross": False,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 5,
+            "cross_date": "2026-02-10",
+        }
+        change = {"quality_label": "良好"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_EARLY_WARNING
+        assert any("ゴールデンクロス" in r for r in result["reasons"])
+
+    def test_old_gc_no_alert(self):
+        """Golden cross > 20 days ago -> no alert."""
+        trend = {
+            "trend": "上昇",
+            "price_above_sma50": True,
+            "dead_cross": False,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 25,
+            "cross_date": "2026-01-20",
+        }
+        change = {"quality_label": "良好"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_NONE
+        assert not any("ゴールデンクロス" in r for r in result["reasons"])
+
+    def test_gc_does_not_override_higher_alert(self):
+        """GC should not downgrade CAUTION/EXIT to EARLY_WARNING."""
+        trend = {
+            "trend": "下降",
+            "price_above_sma50": False,
+            "dead_cross": True,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 3,
+            "cross_date": "2026-02-12",
+        }
+        change = {"quality_label": "複数悪化"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_EXIT
+
+    def test_recent_dc_adds_reason(self):
+        """Recent death cross (<=10 days) adds date context to reasons."""
+        trend = {
+            "trend": "下降",
+            "price_above_sma50": False,
+            "dead_cross": True,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "death_cross",
+            "days_since_cross": 3,
+            "cross_date": "2026-02-12",
+        }
+        change = {"quality_label": "複数悪化"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_EXIT
+        assert any("デッドクロス発生（3日前" in r for r in result["reasons"])
+
+    def test_old_dc_no_extra_reason(self):
+        """Death cross > 10 days ago -> no extra date reason."""
+        trend = {
+            "trend": "下降",
+            "price_above_sma50": False,
+            "dead_cross": True,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "death_cross",
+            "days_since_cross": 15,
+            "cross_date": "2026-01-30",
+        }
+        change = {"quality_label": "複数悪化"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_EXIT
+        assert not any("デッドクロス発生" in r for r in result["reasons"])
+
+    def test_gc_reason_contains_date(self):
+        """GC reason string includes the cross date."""
+        trend = {
+            "trend": "上昇",
+            "price_above_sma50": True,
+            "dead_cross": False,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 7,
+            "cross_date": "2026-02-08",
+        }
+        change = {"quality_label": "良好"}
+        result = compute_alert_level(trend, change)
+        gc_reasons = [r for r in result["reasons"] if "ゴールデンクロス" in r]
+        assert len(gc_reasons) == 1
+        assert "2026-02-08" in gc_reasons[0]
+
+    def test_etf_gc_early_warning(self):
+        """ETF with recent golden cross -> EARLY_WARNING."""
+        trend = {
+            "trend": "上昇",
+            "price_above_sma50": True,
+            "dead_cross": False,
+            "rsi_drop": False,
+            "sma50_approaching_sma200": False,
+            "cross_signal": "golden_cross",
+            "days_since_cross": 5,
+            "cross_date": "2026-02-10",
+        }
+        change = {"quality_label": "対象外"}
+        result = compute_alert_level(trend, change)
+        assert result["level"] == ALERT_EARLY_WARNING
+        assert any("ゴールデンクロス" in r for r in result["reasons"])
