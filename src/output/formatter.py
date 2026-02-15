@@ -245,7 +245,9 @@ def format_trending_markdown(results: list[dict], market_context: str = "") -> s
         score = _fmt_float(row.get("value_score"))
 
         classification = row.get("classification", "")
-        if "割安" in classification:
+        if "データ不足" in classification:
+            cls_str = "⚪不足"
+        elif "割安" in classification:
             cls_str = "🟢割安"
         elif "適正" in classification:
             cls_str = "🟡適正"
@@ -258,7 +260,7 @@ def format_trending_markdown(results: list[dict], market_context: str = "") -> s
         )
 
     lines.append("")
-    lines.append("**判定基準**: 🟢割安(スコア60+) / 🟡適正(スコア30-59) / 🔴割高(スコア30未満)")
+    lines.append("**判定基準**: 🟢割安(スコア60+) / 🟡適正(スコア30-59) / 🔴割高(スコア30未満) / ⚪不足(データ取得失敗)")
     lines.append("**データソース**: X (Twitter) トレンド → Yahoo Finance ファンダメンタルズ")
 
     return "\n".join(lines)

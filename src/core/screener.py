@@ -636,10 +636,18 @@ class TrendingScreener:
       Step 2: yahoo_client.get_stock_info() for fundamentals
       Step 3: calculate_value_score() + classify
       Step 4: Sort by classification then score
+
+    Classification thresholds use the standard value_score 0-100 scale
+    from calculate_value_score() (PER 25pt + PBR 25pt + Dividend 20pt +
+    ROE 15pt + Growth 15pt).  Trending/growth stocks tend to have higher
+    PER/PBR, so their scores skew lower.  The 60/30 thresholds are
+    intentionally strict to surface only clearly undervalued opportunities
+    among trending names.
     """
 
     UNDERVALUED_THRESHOLD = 60
     FAIR_VALUE_THRESHOLD = 30
+    CLASSIFICATION_NO_DATA = "話題×データ不足"
 
     def __init__(self, yahoo_client, grok_client_module):
         self.yahoo_client = yahoo_client
@@ -694,7 +702,7 @@ class TrendingScreener:
                     "dividend_yield": None,
                     "roe": None,
                     "value_score": 0.0,
-                    "classification": "話題×割高",
+                    "classification": self.CLASSIFICATION_NO_DATA,
                     "sector": None,
                 })
                 continue
@@ -716,7 +724,7 @@ class TrendingScreener:
                 "sector": info.get("sector"),
             })
 
-        _CLASS_ORDER = {"話題×割安": 0, "話題×適正": 1, "話題×割高": 2}
+        _CLASS_ORDER = {"話題×割安": 0, "話題×適正": 1, "話題×割高": 2, "話題×データ不足": 3}
         results.sort(
             key=lambda r: (
                 _CLASS_ORDER.get(r.get("classification", ""), 2),
