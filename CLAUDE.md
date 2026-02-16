@@ -115,9 +115,16 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
           config/exchanges.yaml (60+地域の取引所・閾値)
 
   Rules: .claude/rules/
-          intent-routing.md  ─ 自然言語→スキル判定ルール
+          intent-routing.md  ─ 自然言語→スキル判定ルール（2段階ドメインルーティング）
+          workflow.md        ─ 開発ワークフロー（設計→実装→テスト→レビュー→ドキュメント更新→完了）
           development.md     ─ 開発ルール・Git・テスト
           screening.md       ─ スクリーニング開発ルール (path-specific)
           portfolio.md       ─ ポートフォリオ開発ルール (path-specific)
           testing.md         ─ テスト開発ルール (path-specific)
 ```
+
+## Post-Implementation Rule
+
+**機能実装後は必ずドキュメント・ルールを更新すること。** 詳細は `.claude/rules/workflow.md` の「7. ドキュメント・ルール更新」を参照。
+
+更新対象: `intent-routing.md`、該当 `SKILL.md`、`CLAUDE.md`、`rules/*.md`、`README.md`
