@@ -909,6 +909,175 @@ def format_simulation(result) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# format_what_if (KIK-376)
+# ---------------------------------------------------------------------------
+
+_JUDGMENT_EMOJI = {
+    "recommend": "\u2705",       # ✅
+    "caution": "\u26a0\ufe0f",   # ⚠️
+    "not_recommended": "\U0001f6a8",  # 🚨
+}
+
+_JUDGMENT_LABEL = {
+    "recommend": "この追加は推奨",
+    "caution": "注意して検討",
+    "not_recommended": "この追加は非推奨",
+}
+
+
+def format_what_if(result: dict) -> str:
+    """Format What-If simulation result as Markdown.
+
+    Parameters
+    ----------
+    result : dict
+        Output from portfolio_simulation.run_what_if_simulation().
+
+    Returns
+    -------
+    str
+        Markdown-formatted What-If report.
+    """
+    lines: list[str] = []
+
+    proposed = result.get("proposed", [])
+    before = result.get("before", {})
+    after = result.get("after", {})
+    proposed_health = result.get("proposed_health", [])
+    required_cash = result.get("required_cash_jpy", 0)
+    judgment = result.get("judgment", {})
+
+    lines.append("## What-If \u30b7\u30df\u30e5\u30ec\u30fc\u30b7\u30e7\u30f3")
+    lines.append("")
+
+    # --- Proposed stocks ---
+    lines.append("### \u8ffd\u52a0\u9298\u67c4")
+    lines.append("")
+    lines.append(
+        "| \u9298\u67c4 | \u682a\u6570 | \u5358\u4fa1 | \u901a\u8ca8 "
+        "| \u91d1\u984d |"
+    )
+    lines.append("|:-----|-----:|------:|:-----|------:|")
+
+    for prop in proposed:
+        symbol = prop.get("symbol", "-")
+        shares = prop.get("shares", 0)
+        price = prop.get("cost_price", 0)
+        currency = prop.get("cost_currency", "JPY")
+        amount = shares * price
+        price_str = _fmt_currency_value(price, currency)
+        amount_str = _fmt_currency_value(amount, currency)
+        lines.append(
+            f"| {symbol} | {shares:,} | {price_str} "
+            f"| {currency} | {amount_str} |"
+        )
+
+    lines.append("")
+    lines.append(
+        f"\u5fc5\u8981\u8cc7\u91d1\u5408\u8a08: {_fmt_jpy(required_cash)}"
+    )
+    lines.append("")
+
+    # --- Portfolio change comparison ---
+    lines.append("### \u30dd\u30fc\u30c8\u30d5\u30a9\u30ea\u30aa\u5909\u5316")
+    lines.append("")
+    lines.append(
+        "| \u6307\u6a19 | \u73fe\u5728 | \u8ffd\u52a0\u5f8c | \u5909\u5316 |"
+    )
+    lines.append("|:-----|------:|------:|:------|")
+
+    # Total value
+    bv = before.get("total_value_jpy", 0)
+    av = after.get("total_value_jpy", 0)
+    if bv > 0:
+        change_pct = (av - bv) / bv
+        change_str = _fmt_pct_sign(change_pct)
+    else:
+        change_str = "-"
+    lines.append(
+        f"| \u7dcf\u8a55\u4fa1\u984d | {_fmt_jpy(bv)} "
+        f"| {_fmt_jpy(av)} | {change_str} |"
+    )
+
+    # Sector HHI
+    b_shhi = before.get("sector_hhi", 0)
+    a_shhi = after.get("sector_hhi", 0)
+    hhi_indicator = (
+        "\u2705 \u6539\u5584" if a_shhi < b_shhi
+        else "\u26a0\ufe0f \u60aa\u5316" if a_shhi > b_shhi
+        else "\u2194\ufe0f \u5909\u5316\u306a\u3057"
+    )
+    lines.append(
+        f"| \u30bb\u30af\u30bf\u30fcHHI | {_fmt_float(b_shhi, 2)} "
+        f"| {_fmt_float(a_shhi, 2)} | {hhi_indicator} |"
+    )
+
+    # Region HHI
+    b_rhhi = before.get("region_hhi", 0)
+    a_rhhi = after.get("region_hhi", 0)
+    rhhi_indicator = (
+        "\u2705 \u6539\u5584" if a_rhhi < b_rhhi
+        else "\u26a0\ufe0f \u60aa\u5316" if a_rhhi > b_rhhi
+        else "\u2194\ufe0f \u5909\u5316\u306a\u3057"
+    )
+    lines.append(
+        f"| \u5730\u57dfHHI | {_fmt_float(b_rhhi, 2)} "
+        f"| {_fmt_float(a_rhhi, 2)} | {rhhi_indicator} |"
+    )
+
+    # Forecast base return
+    b_ret = before.get("forecast_base")
+    a_ret = after.get("forecast_base")
+    if b_ret is not None and a_ret is not None:
+        diff_pp = (a_ret - b_ret) * 100
+        ret_indicator = (
+            f"\u2705 +{diff_pp:.1f}pp" if diff_pp > 0
+            else f"\u26a0\ufe0f {diff_pp:.1f}pp" if diff_pp < 0
+            else "\u2194\ufe0f 0pp"
+        )
+        lines.append(
+            f"| \u671f\u5f85\u30ea\u30bf\u30fc\u30f3(\u30d9\u30fc\u30b9) "
+            f"| {_fmt_pct_sign(b_ret)} "
+            f"| {_fmt_pct_sign(a_ret)} | {ret_indicator} |"
+        )
+    lines.append("")
+
+    # --- Proposed stock health ---
+    if proposed_health:
+        lines.append(
+            "### \u63d0\u6848\u9298\u67c4\u30d8\u30eb\u30b9\u30c1\u30a7\u30c3\u30af"
+        )
+        lines.append("")
+        for ph in proposed_health:
+            symbol = ph.get("symbol", "-")
+            alert = ph.get("alert", {})
+            level = alert.get("level", "none")
+            label = alert.get("label", "\u306a\u3057")
+            if level == "none":
+                lines.append(f"\u2705 {symbol}: OK")
+            elif level == "early_warning":
+                lines.append(f"\u26a1 {symbol}: {label}")
+            elif level == "caution":
+                lines.append(f"\u26a0\ufe0f {symbol}: {label}")
+            elif level == "exit":
+                lines.append(f"\U0001f6a8 {symbol}: {label}")
+        lines.append("")
+
+    # --- Judgment ---
+    lines.append("### \u7dcf\u5408\u5224\u5b9a")
+    lines.append("")
+    rec = judgment.get("recommendation", "caution")
+    emoji = _JUDGMENT_EMOJI.get(rec, "")
+    label = _JUDGMENT_LABEL.get(rec, rec)
+    lines.append(f"{emoji} **{label}**")
+    for reason in judgment.get("reasons", []):
+        lines.append(f"- {reason}")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 _ACTION_LABELS = {
     "sell": "売り",
     "reduce": "減らす",
