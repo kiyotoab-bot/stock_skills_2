@@ -24,12 +24,19 @@ paths:
 - `.CASH` シンボル（JPY.CASH, USD.CASH）は Yahoo Finance API をスキップ
 - `_is_cash()` / `_cash_currency()` ヘルパーで判定
 
-## ヘルスチェック (KIK-356/357)
+## ヘルスチェック (KIK-356/357/374)
 
 - `check_trend_health()`: SMA50/200, RSI から「上昇/横ばい/下降」を判定
+  - **ゴールデンクロス/デッドクロス検出（KIK-374）**: 60日 lookback でクロスイベントを検出。`cross_signal`, `days_since_cross`, `cross_date` を返す
 - `check_change_quality()`: alpha.py の `compute_change_score()` を再利用。ETF は `_is_etf()` で検出し `quality_label="対象外"`
-- `compute_alert_level()`: 3段階（早期警告/注意/撤退）。撤退にはテクニカル崩壊+ファンダ悪化の両方が必要
+- `compute_alert_level()`: 3段階（早期警告/注意/撤退）。撤退にはテクニカル崩壊+ファンダ悪化の両方が必要。デッドクロス検出時は EXIT 発動
 - ETF判定: `_is_etf()` は `bool()` truthiness チェック
+
+## 株主還元率 (KIK-375)
+
+- `calculate_shareholder_return()`: 配当 + 自社株買い の総還元率を算出
+- yahoo_client が cashflow から `dividend_paid` と `stock_repurchase` を抽出（3段階フォールバック）
+- stock-report で「## 株主還元」セクションに出力
 
 ## リターン推定 (KIK-359/360)
 

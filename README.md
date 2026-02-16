@@ -37,12 +37,18 @@ EquityQuery で日本株・米国株・ASEAN株等から割安銘柄を検索。
 
 ### `/stock-report` — 個別銘柄レポート
 
-ティッカーシンボルを指定して財務分析レポートを生成。
+ティッカーシンボルを指定して財務分析レポートを生成。バリュエーション・割安度判定・**株主還元率**（配当+自社株買い）を表示。
 
 ```bash
 /stock-report 7203.T    # トヨタ
 /stock-report AAPL      # Apple
 ```
+
+**出力項目:**
+- セクター・業種
+- バリュエーション（PER/PBR/配当利回り/ROE/利益成長率）
+- 割安度判定（0-100点スコア）
+- **株主還元**（配当利回り + 自社株買い利回り = 総株主還元率）
 
 ### `/watchlist` — ウォッチリスト管理
 
@@ -72,8 +78,8 @@ EquityQuery で日本株・米国株・ASEAN株等から割安銘柄を検索。
 /stock-portfolio buy 7203.T 100 2850 JPY
 /stock-portfolio sell AAPL 5
 /stock-portfolio analyze    # HHI集中度分析
-/stock-portfolio health     # 投資仮説ベースのヘルスチェック（3段階アラート）
-/stock-portfolio forecast   # 推定利回り（楽観/ベース/悲観 + ニュース）
+/stock-portfolio health     # 投資仮説ベースのヘルスチェック（3段階アラート + ゴールデンクロス/デッドクロス検出）
+/stock-portfolio forecast   # 推定利回り（楽観/ベース/悲観 + ニュース + Xセンチメント）
 ```
 
 ## アーキテクチャ
@@ -84,11 +90,11 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   ▼
 Core (src/core/)
   screener.py ─ 4つのスクリーナー (Query/Value/Pullback/Alpha)
-  indicators.py ─ バリュースコア (100点)
+  indicators.py ─ バリュースコア (100点) + 株主還元率
   alpha.py ─ 変化スコア (100点)
   technicals.py ─ 押し目判定
-  health_check.py ─ ヘルスチェック (3段階アラート)
-  return_estimate.py ─ 推定利回り (3シナリオ)
+  health_check.py ─ ヘルスチェック (3段階アラート + ゴールデンクロス/デッドクロス検出)
+  return_estimate.py ─ 推定利回り (3シナリオ + Xセンチメント)
   concentration.py ─ HHI集中度分析
   correlation.py ─ 相関分析・ファクター分解・VaR
   shock_sensitivity.py ─ ショック感応度

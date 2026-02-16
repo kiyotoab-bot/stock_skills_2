@@ -73,13 +73,13 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │  common.py ─ 共通ユーティリティ(is_cash/is_etf/safe_float)   │
   │  ticker_utils.py ─ ティッカー推論(通貨/国マッピング)          │
   │  screener.py ─ 4つのスクリーナーエンジン                     │
-  │  indicators.py ─ バリュースコア(0-100点)                    │
+  │  indicators.py ─ バリュースコア(0-100点) + 株主還元率        │
   │  filters.py ─ ファンダメンタルズ条件フィルタ                   │
   │  query_builder.py ─ EquityQuery 構築                     │
   │  alpha.py ─ 変化スコア(アクルーアルズ/売上加速/FCF/ROE趨勢)    │
   │  technicals.py ─ 押し目判定(RSI/BB/バウンススコア)           │
-  │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート)       │
-  │  return_estimate.py ─ 推定利回り(アナリスト+過去リターン+ニュース) │
+  │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート + ゴールデンクロス/デッドクロス検出) │
+  │  return_estimate.py ─ 推定利回り(アナリスト+過去リターン+ニュース+Xセンチメント) │
   │  simulator.py ─ 複利シミュレーション(3シナリオ+配当再投資+積立) │
   │  concentration.py ─ HHI集中度分析                          │
   │  correlation.py ─ 日次リターン・相関行列・因子分解              │
