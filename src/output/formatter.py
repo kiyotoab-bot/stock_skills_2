@@ -216,6 +216,9 @@ def format_shareholder_return_markdown(results: list[dict]) -> str:
         buyback = s.get("buyback_yield")
         total_sr = s.get("total_shareholder_return")
         stability_label = s.get("return_stability_label", "-")
+        stability_reason = s.get("return_stability_reason")
+        if stability_reason:
+            stability_label = f"{stability_label}（{stability_reason}）"
 
         per_str = f"{per:.1f}" if per else "-"
         roe_str = f"{roe*100:.1f}%" if roe else "-"

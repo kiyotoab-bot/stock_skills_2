@@ -196,7 +196,7 @@ def assess_return_stability(history: list[dict]) -> dict:
     - ``unknown``: Insufficient data (1 year only, cannot assess trend)
     - ``no_data``: No valid return rate data at all
 
-    Returns dict with keys: stability, label, latest_rate, avg_rate.
+    Returns dict with keys: stability, label, latest_rate, avg_rate, reason.
     """
     rates = [
         e.get("total_return_rate")
@@ -211,6 +211,7 @@ def assess_return_stability(history: list[dict]) -> dict:
             "label": "-",
             "latest_rate": None,
             "avg_rate": None,
+            "reason": None,
         }
 
     if len(rates) < 2:
@@ -219,6 +220,7 @@ def assess_return_stability(history: list[dict]) -> dict:
             "label": "❓ データ不足",
             "latest_rate": rates[0],
             "avg_rate": rates[0],
+            "reason": None,
         }
 
     latest = rates[0]
@@ -232,6 +234,7 @@ def assess_return_stability(history: list[dict]) -> dict:
             "label": "⚠️ 一時的高還元",
             "latest_rate": latest,
             "avg_rate": avg_rate,
+            "reason": f"前年比{latest / prev:.1f}倍に急増",
         }
 
     # Increasing: all years non-decreasing (latest first order)
@@ -241,6 +244,7 @@ def assess_return_stability(history: list[dict]) -> dict:
             "label": "📈 増加傾向",
             "latest_rate": latest,
             "avg_rate": avg_rate,
+            "reason": f"{len(rates)}年連続増加",
         }
 
     # Decreasing: all years non-increasing
@@ -250,6 +254,7 @@ def assess_return_stability(history: list[dict]) -> dict:
             "label": "📉 減少傾向",
             "latest_rate": latest,
             "avg_rate": avg_rate,
+            "reason": f"{len(rates)}年連続減少",
         }
 
     # Stable: all >= 5%
@@ -259,6 +264,7 @@ def assess_return_stability(history: list[dict]) -> dict:
             "label": "✅ 安定高還元",
             "latest_rate": latest,
             "avg_rate": avg_rate,
+            "reason": f"{len(rates)}年平均{avg_rate * 100:.1f}%で安定",
         }
 
     return {
@@ -266,6 +272,7 @@ def assess_return_stability(history: list[dict]) -> dict:
         "label": "➡️ 変動あり",
         "latest_rate": latest,
         "avg_rate": avg_rate,
+        "reason": f"{len(rates)}年平均: {avg_rate * 100:.1f}%",
     }
 
 
