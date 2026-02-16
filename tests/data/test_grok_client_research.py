@@ -21,9 +21,11 @@ from src.data.grok_client import (
     search_stock_deep,
     search_industry,
     search_market,
+    search_business,
     EMPTY_STOCK_DEEP,
     EMPTY_INDUSTRY,
     EMPTY_MARKET,
+    EMPTY_BUSINESS,
 )
 
 
@@ -370,3 +372,107 @@ class TestSearchMarket:
         assert result["sentiment"]["summary"] == "Cautiously optimistic"
         assert result["upcoming_events"] == ["GDP release on Friday"]
         assert result["sector_rotation"] == ["From defensive to cyclical"]
+
+
+# ===================================================================
+# search_business
+# ===================================================================
+
+class TestSearchBusiness:
+
+    def test_no_api_key(self, monkeypatch):
+        """Returns EMPTY_BUSINESS when API key is not set."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+        result = search_business("7751.T")
+        assert result["overview"] == ""
+        assert result["segments"] == []
+        assert result["revenue_model"] == ""
+        assert result["competitive_advantages"] == []
+        assert result["raw_response"] == ""
+
+    @patch("src.data.grok_client.requests.post")
+    def test_successful_response(self, mock_post, monkeypatch):
+        """Parses a successful business model response."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+
+        json_content = json.dumps({
+            "overview": "Canon is a diversified imaging and optical company",
+            "segments": [
+                {"name": "Printing", "revenue_share": "55%", "description": "Inkjet and laser printers"},
+                {"name": "Imaging", "revenue_share": "20%", "description": "Cameras and lenses"},
+            ],
+            "revenue_model": "Hardware sales + consumables recurring revenue",
+            "competitive_advantages": ["Strong patent portfolio", "Brand recognition"],
+            "key_metrics": ["Consumables attach rate", "B2B vs B2C mix"],
+            "growth_strategy": ["Medical imaging expansion", "Industrial equipment"],
+            "risks": ["Declining print market", "Competition from smartphones"],
+        })
+
+        mock_post.return_value = _make_grok_response(json_content)
+
+        result = search_business("7751.T", "Canon Inc.")
+        assert result["overview"] == "Canon is a diversified imaging and optical company"
+        assert len(result["segments"]) == 2
+        assert result["segments"][0]["name"] == "Printing"
+        assert result["segments"][0]["revenue_share"] == "55%"
+        assert result["revenue_model"] == "Hardware sales + consumables recurring revenue"
+        assert len(result["competitive_advantages"]) == 2
+        assert len(result["key_metrics"]) == 2
+        assert len(result["growth_strategy"]) == 2
+        assert len(result["risks"]) == 2
+
+    @patch("src.data.grok_client.requests.post")
+    def test_japanese_stock_prompt(self, mock_post, monkeypatch):
+        """Japanese stock uses Japanese prompt."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_post.return_value = _make_grok_response("{}")
+
+        search_business("7751.T", "キヤノン")
+
+        call_args = mock_post.call_args
+        payload = call_args[1]["json"] if "json" in call_args[1] else call_args[0][1]
+        prompt = payload["input"]
+        assert "ビジネスモデル" in prompt or "事業概要" in prompt
+
+    @patch("src.data.grok_client.requests.post")
+    def test_us_stock_prompt(self, mock_post, monkeypatch):
+        """US stock uses English prompt."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_post.return_value = _make_grok_response("{}")
+
+        search_business("AAPL", "Apple Inc.")
+
+        call_args = mock_post.call_args
+        payload = call_args[1]["json"] if "json" in call_args[1] else call_args[0][1]
+        prompt = payload["input"]
+        assert "business model" in prompt.lower() or "Analyze" in prompt
+
+    @patch("src.data.grok_client.requests.post")
+    def test_malformed_response(self, mock_post, monkeypatch):
+        """Malformed JSON sets raw_response but leaves data empty."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_post.return_value = _make_grok_response("This is not JSON at all")
+
+        result = search_business("7751.T")
+        assert result["raw_response"] == "This is not JSON at all"
+        assert result["overview"] == ""
+        assert result["segments"] == []
+
+    @patch("src.data.grok_client.requests.post")
+    def test_segment_validation(self, mock_post, monkeypatch):
+        """Segments with missing fields get defaults."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+
+        json_content = json.dumps({
+            "segments": [
+                {"name": "Division A"},
+                {"name": "Division B", "revenue_share": "30%", "description": "B desc"},
+            ],
+        })
+        mock_post.return_value = _make_grok_response(json_content)
+
+        result = search_business("TEST")
+        assert len(result["segments"]) == 2
+        assert result["segments"][0]["name"] == "Division A"
+        assert result["segments"][0]["revenue_share"] == ""
+        assert result["segments"][1]["description"] == "B desc"

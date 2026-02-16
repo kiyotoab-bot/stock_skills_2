@@ -68,10 +68,12 @@
 | 最新ニュース、センチメント、深掘り分析 | `/market-research stock` | 定性的な深掘り |
 | 業界の動向、トレンド | `/market-research industry` | 業界名・テーマが対象 |
 | マーケット概況、相場の状況 | `/market-research market` | 市場全体が対象 |
+| ビジネスモデル、事業構造、セグメント、収益構造、何で稼いでる | `/market-research business` | 事業の仕組みが対象 |
 
 **迷ったとき**:
 - 「〇〇ってどう？」「〇〇を調べて」 → `/stock-report`（まず数値から）
 - 「〇〇を深掘りして」「〇〇の最新情報」「〇〇のニュース」 → `/market-research stock`
+- 「〇〇のビジネスモデル」「〇〇は何で稼いでる？」「事業構造を教えて」 → `/market-research business`
 - 「〇〇について詳しく」 → 両方実行して統合レポート
 
 **KIK-375 関連**:

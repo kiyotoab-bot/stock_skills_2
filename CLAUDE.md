@@ -40,10 +40,11 @@ python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
 # ウォッチリスト操作
 python3 .claude/skills/watchlist/scripts/manage_watchlist.py list
 
-# 深掘りリサーチ（銘柄/業界/マーケット）
+# 深掘りリサーチ（銘柄/業界/マーケット/ビジネスモデル）
 python3 .claude/skills/market-research/scripts/run_research.py stock 7203.T
 python3 .claude/skills/market-research/scripts/run_research.py industry 半導体
 python3 .claude/skills/market-research/scripts/run_research.py market 日経平均
+python3 .claude/skills/market-research/scripts/run_research.py business 7751.T
 
 # ストレステスト実行
 python3 .claude/skills/stress-test/scripts/run_stress_test.py --portfolio 7203.T,AAPL,D05.SI
@@ -76,7 +77,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │
   ├─ screen-stocks/run_screen.py   … --region --preset --sector --with-pullback
   ├─ stock-report/generate_report.py
-  ├─ market-research/run_research.py … stock/industry/market (Grok API深掘り)
+  ├─ market-research/run_research.py … stock/industry/market/business (Grok API深掘り)
   ├─ watchlist/manage_watchlist.py
   ├─ stress-test/run_stress_test.py
   └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/simulate/what-if/backtest/list
