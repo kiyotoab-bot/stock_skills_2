@@ -235,3 +235,67 @@ class TestFormatReturnEstimate:
         result = format_return_estimate(estimate)
         # Check that the output contains formatted values
         assert "総評価額" in result
+
+    def test_value_trap_warning_displayed(self):
+        """Value trap warning is shown when present (KIK-385)."""
+        estimate = {
+            "positions": [
+                {
+                    "symbol": "9503.T",
+                    "name": "関西電力",
+                    "price": 2000.0,
+                    "currency": "JPY",
+                    "optimistic": 0.15,
+                    "base": 0.08,
+                    "pessimistic": -0.05,
+                    "method": "analyst",
+                    "analyst_count": 10,
+                    "target_high": 2300.0,
+                    "target_mean": 2160.0,
+                    "target_low": 1900.0,
+                    "recommendation_mean": 2.5,
+                    "forward_per": 12.0,
+                    "dividend_yield": 0.03,
+                    "news": [],
+                    "x_sentiment": None,
+                    "value_trap_warning": "利益率低下トレンド、FCFマージン悪化",
+                },
+            ],
+            "portfolio": {"optimistic": 0.15, "base": 0.08, "pessimistic": -0.05},
+            "total_value_jpy": 2000000,
+        }
+        result = format_return_estimate(estimate)
+        assert "バリュートラップ兆候" in result
+        assert "利益率低下トレンド" in result
+        assert "FCFマージン悪化" in result
+
+    def test_value_trap_warning_none(self):
+        """No value trap warning when field is None (KIK-385)."""
+        estimate = {
+            "positions": [
+                {
+                    "symbol": "7203.T",
+                    "name": "トヨタ",
+                    "price": 2850.0,
+                    "currency": "JPY",
+                    "optimistic": 0.20,
+                    "base": 0.10,
+                    "pessimistic": -0.03,
+                    "method": "analyst",
+                    "analyst_count": 20,
+                    "target_high": 3420.0,
+                    "target_mean": 3135.0,
+                    "target_low": 2765.0,
+                    "recommendation_mean": 2.0,
+                    "forward_per": 10.0,
+                    "dividend_yield": 0.025,
+                    "news": [],
+                    "x_sentiment": None,
+                    "value_trap_warning": None,
+                },
+            ],
+            "portfolio": {"optimistic": 0.20, "base": 0.10, "pessimistic": -0.03},
+            "total_value_jpy": 2850000,
+        }
+        result = format_return_estimate(estimate)
+        assert "バリュートラップ兆候" not in result

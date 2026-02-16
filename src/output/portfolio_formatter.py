@@ -712,6 +712,11 @@ def format_return_estimate(estimate: dict) -> str:
                     f"\u697d\u89b3 {_fmt_pct_sign(opt)}"
                 )
 
+            # Value trap warning (KIK-385)
+            vt_warning = pos.get("value_trap_warning")
+            if vt_warning:
+                lines.append(f"  \U0001fa64 **\u30d0\u30ea\u30e5\u30fc\u30c8\u30e9\u30c3\u30d7\u5146\u5019**: {vt_warning}")
+
         lines.append("")
 
     return "\n".join(lines)
