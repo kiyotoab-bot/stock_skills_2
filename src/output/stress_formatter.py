@@ -3,37 +3,11 @@
 import math
 from typing import Optional
 
-
-# ---------------------------------------------------------------------------
-# Shared helpers (consistent with formatter.py conventions)
-# ---------------------------------------------------------------------------
-
-def _fmt_pct(value: Optional[float]) -> str:
-    """Format a decimal ratio as a percentage string (e.g. 0.035 -> '3.50%')."""
-    if value is None:
-        return "-"
-    return f"{value * 100:.2f}%"
-
-
-def _fmt_pct_sign(value: Optional[float]) -> str:
-    """Format a decimal ratio as a signed percentage (e.g. -0.12 -> '-12.00%')."""
-    if value is None:
-        return "-"
-    return f"{value * 100:+.2f}%"
-
-
-def _fmt_float(value: Optional[float], decimals: int = 2) -> str:
-    """Format a float with the given decimal places, or '-' if None."""
-    if value is None:
-        return "-"
-    return f"{value:.{decimals}f}"
-
-
-def _fmt_float_sign(value: Optional[float], decimals: int = 2) -> str:
-    """Format a float with sign and given decimal places."""
-    if value is None:
-        return "-"
-    return f"{value:+.{decimals}f}"
+from src.output._format_helpers import fmt_pct as _fmt_pct
+from src.output._format_helpers import fmt_pct_sign as _fmt_pct_sign
+from src.output._format_helpers import fmt_float as _fmt_float
+from src.output._format_helpers import fmt_float_sign as _fmt_float_sign
+from src.output._format_helpers import hhi_bar as _hhi_bar
 
 
 def _fmt_currency(value: Optional[float]) -> str:
@@ -43,13 +17,6 @@ def _fmt_currency(value: Optional[float]) -> str:
     if abs(value) >= 1_000_000:
         return f"{value:+,.0f}"
     return f"{value:+,.2f}"
-
-
-def _hhi_bar(hhi: float, width: int = 10) -> str:
-    """Render a simple text bar for HHI value (0-1 scale)."""
-    filled = int(round(hhi * width))
-    filled = max(0, min(filled, width))
-    return "[" + "#" * filled + "." * (width - filled) + "]"
 
 
 # ---------------------------------------------------------------------------

@@ -2,19 +2,8 @@
 
 from typing import Optional
 
-
-def _fmt_pct(value: Optional[float]) -> str:
-    """Format a decimal ratio as a percentage string (e.g. 0.035 -> '3.50%')."""
-    if value is None:
-        return "-"
-    return f"{value * 100:.2f}%"
-
-
-def _fmt_float(value: Optional[float], decimals: int = 2) -> str:
-    """Format a float with the given decimal places, or '-' if None."""
-    if value is None:
-        return "-"
-    return f"{value:.{decimals}f}"
+from src.output._format_helpers import fmt_pct as _fmt_pct
+from src.output._format_helpers import fmt_float as _fmt_float
 
 
 def format_markdown(results: list[dict]) -> str:
