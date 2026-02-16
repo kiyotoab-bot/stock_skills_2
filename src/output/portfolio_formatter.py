@@ -404,6 +404,11 @@ def format_health_check(health_data: dict) -> str:
         else:
             alert_str = "なし"
 
+        # Value trap indicator (KIK-381)
+        vt = pos.get("value_trap", {})
+        if vt.get("is_trap"):
+            alert_str += " \U0001fa64"
+
         # Long-term suitability (KIK-371)
         lt = pos.get("long_term", {})
         lt_label = lt.get("label", "-")
@@ -476,6 +481,14 @@ def format_health_check(health_data: dict) -> str:
                 lines.append(
                     f"- \u9577\u671f\u9069\u6027: {lt_label}"
                     f"\uff08{lt_summary}\uff09"
+                )
+
+            # Value trap warning (KIK-381)
+            vt = pos.get("value_trap")
+            if vt and vt.get("is_trap"):
+                lines.append(
+                    f"- \U0001fa64 **\u30d0\u30ea\u30e5\u30fc\u30c8\u30e9\u30c3\u30d7\u5146\u5019**: "
+                    f"{', '.join(vt['reasons'])}"
                 )
 
             # Action suggestion based on alert level

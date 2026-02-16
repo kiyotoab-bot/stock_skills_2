@@ -14,6 +14,12 @@ from typing import Optional
 
 from src.core.common import is_etf as _is_etf_base
 
+try:
+    from src.core.health_check import _detect_value_trap
+    HAS_VALUE_TRAP = True
+except ImportError:
+    HAS_VALUE_TRAP = False
+
 # Historical return estimation thresholds
 RETURN_CAP = 0.30  # Max annualized return cap (±30%)
 MIN_SPREAD = 0.05  # Minimum spread for optimistic/pessimistic scenarios
@@ -262,6 +268,13 @@ def estimate_stock_return(
         if estimate.get("base") is None and stock_detail.get("price_history"):
             estimate = _estimate_from_history(stock_detail)
 
+    # Value trap warning (KIK-381)
+    value_trap_warning = None
+    if HAS_VALUE_TRAP:
+        vt = _detect_value_trap(stock_detail)
+        if vt["is_trap"]:
+            value_trap_warning = "\u3001".join(vt["reasons"])
+
     return {
         "symbol": symbol,
         "name": stock_detail.get("name") or "",
@@ -272,6 +285,7 @@ def estimate_stock_return(
         **estimate,
         "news": news or [],
         "x_sentiment": x_sentiment,
+        "value_trap_warning": value_trap_warning,
     }
 
 
