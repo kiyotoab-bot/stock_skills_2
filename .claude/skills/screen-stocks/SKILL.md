@@ -37,7 +37,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 | 「全部」「all」 | all |
 
 ### preset（第2引数）
-デフォルト: value
+CLIデフォルト: value。自然言語で「いい株ある？」等プリセット未指定の場合は intent-routing により alpha が選択される。
 
 | ユーザー入力 | --preset 値 |
 |:-----------|:-----------|
@@ -50,6 +50,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 | 「アルファ」「alpha」「割安＋変化」 | alpha |
 | 「トレンド」「trending」「話題」「Xで話題」「SNSで注目」 | trending [--theme "テーマ"] |
 | 「長期」「長期投資」「じっくり」「バイ＆ホールド」 | long-term |
+| 「還元」「株主還元」「自社株買い」「バイバック」「総還元」 | shareholder-return |
 | 「割安で押し目」「バリュー+押し目」 | value --with-pullback |
 | 「高配当で押し目」 | high-dividend --with-pullback |
 
@@ -98,15 +99,16 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 
 ## プリセット
 
-- `value` : 伝統的バリュー投資（低PER・低PBR）
+- `value` : 伝統的バリュー投資（低PER・低PBR・ROE≧5%）
 - `high-dividend` : 高配当株（配当利回り3%以上）
 - `growth-value` : 成長バリュー（成長性＋割安度）
 - `deep-value` : ディープバリュー（非常に低いPER/PBR）
-- `quality` : クオリティバリュー（高ROE＋割安）
+- `quality` : クオリティバリュー（高ROE≧15%＋割安。value の ROE 閾値を5%→15%に厳格化した上位集合。収益力の高い割安株に限定）
 - `pullback` : 押し目買い型（上昇トレンド中の一時調整でエントリー。EquityQuery→テクニカル→SR の3段パイプライン。実行に時間がかかります）
 - `alpha` : アルファシグナル（割安＋変化の質＋押し目の3軸統合。EquityQuery→変化の質→押し目判定→2軸スコアリングの4段パイプライン。実行に時間がかかります）
 - `trending` : Xトレンド銘柄（Grok API でX上の話題銘柄を発見→Yahoo Financeでファンダメンタルズ評価。`--theme` でテーマ絞り込み可。XAI_API_KEY 必須）
 - `long-term` : 長期投資適性（高ROE≧15%・EPS成長≧10%・配当≧2%・PER≦25・PBR≦3・時価総額1000億以上。長期保有に適した安定成長銘柄を検索）
+- `shareholder-return` : 株主還元重視（配当利回り+自社株買い利回りの総還元率でランキング。安定度評価付き: ✅安定/📈増加/⚠️一時的/📉低下）
 
 ## 出力
 
@@ -126,6 +128,9 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 
 ### Trending モードの出力列
 順位 / 銘柄 / 話題の理由 / 株価 / PER / PBR / 配当利回り / ROE / スコア / 判定
+
+### Shareholder Return モードの出力列
+順位 / 銘柄 / 株価 / 配当利回り / 自社株買い利回り / 総還元率 / 安定度 / ROE / PER
 
 ## 実行例
 
@@ -174,4 +179,10 @@ python3 .../run_screen.py --region japan --preset long-term
 
 # 米国の長期投資候補
 python3 .../run_screen.py --region us --preset long-term
+
+# 日本の高還元株
+python3 .../run_screen.py --region japan --preset shareholder-return
+
+# 米国の高還元株
+python3 .../run_screen.py --region us --preset shareholder-return
 ```
