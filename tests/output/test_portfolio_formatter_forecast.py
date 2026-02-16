@@ -75,9 +75,9 @@ class TestFormatReturnEstimate:
         assert "40名" in result
         assert "Forward PER" in result
 
-        # News
+        # News (count only, KIK-390)
         assert "ニュース" in result
-        assert "Apple AI Growth" in result
+        assert "2件" in result
 
         # X Sentiment
         assert "センチメント" in result
@@ -235,6 +235,102 @@ class TestFormatReturnEstimate:
         result = format_return_estimate(estimate)
         # Check that the output contains formatted values
         assert "総評価額" in result
+
+    def test_warning_summary_section(self):
+        """Warning summary shows value trap stocks at top (KIK-390)."""
+        estimate = {
+            "positions": [
+                {
+                    "symbol": "GOOD.T", "name": "Good Corp", "price": 1000.0,
+                    "currency": "JPY", "optimistic": 0.20, "base": 0.10,
+                    "pessimistic": -0.03, "method": "analyst",
+                    "analyst_count": 15, "target_mean": 1100.0,
+                    "forward_per": 12.0, "news": [], "x_sentiment": None,
+                    "value_trap_warning": None,
+                },
+                {
+                    "symbol": "TRAP.T", "name": "Trap Corp", "price": 500.0,
+                    "currency": "JPY", "optimistic": 0.05, "base": 0.02,
+                    "pessimistic": -0.10, "method": "analyst",
+                    "analyst_count": 5, "target_mean": 510.0,
+                    "forward_per": 7.0, "news": [], "x_sentiment": None,
+                    "value_trap_warning": "PER低下+減益トレンド",
+                },
+            ],
+            "portfolio": {"optimistic": 0.15, "base": 0.08, "pessimistic": -0.05},
+            "total_value_jpy": 1500000,
+        }
+        result = format_return_estimate(estimate)
+        assert "注意銘柄" in result
+        assert "TRAP.T" in result
+        assert "PER低下+減益トレンド" in result
+
+    def test_top_bottom_ranking(self):
+        """TOP/BOTTOM ranking shown for 2+ positions (KIK-390)."""
+        positions = []
+        for i, (sym, base) in enumerate([
+            ("HIGH", 0.25), ("MID1", 0.10), ("MID2", 0.05),
+            ("MID3", 0.02), ("LOW1", -0.03), ("LOW2", -0.08),
+        ]):
+            positions.append({
+                "symbol": sym, "name": sym, "price": 100.0,
+                "currency": "JPY", "optimistic": base + 0.10,
+                "base": base, "pessimistic": base - 0.10,
+                "method": "analyst", "analyst_count": 10,
+                "target_mean": 100.0 * (1 + base), "forward_per": 15.0,
+                "news": [], "x_sentiment": None,
+            })
+        estimate = {
+            "positions": positions,
+            "portfolio": {"optimistic": 0.10, "base": 0.05, "pessimistic": -0.03},
+            "total_value_jpy": 6000000,
+        }
+        result = format_return_estimate(estimate)
+        assert "期待リターン TOP" in result
+        assert "期待リターン BOTTOM" in result
+        assert "HIGH" in result
+        assert "LOW2" in result
+
+    def test_single_position_no_ranking(self):
+        """Single position does not show TOP/BOTTOM ranking (KIK-390)."""
+        estimate = {
+            "positions": [{
+                "symbol": "SOLO", "name": "Solo", "price": 100.0,
+                "currency": "JPY", "optimistic": 0.10, "base": 0.05,
+                "pessimistic": -0.03, "method": "analyst",
+                "analyst_count": 10, "target_mean": 105.0,
+                "forward_per": 12.0, "news": [], "x_sentiment": None,
+            }],
+            "portfolio": {"optimistic": 0.10, "base": 0.05, "pessimistic": -0.03},
+            "total_value_jpy": 100000,
+        }
+        result = format_return_estimate(estimate)
+        assert "期待リターン TOP" not in result
+        assert "期待リターン BOTTOM" not in result
+
+    def test_news_count_only(self):
+        """News shows count only, not titles (KIK-390)."""
+        estimate = {
+            "positions": [{
+                "symbol": "NEWS", "name": "News Corp", "price": 100.0,
+                "currency": "JPY", "optimistic": 0.10, "base": 0.05,
+                "pessimistic": -0.03, "method": "analyst",
+                "analyst_count": 10, "target_mean": 105.0,
+                "forward_per": 12.0,
+                "news": [
+                    {"title": "Title One", "publisher": "Pub1"},
+                    {"title": "Title Two", "publisher": "Pub2"},
+                    {"title": "Title Three", "publisher": "Pub3"},
+                ],
+                "x_sentiment": None,
+            }],
+            "portfolio": {"optimistic": 0.10, "base": 0.05, "pessimistic": -0.03},
+            "total_value_jpy": 100000,
+        }
+        result = format_return_estimate(estimate)
+        assert "3件" in result
+        assert "Title One" not in result
+        assert "Title Two" not in result
 
     def test_value_trap_warning_displayed(self):
         """Value trap warning is shown when present (KIK-385)."""

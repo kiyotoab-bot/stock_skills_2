@@ -639,6 +639,54 @@ def format_return_estimate(estimate: dict) -> str:
     lines.append(f"\u7dcf\u8a55\u4fa1\u984d: {_fmt_jpy(total_value)}")
     lines.append("")
 
+    # --- Warning summary (KIK-390) ---
+    warnings = [
+        p for p in positions if p.get("value_trap_warning")
+    ]
+    if warnings:
+        lines.append("### \u26a0\ufe0f \u6ce8\u610f\u9298\u67c4")
+        lines.append("")
+        for w in warnings:
+            lines.append(f"- **{w['symbol']}**: {w['value_trap_warning']}")
+        lines.append("")
+
+    # --- TOP 3 / BOTTOM 3 (KIK-390) ---
+    ranked = [
+        p for p in positions
+        if p.get("base") is not None and p.get("method") != "no_data"
+    ]
+    ranked.sort(key=lambda p: p["base"], reverse=True)
+
+    if len(ranked) >= 2:
+        top_n = ranked[:3]
+        bottom_n = ranked[-3:] if len(ranked) >= 6 else ranked[-min(3, len(ranked)):]
+        # Deduplicate if overlap (small portfolios)
+        bottom_symbols = {p["symbol"] for p in bottom_n}
+        top_symbols = {p["symbol"] for p in top_n}
+
+        lines.append("### \U0001f51d \u671f\u5f85\u30ea\u30bf\u30fc\u30f3 TOP")
+        lines.append("")
+        for i, p in enumerate(top_n, 1):
+            count = p.get("analyst_count")
+            count_str = f" ({count}\u540d)" if count else ""
+            lines.append(
+                f"{i}. **{p['symbol']}** {_fmt_pct_sign(p['base'])}{count_str}"
+            )
+        lines.append("")
+
+        # Only show BOTTOM if there are stocks not already in TOP
+        bottom_only = [p for p in bottom_n if p["symbol"] not in top_symbols]
+        if bottom_only:
+            lines.append("### \U0001f4c9 \u671f\u5f85\u30ea\u30bf\u30fc\u30f3 BOTTOM")
+            lines.append("")
+            for i, p in enumerate(bottom_only, 1):
+                count = p.get("analyst_count")
+                count_str = f" ({count}\u540d)" if count else ""
+                lines.append(
+                    f"{i}. **{p['symbol']}** {_fmt_pct_sign(p['base'])}{count_str}"
+                )
+            lines.append("")
+
     # --- Per-stock details ---
     for pos in positions:
         symbol = pos.get("symbol", "-")
@@ -681,16 +729,10 @@ def format_return_estimate(estimate: dict) -> str:
 
         # News and sentiment sections (skip for no_data)
         if method != "no_data":
-            # News section
+            # News section - count only (KIK-390)
             news = pos.get("news", [])
             if news:
-                lines.append("\u3010\u30cb\u30e5\u30fc\u30b9\u3011")
-                for item in news[:5]:
-                    title = item.get("title", "")
-                    publisher = item.get("publisher", "")
-                    if title:
-                        pub_str = f" ({publisher})" if publisher else ""
-                        lines.append(f"  - {title}{pub_str}")
+                lines.append(f"\u3010\u30cb\u30e5\u30fc\u30b9\u3011{len(news)}\u4ef6")
 
             # X Sentiment section
             x_sentiment = pos.get("x_sentiment")
