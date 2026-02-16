@@ -434,3 +434,115 @@ def format_market_research(data: dict) -> str:
     lines.append("")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# format_business_research
+# ---------------------------------------------------------------------------
+
+def format_business_research(data: dict) -> str:
+    """Format business model research as a Markdown report.
+
+    Parameters
+    ----------
+    data : dict
+        Output from researcher.research_business().
+
+    Returns
+    -------
+    str
+        Markdown-formatted report.
+    """
+    if not data:
+        return "リサーチデータがありません。"
+
+    symbol = data.get("symbol", "-")
+    name = data.get("name") or ""
+    title = f"{name} ({symbol})" if name else symbol
+
+    if data.get("api_unavailable"):
+        lines: list[str] = []
+        lines.append(f"# {title} - ビジネスモデル分析")
+        lines.append("")
+        lines.append(
+            "*ビジネスモデル分析にはGrok APIが必要です。XAI_API_KEY 環境変数を設定してください。*"
+        )
+        lines.append("")
+        return "\n".join(lines)
+
+    grok = data.get("grok_research", {})
+    lines: list[str] = []
+    lines.append(f"# {title} - ビジネスモデル分析")
+    lines.append("")
+
+    # Overview
+    overview = grok.get("overview", "")
+    lines.append("## 事業概要")
+    lines.append(overview if overview else "情報なし")
+    lines.append("")
+
+    # Segments
+    segments = grok.get("segments", [])
+    lines.append("## 事業セグメント")
+    if segments:
+        lines.append("| セグメント | 売上比率 | 概要 |")
+        lines.append("|:-----------|:---------|:-----|")
+        for seg in segments:
+            if isinstance(seg, dict):
+                seg_name = seg.get("name", "-")
+                share = seg.get("revenue_share", "-")
+                desc = seg.get("description", "-")
+                lines.append(f"| {seg_name} | {share} | {desc} |")
+            else:
+                lines.append(f"| {seg} | - | - |")
+    else:
+        lines.append("情報なし")
+    lines.append("")
+
+    # Revenue model
+    revenue_model = grok.get("revenue_model", "")
+    lines.append("## 収益モデル")
+    lines.append(revenue_model if revenue_model else "情報なし")
+    lines.append("")
+
+    # Competitive advantages
+    advantages = grok.get("competitive_advantages", [])
+    lines.append("## 競争優位性")
+    if advantages:
+        for a in advantages:
+            lines.append(f"- {a}")
+    else:
+        lines.append("情報なし")
+    lines.append("")
+
+    # Key metrics
+    metrics = grok.get("key_metrics", [])
+    lines.append("## 重要KPI")
+    if metrics:
+        for m in metrics:
+            lines.append(f"- {m}")
+    else:
+        lines.append("情報なし")
+    lines.append("")
+
+    # Growth strategy
+    strategy = grok.get("growth_strategy", [])
+    lines.append("## 成長戦略")
+    if strategy:
+        for s in strategy:
+            lines.append(f"- {s}")
+    else:
+        lines.append("情報なし")
+    lines.append("")
+
+    # Risks
+    risks = grok.get("risks", [])
+    lines.append("## ビジネスリスク")
+    if risks:
+        for r in risks:
+            lines.append(f"- {r}")
+    else:
+        lines.append("情報なし")
+    lines.append("")
+
+    return "\n".join(lines)

@@ -107,6 +107,20 @@ def _empty_market() -> dict:
     }
 
 
+def _empty_business() -> dict:
+    """Return an empty business model research result."""
+    return {
+        "overview": "",
+        "segments": [],
+        "revenue_model": "",
+        "competitive_advantages": [],
+        "key_metrics": [],
+        "growth_strategy": [],
+        "risks": [],
+        "raw_response": "",
+    }
+
+
 def research_stock(symbol: str, yahoo_client_module) -> dict:
     """Run comprehensive stock research combining yfinance and Grok API.
 
@@ -234,6 +248,50 @@ def research_market(market: str) -> dict:
     return {
         "market": market,
         "type": "market",
+        "grok_research": result,
+        "api_unavailable": False,
+    }
+
+
+def research_business(symbol: str, yahoo_client_module) -> dict:
+    """Run business model research combining yfinance and Grok API.
+
+    Parameters
+    ----------
+    symbol : str
+        Ticker symbol (e.g. "7751.T", "AAPL").
+    yahoo_client_module
+        The yahoo_client module (enables mock injection in tests).
+
+    Returns
+    -------
+    dict
+        Business model research data. When Grok API is unavailable,
+        returns empty result with ``api_unavailable=True``.
+    """
+    # Fetch company name from yfinance for prompt enrichment
+    info = yahoo_client_module.get_stock_info(symbol)
+    if info is None:
+        info = {}
+    company_name = info.get("name") or ""
+
+    if not _grok_available():
+        return {
+            "symbol": symbol,
+            "name": company_name,
+            "type": "business",
+            "grok_research": _empty_business(),
+            "api_unavailable": True,
+        }
+
+    result = _safe_grok_call(grok_client.search_business, symbol, company_name)
+    if result is None:
+        result = _empty_business()
+
+    return {
+        "symbol": symbol,
+        "name": company_name,
+        "type": "business",
         "grok_research": result,
         "api_unavailable": False,
     }

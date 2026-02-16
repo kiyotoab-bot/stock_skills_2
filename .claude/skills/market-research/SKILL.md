@@ -1,7 +1,7 @@
 ---
 name: market-research
-description: "銘柄・業界・マーケットの深掘りリサーチ。Grok API (X/Web検索) と yfinance を統合して多角的な分析レポートを生成する。"
-argument-hint: "[stock|industry|market] [対象]  例: stock 7203.T, industry 半導体, market 日経平均"
+description: "銘柄・業界・マーケット・ビジネスモデルの深掘りリサーチ。Grok API (X/Web検索) と yfinance を統合して多角的な分析レポートを生成する。"
+argument-hint: "[stock|industry|market|business] [対象]  例: stock 7203.T, industry 半導体, market 日経平均, business 7751.T"
 allowed-tools: Bash(python3 *)
 ---
 
@@ -21,9 +21,10 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/market-research/scrip
 
 | ユーザー入力 | command |
 |:-----------|:--------|
-| 銘柄名、ティッカーシンボル | stock |
+| 銘柄名、ティッカーシンボル（ニュース・センチメント） | stock |
 | 業界名、テーマ | industry |
 | マーケット名、指数名 | market |
+| 銘柄名、ティッカーシンボル（ビジネスモデル・事業構造） | business |
 
 ### target（対象・必須）
 
@@ -37,6 +38,8 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/market-research/scrip
 | `日経平均` | market | 日経平均 |
 | `S&P500` | market | S&P500 |
 | `米国株市場` | market | 米国株市場 |
+| `キヤノンのビジネスモデル` | business | 7751.T |
+| `AAPLの事業構造` | business | AAPL |
 
 ## リサーチタイプ別の出力
 
@@ -52,10 +55,19 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/market-research/scrip
 ### market（マーケット概況）
 - 値動き・マクロ要因・センチメント・注目イベント・セクターローテーション（Grok API）
 
+### business（ビジネスモデル分析）
+- 事業概要（何で稼いでいるか）
+- 事業セグメント構成（セグメント名・売上比率・概要）
+- 収益モデル（ストック型/フロー型/サブスク等）
+- 競争優位性（参入障壁・ブランド・技術・moat）
+- 重要KPI（投資家が注目すべき指標）
+- 成長戦略（中期経営計画・M&A・新規事業）
+- ビジネスリスク（構造的リスク・依存度）
+
 ## Grok API について
 - XAI_API_KEY 環境変数が設定されている場合のみ Grok API を利用
 - 未設定時は yfinance データのみでレポート生成（stock の場合）
-- industry / market は Grok API 必須のため、未設定時はその旨を表示
+- industry / market / business は Grok API 必須のため、未設定時はその旨を表示
 
 ## 出力の補足
 
@@ -74,6 +86,12 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/market-research/scrip
 - ポートフォリオへの影響を推定（/stock-portfolio との連携）
 - 類似過去事例があれば言及
 
+### business の場合
+- セグメント構成と株価バリュエーションの関係を考察
+- 収益モデルの持続性（ストック型は安定、フロー型は景気感応度高い等）
+- 競争優位性が実際の財務指標（ROE、利益率等）に表れているか確認
+- `/stock-report` の結果と合わせてファンダメンタルズとの整合性を補足
+
 ## 実行例
 
 ```bash
@@ -88,4 +106,8 @@ python3 .../run_research.py industry "Electric Vehicles"
 # マーケットリサーチ
 python3 .../run_research.py market 日経平均
 python3 .../run_research.py market "S&P500"
+
+# ビジネスモデル分析
+python3 .../run_research.py business 7751.T
+python3 .../run_research.py business AAPL
 ```
