@@ -55,6 +55,7 @@
 | 押し目、調整中、下がってるけど良い株 | pullback |
 | トレンド、話題、Xで話題、SNS、バズ | trending |
 | 長期、じっくり、安定成長、バイ＆ホールド | long-term |
+| 還元、株主還元、自社株買い、バイバック、総還元 | shareholder-return |
 | 指定なし | alpha |
 
 ### 分析ドメイン → `/stock-report` or `/market-research`
