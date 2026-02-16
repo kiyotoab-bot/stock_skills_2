@@ -1,7 +1,10 @@
 """Tests for src/core/indicators.py -- calculate_value_score() and helpers."""
 
+import pytest
+
 from src.core.indicators import (
     calculate_value_score,
+    calculate_shareholder_return,
     _score_per,
     _score_pbr,
     _score_dividend,
@@ -298,3 +301,110 @@ class TestAnomalyValueScoring:
     def test_all_none_from_anomalies(self):
         stock = {"per": None, "pbr": None, "dividend_yield": None, "roe": None, "revenue_growth": None}
         assert calculate_value_score(stock) == 0.0
+
+
+# ===================================================================
+# calculate_shareholder_return (KIK-375)
+# ===================================================================
+
+class TestCalculateShareholderReturn:
+    """Tests for calculate_shareholder_return()."""
+
+    def test_normal_case(self):
+        """Normal Toyota-like data returns correct rates."""
+        stock = {
+            "dividend_paid": -800_000_000_000,
+            "stock_repurchase": -500_000_000_000,
+            "market_cap": 42_000_000_000_000,
+            "dividend_yield": 0.028,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_paid"] == 800_000_000_000
+        assert result["stock_repurchase"] == 500_000_000_000
+        assert result["total_return_amount"] == 1_300_000_000_000
+        assert result["total_return_rate"] == pytest.approx(
+            1_300_000_000_000 / 42_000_000_000_000
+        )
+        assert result["buyback_yield"] == pytest.approx(
+            500_000_000_000 / 42_000_000_000_000
+        )
+        assert result["dividend_yield"] == 0.028
+
+    def test_all_none(self):
+        """All None inputs return all None outputs."""
+        result = calculate_shareholder_return({})
+        assert result["dividend_paid"] is None
+        assert result["stock_repurchase"] is None
+        assert result["total_return_amount"] is None
+        assert result["total_return_rate"] is None
+        assert result["buyback_yield"] is None
+        assert result["dividend_yield"] is None
+
+    def test_dividend_only(self):
+        """Only dividend data available."""
+        stock = {
+            "dividend_paid": -100_000_000,
+            "market_cap": 10_000_000_000,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_paid"] == 100_000_000
+        assert result["stock_repurchase"] is None
+        assert result["total_return_amount"] == 100_000_000
+        assert result["total_return_rate"] == pytest.approx(0.01)
+        assert result["buyback_yield"] is None
+
+    def test_buyback_only(self):
+        """Only buyback data available."""
+        stock = {
+            "stock_repurchase": -200_000_000,
+            "market_cap": 10_000_000_000,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_paid"] is None
+        assert result["stock_repurchase"] == 200_000_000
+        assert result["total_return_amount"] == 200_000_000
+        assert result["total_return_rate"] == pytest.approx(0.02)
+
+    def test_market_cap_zero(self):
+        """market_cap == 0 returns None for rates but amounts are calculated."""
+        stock = {
+            "dividend_paid": -100,
+            "stock_repurchase": -200,
+            "market_cap": 0,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["total_return_amount"] == 300
+        assert result["total_return_rate"] is None
+        assert result["buyback_yield"] is None
+
+    def test_market_cap_none(self):
+        """market_cap == None returns None for rates."""
+        stock = {
+            "dividend_paid": -100,
+            "stock_repurchase": -200,
+            "market_cap": None,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["total_return_amount"] == 300
+        assert result["total_return_rate"] is None
+
+    def test_positive_values(self):
+        """Positive values (edge case) are abs'd correctly."""
+        stock = {
+            "dividend_paid": 100,
+            "stock_repurchase": 200,
+            "market_cap": 10_000,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_paid"] == 100
+        assert result["stock_repurchase"] == 200
+        assert result["total_return_amount"] == 300
+        assert result["total_return_rate"] == pytest.approx(0.03)
+
+    def test_fixture_data(self, stock_detail_data):
+        """Works with the fixture data."""
+        result = calculate_shareholder_return(stock_detail_data)
+        assert result["dividend_paid"] == 800_000_000_000
+        assert result["stock_repurchase"] == 500_000_000_000
+        assert result["total_return_rate"] is not None
+        assert result["total_return_rate"] > 0

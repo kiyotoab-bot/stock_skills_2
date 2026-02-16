@@ -6,8 +6,14 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from src.data.yahoo_client import get_stock_info
+from src.data.yahoo_client import get_stock_info, get_stock_detail
 from src.core.indicators import calculate_value_score
+
+try:
+    from src.core.indicators import calculate_shareholder_return
+    HAS_SHAREHOLDER_RETURN = True
+except ImportError:
+    HAS_SHAREHOLDER_RETURN = False
 
 try:
     from src.data.history_store import save_report as history_save_report
@@ -23,7 +29,9 @@ def main():
         sys.exit(1)
 
     symbol = sys.argv[1]
-    data = get_stock_info(symbol)
+    data = get_stock_detail(symbol)
+    if data is None:
+        data = get_stock_info(symbol)
 
     if data is None:
         print(f"Error: {symbol} のデータを取得できませんでした。")
@@ -73,6 +81,27 @@ def main():
     print("## 割安度判定")
     print(f"- **スコア**: {score:.1f} / 100")
     print(f"- **判定**: {verdict}")
+
+    # KIK-375: Shareholder return section
+    if HAS_SHAREHOLDER_RETURN:
+        sr = calculate_shareholder_return(data)
+        total_rate = sr.get("total_return_rate")
+        if total_rate is not None or sr.get("dividend_yield") is not None:
+            print()
+            print("## 株主還元")
+            print("| 指標 | 値 |")
+            print("|---:|:---|")
+            print(f"| 配当利回り | {fmt(sr.get('dividend_yield'), pct=True)} |")
+            print(f"| 自社株買い利回り | {fmt(sr.get('buyback_yield'), pct=True)} |")
+            print(f"| **総株主還元率** | **{fmt(total_rate, pct=True)}** |")
+            dp = sr.get("dividend_paid")
+            br = sr.get("stock_repurchase")
+            ta = sr.get("total_return_amount")
+            if dp is not None or br is not None:
+                print()
+                print(f"- 配当総額: {fmt_int(dp)}")
+                print(f"- 自社株買い額: {fmt_int(br)}")
+                print(f"- 株主還元合計: {fmt_int(ta)}")
 
     if HAS_HISTORY:
         try:

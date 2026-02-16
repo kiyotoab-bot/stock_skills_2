@@ -126,3 +126,41 @@ def calculate_value_score(stock_data: dict, thresholds: Optional[dict] = None) -
         + _score_growth(growth)
     )
     return round(min(total, 100.0), 2)
+
+
+def calculate_shareholder_return(stock: dict) -> dict:
+    """Calculate total shareholder return rate.
+
+    Formula: (|dividend_paid| + |stock_repurchase|) / market_cap
+
+    Cashflow values from yfinance are negative (outflows), so abs() is applied.
+
+    Returns a dict with rates as ratios (e.g. 0.05 = 5%).
+    """
+    market_cap = stock.get("market_cap")
+    div_raw = stock.get("dividend_paid")
+    rep_raw = stock.get("stock_repurchase")
+
+    dividend_paid = abs(div_raw) if div_raw is not None else None
+    stock_repurchase = abs(rep_raw) if rep_raw is not None else None
+
+    total: float | None = None
+    if dividend_paid is not None or stock_repurchase is not None:
+        total = (dividend_paid or 0.0) + (stock_repurchase or 0.0)
+
+    total_rate: float | None = None
+    buyback_yield: float | None = None
+    if market_cap is not None and market_cap > 0:
+        if total is not None:
+            total_rate = total / market_cap
+        if stock_repurchase is not None:
+            buyback_yield = stock_repurchase / market_cap
+
+    return {
+        "dividend_paid": dividend_paid,
+        "stock_repurchase": stock_repurchase,
+        "total_return_amount": total,
+        "total_return_rate": total_rate,
+        "dividend_yield": stock.get("dividend_yield"),
+        "buyback_yield": buyback_yield,
+    }
