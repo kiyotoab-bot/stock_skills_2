@@ -330,6 +330,8 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         # --- Cash flow ---
         operating_cashflow: Optional[float] = None
         fcf: Optional[float] = None
+        dividend_paid: Optional[float] = None
+        stock_repurchase: Optional[float] = None
         try:
             cf = ticker.cashflow
             operating_cashflow = _try_get_field(cf, [
@@ -341,6 +343,22 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                 "Free Cash Flow",
                 "FreeCashFlow",
             ])
+            # KIK-375: Shareholder return data
+            dividend_paid = _try_get_field(cf, [
+                "Common Stock Dividend Paid",
+                "Cash Dividends Paid",
+                "Payment Of Dividends",
+            ])
+            stock_repurchase = _try_get_field(cf, [
+                "Repurchase Of Capital Stock",
+                "Common Stock Payments",
+            ])
+            if stock_repurchase is None:
+                net_issuance = _try_get_field(cf, [
+                    "Net Common Stock Issuance",
+                ])
+                if net_issuance is not None and net_issuance < 0:
+                    stock_repurchase = net_issuance
         except Exception:
             pass
 
@@ -449,6 +467,9 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             "total_assets": total_assets,
             "revenue_history": revenue_history,
             "net_income_history": net_income_history,
+            # Shareholder return fields (KIK-375)
+            "dividend_paid": dividend_paid,
+            "stock_repurchase": stock_repurchase,
             "equity_history": equity_history,
         })
 

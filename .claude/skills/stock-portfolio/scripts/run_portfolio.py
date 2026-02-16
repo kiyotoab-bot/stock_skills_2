@@ -127,6 +127,13 @@ try:
 except ImportError:
     HAS_CORRELATION = False
 
+# KIK-375: Shareholder return module
+try:
+    from src.core.indicators import calculate_shareholder_return
+    HAS_SHAREHOLDER_RETURN = True
+except ImportError:
+    HAS_SHAREHOLDER_RETURN = False
+
 
 # ---------------------------------------------------------------------------
 # Default CSV path
@@ -456,6 +463,51 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
 # Command: analyze
 # ---------------------------------------------------------------------------
 
+
+def _print_shareholder_return_section(csv_path: str) -> None:
+    """Print weighted-average shareholder return rate for portfolio (KIK-375)."""
+    holdings = _fallback_load_csv(csv_path)
+    if not holdings:
+        return
+
+    total_mv = 0.0
+    weighted_rate = 0.0
+    position_returns: list[dict] = []
+
+    for h in holdings:
+        symbol = h["symbol"]
+        if symbol.upper().endswith(".CASH"):
+            continue
+        detail = yahoo_client.get_stock_detail(symbol)
+        if detail is None:
+            continue
+        sr = calculate_shareholder_return(detail)
+        rate = sr.get("total_return_rate")
+        price = detail.get("price") or 0
+        mv = price * h["shares"]
+        if rate is not None and mv > 0:
+            position_returns.append({
+                "symbol": symbol,
+                "rate": rate,
+                "market_value": mv,
+            })
+            weighted_rate += rate * mv
+            total_mv += mv
+
+    if total_mv > 0 and position_returns:
+        avg_rate = weighted_rate / total_mv
+        print()
+        print("## 株主還元分析")
+        print()
+        print("| 銘柄 | 総株主還元率 |")
+        print("|:-----|-----:|")
+        for pr in sorted(position_returns, key=lambda x: -x["rate"]):
+            print(f"| {pr['symbol']} | {pr['rate'] * 100:.2f}% |")
+        print()
+        print(f"- **加重平均 総株主還元率**: {avg_rate * 100:.2f}%")
+        print()
+
+
 def cmd_analyze(csv_path: str) -> None:
     """Structural analysis -- sector/region/currency HHI."""
     print("データ取得中...\n")
@@ -490,6 +542,11 @@ def cmd_analyze(csv_path: str) -> None:
                     for label, w in sorted(breakdown.items(), key=lambda x: -x[1]):
                         print(f"  - {label}: {w * 100:.1f}%")
                     print()
+
+        # KIK-375: Shareholder return section
+        if HAS_SHAREHOLDER_RETURN:
+            _print_shareholder_return_section(csv_path)
+
         return
 
     # Fallback: no portfolio_manager available
