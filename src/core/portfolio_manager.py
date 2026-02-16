@@ -4,6 +4,7 @@ Provides CSV-based portfolio management with position tracking,
 real-time pricing, P&L calculation, and structural analysis.
 """
 
+import copy
 import csv
 import os
 from datetime import datetime
@@ -563,3 +564,58 @@ def get_structure_analysis(csv_path: str, client) -> dict:
         "concentration_multiplier": conc.get("concentration_multiplier", 1.0),
         "risk_level": conc.get("risk_level", "分散"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Merge positions (KIK-376: What-If simulation)
+# ---------------------------------------------------------------------------
+
+
+def merge_positions(
+    current: list[dict], proposed: list[dict]
+) -> list[dict]:
+    """現在PFに提案銘柄をマージ（加重平均コスト計算）。
+
+    入力リストは変更しない（deep copy して操作）。
+
+    Parameters
+    ----------
+    current : list[dict]
+        現在のポートフォリオ（load_portfolio の戻り値）。
+    proposed : list[dict]
+        追加提案銘柄。各 dict は symbol, shares, cost_price,
+        cost_currency を持つ。
+
+    Returns
+    -------
+    list[dict]
+        マージ後のポートフォリオ。
+    """
+    merged = copy.deepcopy(current)
+    symbol_map: dict[str, int] = {
+        p["symbol"].upper(): i for i, p in enumerate(merged)
+    }
+
+    for prop in proposed:
+        key = prop["symbol"].upper()
+        if key in symbol_map:
+            old = merged[symbol_map[key]]
+            total = old["shares"] + prop["shares"]
+            if total > 0:
+                old["cost_price"] = (
+                    old["shares"] * old["cost_price"]
+                    + prop["shares"] * prop["cost_price"]
+                ) / total
+            old["shares"] = total
+        else:
+            merged.append({
+                "symbol": prop["symbol"],
+                "shares": prop["shares"],
+                "cost_price": prop["cost_price"],
+                "cost_currency": prop.get("cost_currency", "JPY"),
+                "purchase_date": "",
+                "memo": "(what-if)",
+            })
+            symbol_map[key] = len(merged) - 1
+
+    return merged

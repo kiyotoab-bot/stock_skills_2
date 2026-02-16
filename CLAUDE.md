@@ -57,6 +57,7 @@ python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py health
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py forecast
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py rebalance
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py simulate --years 5 --monthly-add 50000 --target 15000000
+python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py what-if --add "7203.T:100:2850,AAPL:10:250"
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py backtest --preset alpha --region jp --days 90
 python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
 
@@ -78,7 +79,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   ├─ market-research/run_research.py … stock/industry/market (Grok API深掘り)
   ├─ watchlist/manage_watchlist.py
   ├─ stress-test/run_stress_test.py
-  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/simulate/backtest/list
+  └─ stock-portfolio/run_portfolio.py … snapshot/buy/sell/analyze/health/forecast/rebalance/simulate/what-if/backtest/list
       │
       │  sys.path.insert で project root を追加して src/ を import
       ▼
@@ -96,6 +97,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート + ゴールデンクロス/デッドクロス検出) │
   │  return_estimate.py ─ 推定利回り(アナリスト+過去リターン+ニュース+Xセンチメント) │
   │  simulator.py ─ 複利シミュレーション(3シナリオ+配当再投資+積立) │
+  │  portfolio_simulation.py ─ What-Ifシミュレーション(追加銘柄のBefore/After比較) │
   │  concentration.py ─ HHI集中度分析                          │
   │  correlation.py ─ 日次リターン・相関行列・因子分解              │
   │  shock_sensitivity.py ─ ショック感応度スコア                  │
