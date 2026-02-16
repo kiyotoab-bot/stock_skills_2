@@ -14,6 +14,7 @@ from src.output.formatter import (
     format_markdown,
     format_pullback_markdown,
     format_query_markdown,
+    format_shareholder_return_markdown,
 )
 
 
@@ -223,3 +224,46 @@ class TestFormatPullbackMarkdown:
         """Empty results list produces pullback-specific 'not found' message."""
         output = format_pullback_markdown([])
         assert "押し目条件に合致する銘柄が見つかりませんでした" in output
+
+
+# ---------------------------------------------------------------------------
+# format_shareholder_return_markdown — KIK-389 reason display
+# ---------------------------------------------------------------------------
+
+class TestFormatShareholderReturnMarkdown:
+    """Tests for format_shareholder_return_markdown (KIK-389 reason)."""
+
+    def test_stability_reason_displayed(self):
+        """Reason text appears in parentheses after label."""
+        results = [{
+            "symbol": "7267.T",
+            "name": "Honda",
+            "sector": "自動車",
+            "per": 10.0,
+            "roe": 0.08,
+            "dividend_yield_trailing": 0.03,
+            "buyback_yield": 0.05,
+            "total_shareholder_return": 0.17,
+            "return_stability_label": "⚠️ 一時的高還元",
+            "return_stability_reason": "前年比2.1倍に急増",
+        }]
+        output = format_shareholder_return_markdown(results)
+        assert "⚠️ 一時的高還元（前年比2.1倍に急増）" in output
+
+    def test_stability_reason_none(self):
+        """When reason is None, only the label shows (no parentheses)."""
+        results = [{
+            "symbol": "9999.T",
+            "name": "TestCo",
+            "sector": "-",
+            "per": 12.0,
+            "roe": 0.05,
+            "dividend_yield_trailing": 0.02,
+            "buyback_yield": None,
+            "total_shareholder_return": 0.02,
+            "return_stability_label": "❓ データ不足",
+            "return_stability_reason": None,
+        }]
+        output = format_shareholder_return_markdown(results)
+        assert "❓ データ不足" in output
+        assert "（" not in output

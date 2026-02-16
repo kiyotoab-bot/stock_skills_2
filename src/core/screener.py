@@ -316,6 +316,7 @@ class QueryScreener:
                 stock["return_stability"] = stability.get("stability")
                 stock["return_stability_label"] = stability.get("label")
                 stock["return_avg_rate"] = stability.get("avg_rate")
+                stock["return_stability_reason"] = stability.get("reason")
                 if apply_filters(stock, {"min_total_shareholder_return": criteria["min_total_shareholder_return"]}):
                     enriched.append(stock)
             results = enriched

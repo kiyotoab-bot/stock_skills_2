@@ -634,6 +634,8 @@ class TestAssessReturnStability:
         assert "安定" in result["label"]
         assert result["latest_rate"] == 0.07
         assert abs(result["avg_rate"] - 0.07) < 0.001
+        assert "3年平均" in result["reason"]
+        assert "で安定" in result["reason"]
 
     def test_increasing_trend(self):
         """Rates rising year over year -> increasing."""
@@ -645,6 +647,7 @@ class TestAssessReturnStability:
         result = assess_return_stability(history)
         assert result["stability"] == "increasing"
         assert "増加" in result["label"]
+        assert result["reason"] == "3年連続増加"
 
     def test_decreasing_trend(self):
         """Rates falling year over year -> decreasing."""
@@ -656,6 +659,7 @@ class TestAssessReturnStability:
         result = assess_return_stability(history)
         assert result["stability"] == "decreasing"
         assert "減少" in result["label"]
+        assert result["reason"] == "3年連続減少"
 
     def test_temporary_surge(self):
         """Latest >= 2x previous -> temporary."""
@@ -667,6 +671,7 @@ class TestAssessReturnStability:
         result = assess_return_stability(history)
         assert result["stability"] == "temporary"
         assert "一時的" in result["label"]
+        assert result["reason"] == "前年比2.1倍に急増"
 
     def test_honda_like_temporary(self):
         """Honda-like: 17.67% after 8% -> temporary."""
@@ -698,6 +703,7 @@ class TestAssessReturnStability:
         result = assess_return_stability(history)
         assert result["stability"] == "mixed"
         assert "変動" in result["label"]
+        assert "3年平均:" in result["reason"]
 
     def test_unknown_single_year(self):
         """Only 1 year of data -> unknown."""
@@ -705,6 +711,7 @@ class TestAssessReturnStability:
         result = assess_return_stability(history)
         assert result["stability"] == "unknown"
         assert result["latest_rate"] == 0.05
+        assert result["reason"] is None
 
     def test_unknown_empty(self):
         """Empty history -> no_data (KIK-388)."""
@@ -713,6 +720,7 @@ class TestAssessReturnStability:
         assert result["label"] == "-"
         assert result["latest_rate"] is None
         assert result["avg_rate"] is None
+        assert result["reason"] is None
 
     def test_no_data_all_none_rates(self):
         """All entries have None rates -> no_data (KIK-388)."""
@@ -723,6 +731,7 @@ class TestAssessReturnStability:
         result = assess_return_stability(history)
         assert result["stability"] == "no_data"
         assert result["label"] == "-"
+        assert result["reason"] is None
 
     def test_none_rates_skipped(self):
         """Entries with None total_return_rate are skipped."""
