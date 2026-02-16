@@ -359,6 +359,35 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                 ])
                 if net_issuance is not None and net_issuance < 0:
                     stock_repurchase = net_issuance
+
+            # KIK-380: Shareholder return 3-year history
+            dividend_paid_history: list[float] = []
+            stock_repurchase_history: list[float] = []
+            cashflow_fiscal_years: list[int] = []
+            div_field_names = [
+                "Common Stock Dividend Paid",
+                "Cash Dividends Paid",
+                "Payment Of Dividends",
+            ]
+            rep_field_names = [
+                "Repurchase Of Capital Stock",
+                "Common Stock Payments",
+            ]
+            dividend_paid_history = _try_get_history(cf, div_field_names)
+            stock_repurchase_history = _try_get_history(cf, rep_field_names)
+            # Fallback: Net Common Stock Issuance (negative = repurchase)
+            if not stock_repurchase_history:
+                net_iss_hist = _try_get_history(cf, ["Net Common Stock Issuance"])
+                stock_repurchase_history = [v for v in net_iss_hist if v < 0]
+            # Extract fiscal year labels from cashflow column dates
+            try:
+                if cf is not None and not cf.empty:
+                    for i in range(min(len(cf.columns), 4)):
+                        col = cf.columns[i]
+                        if hasattr(col, "year"):
+                            cashflow_fiscal_years.append(int(col.year))
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -471,6 +500,10 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             "dividend_paid": dividend_paid,
             "stock_repurchase": stock_repurchase,
             "equity_history": equity_history,
+            # Shareholder return history (KIK-380)
+            "dividend_paid_history": dividend_paid_history,
+            "stock_repurchase_history": stock_repurchase_history,
+            "cashflow_fiscal_years": cashflow_fiscal_years,
         })
 
         # 5. Cache the result

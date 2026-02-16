@@ -16,6 +16,12 @@ except ImportError:
     HAS_SHAREHOLDER_RETURN = False
 
 try:
+    from src.core.indicators import calculate_shareholder_return_history
+    HAS_SHAREHOLDER_HISTORY = True
+except ImportError:
+    HAS_SHAREHOLDER_HISTORY = False
+
+try:
     from src.data.history_store import save_report as history_save_report
     HAS_HISTORY = True
 except ImportError:
@@ -102,6 +108,43 @@ def main():
                 print(f"- 配当総額: {fmt_int(dp)}")
                 print(f"- 自社株買い額: {fmt_int(br)}")
                 print(f"- 株主還元合計: {fmt_int(ta)}")
+
+    # KIK-380: Shareholder return 3-year history
+    if HAS_SHAREHOLDER_HISTORY:
+        sr_hist = calculate_shareholder_return_history(data)
+        if len(sr_hist) >= 2:
+            print()
+            print("## 株主還元推移")
+            header_cols = []
+            for entry in sr_hist:
+                fy = entry.get("fiscal_year")
+                header_cols.append(str(fy) if fy else "-")
+            print("| 指標 | " + " | ".join(header_cols) + " |")
+            print("|---:" + " | :---" * len(sr_hist) + " |")
+            print("| 配当総額 | " + " | ".join(
+                fmt_int(e.get("dividend_paid")) for e in sr_hist
+            ) + " |")
+            print("| 自社株買い額 | " + " | ".join(
+                fmt_int(e.get("stock_repurchase")) for e in sr_hist
+            ) + " |")
+            print("| 還元合計 | " + " | ".join(
+                fmt_int(e.get("total_return_amount")) for e in sr_hist
+            ) + " |")
+            print("| 総還元率 | " + " | ".join(
+                fmt(e.get("total_return_rate"), pct=True) for e in sr_hist
+            ) + " |")
+            # Trend judgment
+            rates = [e.get("total_return_rate") for e in sr_hist
+                     if e.get("total_return_rate") is not None]
+            if len(rates) >= 2:
+                if all(rates[i] >= rates[i + 1] for i in range(len(rates) - 1)):
+                    trend = "📈 増加傾向（株主還元に積極的）"
+                elif all(rates[i] <= rates[i + 1] for i in range(len(rates) - 1)):
+                    trend = "📉 減少傾向（注意）"
+                else:
+                    trend = "➡️ 横ばい"
+                print()
+                print(f"- **トレンド**: {trend}")
 
     if HAS_HISTORY:
         try:
