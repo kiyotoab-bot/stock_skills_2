@@ -338,6 +338,28 @@ def format_industry_research(data: dict) -> str:
 # format_market_research
 # ---------------------------------------------------------------------------
 
+def _fmt_change(value, is_point_diff: bool) -> str:
+    """Format a daily/weekly change value for the macro table."""
+    if value is None:
+        return "-"
+    if is_point_diff:
+        sign = "+" if value >= 0 else ""
+        return f"{sign}{value:.2f}"
+    sign = "+" if value >= 0 else ""
+    return f"{sign}{value * 100:.2f}%"
+
+
+def _vix_label(vix_price: float) -> str:
+    """Convert VIX level to a Fear & Greed label."""
+    if vix_price < 15:
+        return "低ボラティリティ（楽観相場）"
+    if vix_price < 25:
+        return "通常レンジ"
+    if vix_price < 35:
+        return "不安拡大"
+    return "パニック水準"
+
+
 def format_market_research(data: dict) -> str:
     """Format market overview research as a Markdown report.
 
@@ -356,20 +378,41 @@ def format_market_research(data: dict) -> str:
 
     market = data.get("market", "-")
 
-    if data.get("api_unavailable"):
-        lines: list[str] = []
-        lines.append(f"# {market} - マーケット概況")
+    lines: list[str] = []
+    lines.append(f"# {market} - マーケット概況")
+    lines.append("")
+
+    # === Layer 1: Macro indicators table (yfinance) ===
+    indicators = data.get("macro_indicators", [])
+    if indicators:
+        lines.append("## 主要指標")
+        lines.append("| 指標 | 現在値 | 前日比 | 週間変化 |")
+        lines.append("|:-----|------:|------:|--------:|")
+        for ind in indicators:
+            name = ind.get("name", "-")
+            price = ind.get("price")
+            is_point = ind.get("is_point_diff", False)
+            price_str = _fmt_float(price, 2) if price is not None else "-"
+            daily_str = _fmt_change(ind.get("daily_change"), is_point)
+            weekly_str = _fmt_change(ind.get("weekly_change"), is_point)
+            lines.append(f"| {name} | {price_str} | {daily_str} | {weekly_str} |")
         lines.append("")
-        lines.append(
-            "*マーケット概況リサーチにはGrok APIが必要です。XAI_API_KEY 環境変数を設定してください。*"
-        )
+
+        # Fear & Greed (VIX-based)
+        vix = next((i for i in indicators if i.get("name") == "VIX"), None)
+        if vix and vix.get("price") is not None:
+            vix_price = vix["price"]
+            label = _vix_label(vix_price)
+            lines.append(f"**Fear & Greed: {label}** (VIX: {_fmt_float(vix_price, 2)})")
+            lines.append("")
+
+    # === Layer 2: Grok qualitative ===
+    if data.get("api_unavailable"):
+        lines.append("*Grok API (XAI_API_KEY) 未設定のため定性分析はスキップ*")
         lines.append("")
         return "\n".join(lines)
 
     grok = data.get("grok_research", {})
-    lines: list[str] = []
-    lines.append(f"# {market} - マーケット概況")
-    lines.append("")
 
     # Price action
     price_action = grok.get("price_action", "")

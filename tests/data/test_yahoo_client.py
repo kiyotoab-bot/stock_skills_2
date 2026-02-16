@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 from src.data.yahoo_client import (
     CACHE_TTL_HOURS,
+    MACRO_TICKERS,
     _build_dividend_history_from_actions,
     _cache_path,
     _normalize_ratio,
@@ -26,6 +27,7 @@ from src.data.yahoo_client import (
     _safe_get,
     _sanitize_anomalies,
     _write_cache,
+    get_macro_indicators,
 )
 
 
@@ -442,3 +444,128 @@ class TestBuildDividendHistoryFromActions:
         amounts, years = _build_dividend_history_from_actions(mock_ticker, 1e6)
         assert amounts == []
         assert years == []
+
+
+# ---------------------------------------------------------------------------
+# get_macro_indicators (KIK-396)
+# ---------------------------------------------------------------------------
+
+def _make_mock_history(closes):
+    """Build a minimal DataFrame with Close column from a list of floats."""
+    return pd.DataFrame({"Close": closes})
+
+
+class TestGetMacroIndicators:
+    """Tests for get_macro_indicators()."""
+
+    def test_returns_list(self, monkeypatch):
+        """All 8 tickers return data → 8 entries."""
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = _make_mock_history([100.0, 101.0, 102.0, 103.0, 104.0])
+
+        import yfinance as yf
+        monkeypatch.setattr(yf, "Ticker", lambda symbol: mock_ticker)
+
+        result = get_macro_indicators()
+        assert isinstance(result, list)
+        assert len(result) == len(MACRO_TICKERS)
+
+    def test_indicator_fields(self, monkeypatch):
+        """Each dict has required fields: name, symbol, price, daily_change, weekly_change, is_point_diff."""
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = _make_mock_history([100.0, 102.0, 101.0, 103.0, 105.0])
+
+        import yfinance as yf
+        monkeypatch.setattr(yf, "Ticker", lambda symbol: mock_ticker)
+
+        result = get_macro_indicators()
+        for ind in result:
+            assert "name" in ind
+            assert "symbol" in ind
+            assert "price" in ind
+            assert "daily_change" in ind
+            assert "weekly_change" in ind
+            assert "is_point_diff" in ind
+            assert ind["price"] == 105.0
+
+    def test_daily_and_weekly_change(self, monkeypatch):
+        """Daily and weekly changes are calculated correctly (percentage)."""
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+        # 5 days: 100, 102, 104, 103, 106
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = _make_mock_history([100.0, 102.0, 104.0, 103.0, 106.0])
+
+        import yfinance as yf
+        monkeypatch.setattr(yf, "Ticker", lambda symbol: mock_ticker)
+
+        result = get_macro_indicators()
+        # Find S&P500 (not point_diff)
+        sp = next(i for i in result if i["name"] == "S&P500")
+        assert sp["is_point_diff"] is False
+        # daily: (106 - 103) / 103
+        assert sp["daily_change"] == pytest.approx((106.0 - 103.0) / 103.0)
+        # weekly: (106 - 100) / 100
+        assert sp["weekly_change"] == pytest.approx((106.0 - 100.0) / 100.0)
+
+    def test_point_diff_tickers(self, monkeypatch):
+        """VIX and bond yield use point difference, not percentage."""
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = _make_mock_history([20.0, 22.0, 21.0, 23.0, 25.0])
+
+        import yfinance as yf
+        monkeypatch.setattr(yf, "Ticker", lambda symbol: mock_ticker)
+
+        result = get_macro_indicators()
+        vix = next(i for i in result if i["name"] == "VIX")
+        assert vix["is_point_diff"] is True
+        # daily: 25 - 23 = 2.0 (point diff)
+        assert vix["daily_change"] == pytest.approx(2.0)
+        # weekly: 25 - 20 = 5.0 (point diff)
+        assert vix["weekly_change"] == pytest.approx(5.0)
+
+    def test_exception_skips_ticker(self, monkeypatch):
+        """One ticker raising → that ticker is skipped, rest returned."""
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+        call_count = [0]
+
+        def mock_ticker_factory(symbol):
+            call_count[0] += 1
+            t = MagicMock()
+            if symbol == "^GSPC":
+                t.history.side_effect = RuntimeError("Network error")
+            else:
+                t.history.return_value = _make_mock_history([100.0, 101.0])
+            return t
+
+        import yfinance as yf
+        monkeypatch.setattr(yf, "Ticker", mock_ticker_factory)
+
+        result = get_macro_indicators()
+        assert len(result) == len(MACRO_TICKERS) - 1
+        names = [i["name"] for i in result]
+        assert "S&P500" not in names
+
+    def test_empty_history(self, monkeypatch):
+        """Empty DataFrame → None values in result."""
+        monkeypatch.setattr(time, "sleep", lambda _: None)
+
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = pd.DataFrame()
+
+        import yfinance as yf
+        monkeypatch.setattr(yf, "Ticker", lambda symbol: mock_ticker)
+
+        result = get_macro_indicators()
+        assert len(result) == len(MACRO_TICKERS)
+        for ind in result:
+            assert ind["price"] is None
+            assert ind["daily_change"] is None
+            assert ind["weekly_change"] is None

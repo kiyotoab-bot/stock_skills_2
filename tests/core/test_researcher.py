@@ -251,6 +251,7 @@ class TestResearchMarket:
         assert result["api_unavailable"] is False
         assert result["grok_research"]["price_action"] == "Nikkei up 1.5%"
         assert result["grok_research"]["sentiment"]["score"] == 0.4
+        assert "macro_indicators" in result
 
     def test_api_unavailable(self, monkeypatch):
         """Returns api_unavailable=True when Grok is not set."""
@@ -263,6 +264,50 @@ class TestResearchMarket:
         assert result["api_unavailable"] is True
         assert result["grok_research"]["price_action"] == ""
         assert result["grok_research"]["macro_factors"] == []
+        assert "macro_indicators" in result
+
+    def test_with_macro_indicators(self, monkeypatch):
+        """yahoo_client_module with get_macro_indicators → macro_indicators populated."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+        mock_yc = MagicMock()
+        mock_yc.get_macro_indicators.return_value = [
+            {"name": "S&P500", "symbol": "^GSPC", "price": 5000.0,
+             "daily_change": 0.01, "weekly_change": 0.03, "is_point_diff": False},
+            {"name": "VIX", "symbol": "^VIX", "price": 18.5,
+             "daily_change": -0.5, "weekly_change": -1.2, "is_point_diff": True},
+        ]
+
+        result = research_market("日経平均", mock_yc)
+
+        assert len(result["macro_indicators"]) == 2
+        assert result["macro_indicators"][0]["name"] == "S&P500"
+        assert result["macro_indicators"][1]["price"] == 18.5
+        mock_yc.get_macro_indicators.assert_called_once()
+
+    def test_without_yahoo_client(self, monkeypatch):
+        """yahoo_client_module=None → macro_indicators is empty."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+        result = research_market("S&P500")
+
+        assert result["macro_indicators"] == []
+
+    def test_grok_unavailable_still_has_macro(self, monkeypatch):
+        """Grok API unavailable but macro_indicators still returned."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+        mock_yc = MagicMock()
+        mock_yc.get_macro_indicators.return_value = [
+            {"name": "VIX", "symbol": "^VIX", "price": 25.0,
+             "daily_change": 2.0, "weekly_change": 5.0, "is_point_diff": True},
+        ]
+
+        result = research_market("日経平均", mock_yc)
+
+        assert result["api_unavailable"] is True
+        assert len(result["macro_indicators"]) == 1
+        assert result["macro_indicators"][0]["name"] == "VIX"
 
 
 # ===================================================================
