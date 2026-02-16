@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.core.return_estimate import (
     _is_etf,
+    _compute_buyback_yield,
     _estimate_from_analyst,
     _estimate_from_history,
     estimate_stock_return,
@@ -148,6 +149,74 @@ class TestEstimateFromAnalyst:
         base = result["base"]  # (120-100)/100 = 0.2
         assert abs(result["optimistic"] - base * 1.2) < 0.01
         assert abs(result["pessimistic"] - base * 0.8) < 0.01
+
+    def test_buyback_yield_added_to_return(self):
+        """Buyback yield is added to return calculation (KIK-377)."""
+        detail = {
+            "price": 100.0,
+            "target_high_price": 150.0,
+            "target_mean_price": 120.0,
+            "target_low_price": 80.0,
+            "dividend_yield": 0.02,
+            "stock_repurchase": -5_000_000_000,
+            "market_cap": 100_000_000_000,
+            "number_of_analyst_opinions": 25,
+        }
+        result = _estimate_from_analyst(detail)
+        # buyback_yield = 5B / 100B = 0.05
+        # shareholder_yield = 0.02 + 0.05 = 0.07
+        # optimistic: (150-100)/100 + 0.07 = 0.57
+        assert abs(result["optimistic"] - 0.57) < 0.001
+        # base: (120-100)/100 + 0.07 = 0.27
+        assert abs(result["base"] - 0.27) < 0.001
+        # pessimistic: (80-100)/100 + 0.07 = -0.13
+        assert abs(result["pessimistic"] - (-0.13)) < 0.001
+
+    def test_no_buyback_data_uses_dividend_only(self):
+        """No buyback data falls back to dividend-only (KIK-377)."""
+        detail = {
+            "price": 100.0,
+            "target_mean_price": 120.0,
+            "dividend_yield": 0.02,
+            "number_of_analyst_opinions": 10,
+        }
+        result = _estimate_from_analyst(detail)
+        # No buyback → shareholder_yield = dividend_yield = 0.02
+        # base: (120-100)/100 + 0.02 = 0.22
+        assert abs(result["base"] - 0.22) < 0.001
+
+    def test_buyback_yield_with_no_dividend(self):
+        """Buyback-only (no dividend) adds buyback to return (KIK-377)."""
+        detail = {
+            "price": 100.0,
+            "target_mean_price": 120.0,
+            "dividend_yield": None,
+            "stock_repurchase": -3_000_000_000,
+            "market_cap": 100_000_000_000,
+            "number_of_analyst_opinions": 10,
+        }
+        result = _estimate_from_analyst(detail)
+        # buyback_yield = 3B / 100B = 0.03, dividend = 0
+        # base: (120-100)/100 + 0.03 = 0.23
+        assert abs(result["base"] - 0.23) < 0.001
+
+    def test_shareholder_yield_in_result(self):
+        """estimate_stock_return includes buyback_yield field (KIK-377)."""
+        detail = {
+            "price": 100.0,
+            "name": "Test Corp",
+            "currency": "JPY",
+            "sector": "Industrials",
+            "target_mean_price": 120.0,
+            "dividend_yield": 0.02,
+            "stock_repurchase": -5_000_000_000,
+            "market_cap": 100_000_000_000,
+            "number_of_analyst_opinions": 10,
+        }
+        result = estimate_stock_return("TEST", detail)
+        assert "buyback_yield" in result
+        assert abs(result["buyback_yield"] - 0.05) < 0.001
+        assert abs(result["dividend_yield"] - 0.02) < 0.001
 
 
 # ---------------------------------------------------------------------------

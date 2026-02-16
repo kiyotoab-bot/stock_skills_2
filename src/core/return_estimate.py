@@ -32,11 +32,21 @@ def _is_etf(stock_detail: dict) -> bool:
     return _is_etf_base(stock_detail)
 
 
+def _compute_buyback_yield(stock_detail: dict) -> float:
+    """Compute buyback yield from cashflow data. Returns 0.0 if unavailable."""
+    repurchase = stock_detail.get("stock_repurchase")
+    market_cap = stock_detail.get("market_cap")
+    if repurchase is None or market_cap is None or market_cap <= 0:
+        return 0.0
+    return abs(repurchase) / market_cap
+
+
 def _estimate_from_analyst(stock_detail: dict) -> dict:
     """Estimate returns from analyst target prices.
 
     Formula:
-        scenario_return = (target_price - current_price) / current_price + dividend_yield
+        scenario_return = (target_price - current_price) / current_price + shareholder_yield
+        shareholder_yield = dividend_yield + buyback_yield
 
     Returns
     -------
@@ -54,17 +64,19 @@ def _estimate_from_analyst(stock_detail: dict) -> dict:
     target_mean = stock_detail.get("target_mean_price")
     target_low = stock_detail.get("target_low_price")
     dividend_yield = stock_detail.get("dividend_yield") or 0.0
+    buyback_yield = _compute_buyback_yield(stock_detail)
+    shareholder_yield = dividend_yield + buyback_yield
 
     optimistic = None
     base = None
     pessimistic = None
 
     if target_high is not None:
-        optimistic = (target_high - price) / price + dividend_yield
+        optimistic = (target_high - price) / price + shareholder_yield
     if target_mean is not None:
-        base = (target_mean - price) / price + dividend_yield
+        base = (target_mean - price) / price + shareholder_yield
     if target_low is not None:
-        pessimistic = (target_low - price) / price + dividend_yield
+        pessimistic = (target_low - price) / price + shareholder_yield
 
     # Extract analyst count early (needed for spread logic below)
     analyst_count_val = stock_detail.get("number_of_analyst_opinions")
@@ -256,6 +268,7 @@ def estimate_stock_return(
         "price": stock_detail.get("price"),
         "currency": stock_detail.get("currency") or "USD",
         "dividend_yield": stock_detail.get("dividend_yield"),
+        "buyback_yield": _compute_buyback_yield(stock_detail),
         **estimate,
         "news": news or [],
         "x_sentiment": x_sentiment,
