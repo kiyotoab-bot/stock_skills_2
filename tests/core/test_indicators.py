@@ -707,11 +707,22 @@ class TestAssessReturnStability:
         assert result["latest_rate"] == 0.05
 
     def test_unknown_empty(self):
-        """Empty history -> unknown."""
+        """Empty history -> no_data (KIK-388)."""
         result = assess_return_stability([])
-        assert result["stability"] == "unknown"
+        assert result["stability"] == "no_data"
+        assert result["label"] == "-"
         assert result["latest_rate"] is None
         assert result["avg_rate"] is None
+
+    def test_no_data_all_none_rates(self):
+        """All entries have None rates -> no_data (KIK-388)."""
+        history = [
+            {"total_return_rate": None},
+            {"total_return_rate": None},
+        ]
+        result = assess_return_stability(history)
+        assert result["stability"] == "no_data"
+        assert result["label"] == "-"
 
     def test_none_rates_skipped(self):
         """Entries with None total_return_rate are skipped."""
