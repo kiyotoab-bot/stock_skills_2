@@ -7,8 +7,8 @@ a single source of truth for suffix-based lookups.
 from src.core.common import is_cash
 
 
-# Comprehensive suffix -> country mapping (from portfolio_manager.py)
-SUFFIX_TO_COUNTRY = {
+# Comprehensive suffix -> region mapping (from portfolio_manager.py)
+SUFFIX_TO_REGION = {
     ".T": "Japan",
     ".SI": "Singapore",
     ".BK": "Thailand",
@@ -31,6 +31,9 @@ SUFFIX_TO_COUNTRY = {
     ".NS": "India",
     ".BO": "India",
 }
+
+# Backward-compatible alias (KIK-392)
+SUFFIX_TO_COUNTRY = SUFFIX_TO_REGION
 
 # Comprehensive suffix -> currency mapping (from portfolio_manager.py)
 SUFFIX_TO_CURRENCY = {
@@ -101,13 +104,13 @@ def infer_country(symbol: str, info: dict | None = None) -> str:
         # Reverse lookup: find country for this currency
         for suffix, c in SUFFIX_TO_CURRENCY.items():
             if c == cur:
-                return SUFFIX_TO_COUNTRY.get(suffix, "Unknown")
+                return SUFFIX_TO_REGION.get(suffix, "Unknown")
         if cur == "USD":
             return "United States"
         if cur == "JPY":
             return "Japan"
         return "Unknown"
-    for suffix, country in SUFFIX_TO_COUNTRY.items():
+    for suffix, country in SUFFIX_TO_REGION.items():
         if symbol.upper().endswith(suffix.upper()):
             return country
     # No suffix typically means US stock
