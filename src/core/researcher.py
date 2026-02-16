@@ -219,37 +219,46 @@ def research_industry(theme: str) -> dict:
     }
 
 
-def research_market(market: str) -> dict:
-    """Run market overview research via Grok API.
+def research_market(market: str, yahoo_client_module=None) -> dict:
+    """Run market overview research via yfinance quantitative + Grok qualitative.
 
     Parameters
     ----------
     market : str
         Market name or index (e.g. "Nikkei 225", "S&P500").
+    yahoo_client_module : module, optional
+        The yahoo_client module for macro indicators (enables mock injection).
+        When ``None``, macro_indicators will be empty (backward compatible).
 
     Returns
     -------
     dict
-        Market research data. When Grok API is unavailable,
-        returns empty result with ``api_unavailable=True``.
+        Market research data with ``macro_indicators`` (Layer 1, always)
+        and ``grok_research`` (Layer 2, when Grok API is available).
     """
-    if not _grok_available():
-        return {
-            "market": market,
-            "type": "market",
-            "grok_research": _empty_market(),
-            "api_unavailable": True,
-        }
+    # Layer 1: yfinance quantitative (always available)
+    macro_indicators: list[dict] = []
+    if yahoo_client_module and hasattr(yahoo_client_module, "get_macro_indicators"):
+        try:
+            macro_indicators = yahoo_client_module.get_macro_indicators() or []
+        except Exception:
+            pass
 
-    result = _safe_grok_call(grok_client.search_market, market)
-    if result is None:
-        result = _empty_market()
+    # Layer 2: Grok qualitative (when API key is set)
+    grok_research = _empty_market()
+    api_unavailable = True
+    if _grok_available():
+        result = _safe_grok_call(grok_client.search_market, market)
+        if result is not None:
+            grok_research = result
+        api_unavailable = False
 
     return {
         "market": market,
         "type": "market",
-        "grok_research": result,
-        "api_unavailable": False,
+        "macro_indicators": macro_indicators,
+        "grok_research": grok_research,
+        "api_unavailable": api_unavailable,
     }
 
 

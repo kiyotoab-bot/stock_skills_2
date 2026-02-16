@@ -78,7 +78,7 @@ def cmd_market(args):
         sys.exit(1)
 
     print(f"マーケットリサーチ中: {args.market} ...")
-    result = research_market(args.market)
+    result = research_market(args.market, yahoo_client)
 
     if HAS_FORMATTER:
         print(format_market_research(result))
