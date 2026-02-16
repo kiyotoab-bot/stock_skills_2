@@ -505,6 +505,19 @@ class TestCalculateShareholderReturnHistory:
         assert result[0]["fiscal_year"] is None
         assert result[1]["fiscal_year"] is None
 
+    def test_market_cap_zero(self):
+        """market_cap == 0 returns None for rates but amounts are calculated."""
+        stock = {
+            "dividend_paid_history": [-100e6, -90e6],
+            "stock_repurchase_history": [-50e6, -30e6],
+            "cashflow_fiscal_years": [2024, 2023],
+            "market_cap": 0,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 2
+        assert result[0]["total_return_amount"] == 150e6
+        assert result[0]["total_return_rate"] is None
+
     def test_positive_values_abs(self):
         """Positive values are abs'd (though normally negative in cashflow)."""
         stock = {
