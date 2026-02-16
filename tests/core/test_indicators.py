@@ -5,6 +5,7 @@ import pytest
 from src.core.indicators import (
     calculate_value_score,
     calculate_shareholder_return,
+    calculate_shareholder_return_history,
     _score_per,
     _score_pbr,
     _score_dividend,
@@ -408,3 +409,110 @@ class TestCalculateShareholderReturn:
         assert result["stock_repurchase"] == 500_000_000_000
         assert result["total_return_rate"] is not None
         assert result["total_return_rate"] > 0
+
+
+# ===================================================================
+# calculate_shareholder_return_history (KIK-380)
+# ===================================================================
+
+class TestCalculateShareholderReturnHistory:
+    """Tests for calculate_shareholder_return_history()."""
+
+    def test_normal_3_years(self):
+        """3-year history with matching lengths."""
+        stock = {
+            "dividend_paid_history": [-800e9, -750e9, -700e9],
+            "stock_repurchase_history": [-500e9, -300e9, -200e9],
+            "cashflow_fiscal_years": [2024, 2023, 2022],
+            "market_cap": 42e12,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 3
+        assert result[0]["fiscal_year"] == 2024
+        assert result[0]["dividend_paid"] == 800e9
+        assert result[0]["stock_repurchase"] == 500e9
+        assert result[0]["total_return_amount"] == 1300e9
+        assert result[0]["total_return_rate"] == pytest.approx(1300e9 / 42e12)
+        assert result[2]["fiscal_year"] == 2022
+        assert result[2]["total_return_amount"] == 900e9
+
+    def test_empty_history(self):
+        """No history data returns empty list."""
+        stock = {"market_cap": 42e12}
+        result = calculate_shareholder_return_history(stock)
+        assert result == []
+
+    def test_dividend_only_history(self):
+        """Only dividend history available."""
+        stock = {
+            "dividend_paid_history": [-100e6, -90e6],
+            "cashflow_fiscal_years": [2024, 2023],
+            "market_cap": 10e9,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 2
+        assert result[0]["dividend_paid"] == 100e6
+        assert result[0]["stock_repurchase"] is None
+        assert result[0]["total_return_amount"] == 100e6
+
+    def test_repurchase_only_history(self):
+        """Only repurchase history available."""
+        stock = {
+            "stock_repurchase_history": [-200e6, -150e6],
+            "cashflow_fiscal_years": [2024, 2023],
+            "market_cap": 10e9,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 2
+        assert result[0]["dividend_paid"] is None
+        assert result[0]["stock_repurchase"] == 200e6
+        assert result[0]["total_return_amount"] == 200e6
+
+    def test_mismatched_lengths(self):
+        """Different length histories use max length."""
+        stock = {
+            "dividend_paid_history": [-100e6, -90e6, -80e6],
+            "stock_repurchase_history": [-50e6],
+            "cashflow_fiscal_years": [2024, 2023, 2022],
+            "market_cap": 10e9,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 3
+        assert result[0]["stock_repurchase"] == 50e6
+        assert result[1]["stock_repurchase"] is None
+        assert result[2]["stock_repurchase"] is None
+
+    def test_no_market_cap(self):
+        """No market_cap means rates are None but amounts are calculated."""
+        stock = {
+            "dividend_paid_history": [-100e6],
+            "stock_repurchase_history": [-50e6],
+            "cashflow_fiscal_years": [2024],
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 1
+        assert result[0]["total_return_amount"] == 150e6
+        assert result[0]["total_return_rate"] is None
+
+    def test_no_fiscal_years(self):
+        """Missing fiscal years set fiscal_year to None."""
+        stock = {
+            "dividend_paid_history": [-100e6, -90e6],
+            "market_cap": 10e9,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 2
+        assert result[0]["fiscal_year"] is None
+        assert result[1]["fiscal_year"] is None
+
+    def test_positive_values_abs(self):
+        """Positive values are abs'd (though normally negative in cashflow)."""
+        stock = {
+            "dividend_paid_history": [100e6, 90e6],
+            "stock_repurchase_history": [50e6, 30e6],
+            "cashflow_fiscal_years": [2024, 2023],
+            "market_cap": 10e9,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert result[0]["dividend_paid"] == 100e6
+        assert result[0]["stock_repurchase"] == 50e6

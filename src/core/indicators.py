@@ -128,6 +128,55 @@ def calculate_value_score(stock_data: dict, thresholds: Optional[dict] = None) -
     return round(min(total, 100.0), 2)
 
 
+def calculate_shareholder_return_history(stock: dict) -> list[dict]:
+    """Calculate shareholder return for multiple fiscal years.
+
+    Uses ``dividend_paid_history``, ``stock_repurchase_history``, and
+    ``cashflow_fiscal_years`` from yahoo_client's ``get_stock_detail``.
+
+    Returns a list of dicts (latest-first), each containing:
+        fiscal_year, dividend_paid, stock_repurchase,
+        total_return_amount, total_return_rate.
+
+    Falls back to current single-period data if history is unavailable.
+    """
+    market_cap = stock.get("market_cap")
+    div_hist: list[float] = stock.get("dividend_paid_history") or []
+    rep_hist: list[float] = stock.get("stock_repurchase_history") or []
+    fiscal_years: list[int] = stock.get("cashflow_fiscal_years") or []
+
+    if not div_hist and not rep_hist:
+        return []
+
+    n = max(len(div_hist), len(rep_hist))
+    results: list[dict] = []
+    for i in range(n):
+        div_raw = div_hist[i] if i < len(div_hist) else None
+        rep_raw = rep_hist[i] if i < len(rep_hist) else None
+        fy = fiscal_years[i] if i < len(fiscal_years) else None
+
+        dividend_paid = abs(div_raw) if div_raw is not None else None
+        stock_repurchase = abs(rep_raw) if rep_raw is not None else None
+
+        total: Optional[float] = None
+        if dividend_paid is not None or stock_repurchase is not None:
+            total = (dividend_paid or 0.0) + (stock_repurchase or 0.0)
+
+        total_rate: Optional[float] = None
+        if market_cap is not None and market_cap > 0 and total is not None:
+            total_rate = total / market_cap
+
+        results.append({
+            "fiscal_year": fy,
+            "dividend_paid": dividend_paid,
+            "stock_repurchase": stock_repurchase,
+            "total_return_amount": total,
+            "total_return_rate": total_rate,
+        })
+
+    return results
+
+
 def calculate_shareholder_return(stock: dict) -> dict:
     """Calculate total shareholder return rate.
 
