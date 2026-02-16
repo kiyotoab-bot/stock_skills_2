@@ -265,6 +265,52 @@ def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[f
         return []
 
 
+def _build_dividend_history_from_actions(
+    ticker, shares_outstanding, max_years: int = 4
+) -> tuple:
+    """Build dividend history from ticker.dividends as a fallback (KIK-388).
+
+    When cashflow does not contain dividend payment history, use per-share
+    dividend actions grouped by calendar year and multiplied by
+    shares_outstanding to estimate total amounts.
+
+    Returns
+    -------
+    tuple[list[float], list[int]]
+        (dividend_amounts, fiscal_years) both in latest-first order.
+        Amounts are negative (cash outflow convention matching cashflow).
+        Returns ([], []) if data is insufficient.
+    """
+    try:
+        if shares_outstanding is None or shares_outstanding <= 0:
+            return [], []
+
+        divs = ticker.dividends
+        if divs is None or len(divs) == 0:
+            return [], []
+
+        # Group by calendar year, sum per-share dividends
+        yearly = divs.groupby(divs.index.year).sum()
+        if len(yearly) == 0:
+            return [], []
+
+        # Take most recent max_years, sorted latest-first
+        years_sorted = sorted(yearly.index, reverse=True)[:max_years]
+
+        amounts: list = []
+        fiscal_years: list = []
+        for year in years_sorted:
+            per_share_total = float(yearly.loc[year])
+            if per_share_total > 0:
+                # Negative convention (cash outflow) to match cashflow format
+                amounts.append(-(per_share_total * shares_outstanding))
+                fiscal_years.append(int(year))
+
+        return amounts, fiscal_years
+    except Exception:
+        return [], []
+
+
 # ---------------------------------------------------------------------------
 # get_stock_detail
 # ---------------------------------------------------------------------------
@@ -397,6 +443,17 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
                 pass
         except Exception:
             pass
+
+        # KIK-388: Fallback to ticker.dividends when cashflow dividend history is sparse
+        if len(dividend_paid_history) < 2:
+            shares_out = _safe_get(ticker.info, "sharesOutstanding")
+            fb_amounts, fb_years = _build_dividend_history_from_actions(
+                ticker, shares_out
+            )
+            if len(fb_amounts) >= 2:
+                dividend_paid_history = fb_amounts
+                if not cashflow_fiscal_years:
+                    cashflow_fiscal_years = fb_years
 
         # --- Income statement: EPS, net income, revenue/NI history ---
         eps_current: Optional[float] = None

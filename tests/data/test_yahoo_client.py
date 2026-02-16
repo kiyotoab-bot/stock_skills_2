@@ -14,8 +14,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import pandas as pd
+from unittest.mock import MagicMock
+
 from src.data.yahoo_client import (
     CACHE_TTL_HOURS,
+    _build_dividend_history_from_actions,
     _cache_path,
     _normalize_ratio,
     _read_cache,
@@ -348,3 +352,93 @@ class TestSanitizeAnomalies:
         data = {"dividend_yield": 0.78}
         result = _sanitize_anomalies(data)
         assert result is data
+
+
+# ---------------------------------------------------------------------------
+# _build_dividend_history_from_actions (KIK-388)
+# ---------------------------------------------------------------------------
+
+class TestBuildDividendHistoryFromActions:
+    """Tests for _build_dividend_history_from_actions() (KIK-388)."""
+
+    def test_normal_multi_year(self):
+        """Multi-year dividend history is built correctly."""
+        mock_ticker = MagicMock()
+        dates = pd.to_datetime([
+            "2024-06-01", "2024-12-01",
+            "2023-06-01", "2023-12-01",
+            "2022-06-01", "2022-12-01",
+        ])
+        divs = pd.Series([30.0, 35.0, 28.0, 32.0, 25.0, 28.0], index=dates)
+        mock_ticker.dividends = divs
+
+        shares = 1_000_000.0
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, shares)
+
+        assert len(amounts) == 3
+        assert years == [2024, 2023, 2022]
+        assert amounts[0] == pytest.approx(-(30 + 35) * 1_000_000)
+        assert amounts[1] == pytest.approx(-(28 + 32) * 1_000_000)
+        assert amounts[2] == pytest.approx(-(25 + 28) * 1_000_000)
+        assert all(a < 0 for a in amounts)
+
+    def test_no_shares_outstanding(self):
+        """Returns empty when shares_outstanding is None."""
+        mock_ticker = MagicMock()
+        mock_ticker.dividends = pd.Series([30.0], index=pd.to_datetime(["2024-06-01"]))
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, None)
+        assert amounts == []
+        assert years == []
+
+    def test_zero_shares_outstanding(self):
+        """Returns empty when shares_outstanding is 0."""
+        mock_ticker = MagicMock()
+        mock_ticker.dividends = pd.Series([30.0], index=pd.to_datetime(["2024-06-01"]))
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, 0)
+        assert amounts == []
+        assert years == []
+
+    def test_empty_dividends(self):
+        """Returns empty when ticker.dividends is empty."""
+        mock_ticker = MagicMock()
+        mock_ticker.dividends = pd.Series([], dtype=float)
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, 1e6)
+        assert amounts == []
+        assert years == []
+
+    def test_none_dividends(self):
+        """Returns empty when ticker.dividends is None."""
+        mock_ticker = MagicMock()
+        mock_ticker.dividends = None
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, 1e6)
+        assert amounts == []
+        assert years == []
+
+    def test_single_year(self):
+        """Single year of dividends returns 1 entry."""
+        mock_ticker = MagicMock()
+        dates = pd.to_datetime(["2024-03-01", "2024-09-01"])
+        divs = pd.Series([25.0, 25.0], index=dates)
+        mock_ticker.dividends = divs
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, 1e6)
+        assert len(amounts) == 1
+        assert years == [2024]
+        assert amounts[0] == pytest.approx(-50.0 * 1e6)
+
+    def test_max_years_limit(self):
+        """Respects max_years parameter."""
+        mock_ticker = MagicMock()
+        dates = pd.to_datetime([f"{y}-06-01" for y in range(2018, 2025)])
+        divs = pd.Series([30.0] * 7, index=dates)
+        mock_ticker.dividends = divs
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, 1e6, max_years=3)
+        assert len(amounts) == 3
+        assert years == [2024, 2023, 2022]
+
+    def test_exception_returns_empty(self):
+        """Exceptions are caught and return empty."""
+        mock_ticker = MagicMock()
+        type(mock_ticker).dividends = property(lambda self: (_ for _ in ()).throw(RuntimeError("fail")))
+        amounts, years = _build_dividend_history_from_actions(mock_ticker, 1e6)
+        assert amounts == []
+        assert years == []

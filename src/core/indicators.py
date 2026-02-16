@@ -193,7 +193,8 @@ def assess_return_stability(history: list[dict]) -> dict:
     - ``decreasing``: Rates falling year-over-year
     - ``stable``: All years >= 5%
     - ``mixed``: None of the above patterns
-    - ``unknown``: Insufficient data (< 2 years with rates)
+    - ``unknown``: Insufficient data (1 year only, cannot assess trend)
+    - ``no_data``: No valid return rate data at all
 
     Returns dict with keys: stability, label, latest_rate, avg_rate.
     """
@@ -203,12 +204,21 @@ def assess_return_stability(history: list[dict]) -> dict:
         if e.get("total_return_rate") is not None
     ]
 
+    # No data at all (KIK-388)
+    if len(rates) == 0:
+        return {
+            "stability": "no_data",
+            "label": "-",
+            "latest_rate": None,
+            "avg_rate": None,
+        }
+
     if len(rates) < 2:
         return {
             "stability": "unknown",
             "label": "❓ データ不足",
-            "latest_rate": rates[0] if rates else None,
-            "avg_rate": rates[0] if rates else None,
+            "latest_rate": rates[0],
+            "avg_rate": rates[0],
         }
 
     latest = rates[0]
