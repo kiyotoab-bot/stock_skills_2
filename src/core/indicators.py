@@ -114,7 +114,12 @@ def calculate_value_score(stock_data: dict, thresholds: Optional[dict] = None) -
     # Support both yahoo raw keys and our normalised keys
     per = stock_data.get("trailingPE") or stock_data.get("per")
     pbr = stock_data.get("priceToBook") or stock_data.get("pbr")
-    div_yield = stock_data.get("dividendYield") or stock_data.get("dividend_yield")
+    # Prefer trailing (actual) dividend yield, fallback to forward/predicted
+    div_yield = (
+        stock_data.get("dividend_yield_trailing")
+        or stock_data.get("dividendYield")
+        or stock_data.get("dividend_yield")
+    )
     roe = stock_data.get("returnOnEquity") or stock_data.get("roe")
     growth = stock_data.get("revenueGrowth") or stock_data.get("revenue_growth")
 
@@ -205,11 +210,14 @@ def calculate_shareholder_return(stock: dict) -> dict:
         if stock_repurchase is not None:
             buyback_yield = stock_repurchase / market_cap
 
+    # Prefer trailing (actual) dividend yield, fallback to forward/predicted
+    div_yield = stock.get("dividend_yield_trailing") or stock.get("dividend_yield")
+
     return {
         "dividend_paid": dividend_paid,
         "stock_repurchase": stock_repurchase,
         "total_return_amount": total,
         "total_return_rate": total_rate,
-        "dividend_yield": stock.get("dividend_yield"),
+        "dividend_yield": div_yield,
         "buyback_yield": buyback_yield,
     }

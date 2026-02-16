@@ -103,6 +103,7 @@ class ValueScreener:
                 "per": data.get("per"),
                 "pbr": data.get("pbr"),
                 "dividend_yield": data.get("dividend_yield"),
+                "dividend_yield_trailing": data.get("dividend_yield_trailing"),
                 "roe": data.get("roe"),
                 "value_score": score,
             })
@@ -168,6 +169,11 @@ class QueryScreener:
         if raw_div is not None and raw_div > 0.15:
             raw_div = None
 
+        # Trailing dividend yield (actual, ratio form from yfinance)
+        raw_div_trailing = quote.get("trailingAnnualDividendYield")
+        if raw_div_trailing is not None and raw_div_trailing > 0.15:
+            raw_div_trailing = None
+
         if raw_roe is not None and (raw_roe < -1.0 or raw_roe > 2.0):
             raw_roe = None
 
@@ -188,6 +194,7 @@ class QueryScreener:
             "roe": raw_roe,
             # Dividend
             "dividend_yield": raw_div,
+            "dividend_yield_trailing": raw_div_trailing,
             # Growth
             "revenue_growth": raw_rev_growth,
             "earnings_growth": quote.get("earningsGrowth"),
@@ -494,6 +501,7 @@ class PullbackScreener:
                 "per": stock.get("per"),
                 "pbr": stock.get("pbr"),
                 "dividend_yield": stock.get("dividend_yield"),
+                "dividend_yield_trailing": stock.get("dividend_yield_trailing"),
                 "roe": stock.get("roe"),
                 # Technical
                 "pullback_pct": stock.get("pullback_pct"),
@@ -717,6 +725,7 @@ class TrendingScreener:
                     "per": None,
                     "pbr": None,
                     "dividend_yield": None,
+                    "dividend_yield_trailing": None,
                     "roe": None,
                     "value_score": 0.0,
                     "classification": self.CLASSIFICATION_NO_DATA,
@@ -735,6 +744,7 @@ class TrendingScreener:
                 "per": info.get("per"),
                 "pbr": info.get("pbr"),
                 "dividend_yield": info.get("dividend_yield"),
+                "dividend_yield_trailing": info.get("dividend_yield_trailing"),
                 "roe": info.get("roe"),
                 "value_score": score,
                 "classification": classification,

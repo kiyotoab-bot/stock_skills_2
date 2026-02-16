@@ -84,6 +84,11 @@ def _sanitize_anomalies(data: dict) -> dict:
     if dy is not None and dy > 0.15:
         data["dividend_yield"] = None
 
+    # dividend_yield_trailing: max 15%
+    dy_t = data.get("dividend_yield_trailing")
+    if dy_t is not None and dy_t > 0.15:
+        data["dividend_yield_trailing"] = None
+
     # pbr: min 0.05
     pbr = data.get("pbr")
     if pbr is not None and pbr < 0.05:
@@ -141,6 +146,8 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             "operating_margin": _safe_get(info, "operatingMargins"),
             # Dividend (yfinance returns percentage, e.g. 2.52 for 2.52%)
             "dividend_yield": _normalize_ratio(_safe_get(info, "dividendYield")),
+            # Trailing dividend yield (already a ratio from yfinance, e.g. 0.025 = 2.5%)
+            "dividend_yield_trailing": _safe_get(info, "trailingAnnualDividendYield"),
             "payout_ratio": _safe_get(info, "payoutRatio"),
             # Growth
             "revenue_growth": _safe_get(info, "revenueGrowth"),

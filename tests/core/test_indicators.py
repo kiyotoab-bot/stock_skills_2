@@ -529,3 +529,86 @@ class TestCalculateShareholderReturnHistory:
         result = calculate_shareholder_return_history(stock)
         assert result[0]["dividend_paid"] == 100e6
         assert result[0]["stock_repurchase"] == 50e6
+
+
+# ===================================================================
+# Trailing dividend yield fallback (KIK-382)
+# ===================================================================
+
+class TestTrailingDividendYieldFallback:
+    """Test that trailing dividend yield is preferred over forward."""
+
+    def test_value_score_prefers_trailing(self):
+        """calculate_value_score should use dividend_yield_trailing when available."""
+        stock_trailing = {
+            "dividend_yield_trailing": 0.05,
+            "dividend_yield": 0.03,
+        }
+        stock_forward = {
+            "dividend_yield": 0.03,
+        }
+        score_trailing = calculate_value_score(stock_trailing)
+        score_forward = calculate_value_score(stock_forward)
+        assert score_trailing > score_forward
+
+    def test_value_score_falls_back_to_forward(self):
+        """calculate_value_score should use dividend_yield when trailing is absent."""
+        stock = {"dividend_yield": 0.04}
+        score = calculate_value_score(stock)
+        assert score > 0
+
+    def test_value_score_falls_back_to_yahoo_raw(self):
+        """calculate_value_score should use dividendYield when both normalized are absent."""
+        stock = {"dividendYield": 0.04}
+        score = calculate_value_score(stock)
+        assert score > 0
+
+    def test_value_score_trailing_none_uses_forward(self):
+        """Trailing is None -> fallback to forward."""
+        stock = {
+            "dividend_yield_trailing": None,
+            "dividend_yield": 0.04,
+        }
+        score = calculate_value_score(stock)
+        assert score > 0
+
+    def test_value_score_trailing_zero_uses_forward(self):
+        """Trailing is 0 (falsy) -> fallback to forward."""
+        stock = {
+            "dividend_yield_trailing": 0,
+            "dividend_yield": 0.04,
+        }
+        score = calculate_value_score(stock)
+        assert score > 0
+
+    def test_shareholder_return_prefers_trailing(self):
+        """calculate_shareholder_return should use trailing dividend_yield."""
+        stock = {
+            "dividend_yield_trailing": 0.035,
+            "dividend_yield": 0.028,
+            "dividend_paid": -100,
+            "market_cap": 10000,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_yield"] == 0.035
+
+    def test_shareholder_return_falls_back_to_forward(self):
+        """calculate_shareholder_return should use forward when trailing is absent."""
+        stock = {
+            "dividend_yield": 0.028,
+            "dividend_paid": -100,
+            "market_cap": 10000,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_yield"] == 0.028
+
+    def test_shareholder_return_trailing_none(self):
+        """Trailing is None -> fallback to forward in shareholder return."""
+        stock = {
+            "dividend_yield_trailing": None,
+            "dividend_yield": 0.028,
+            "dividend_paid": -100,
+            "market_cap": 10000,
+        }
+        result = calculate_shareholder_return(stock)
+        assert result["dividend_yield"] == 0.028

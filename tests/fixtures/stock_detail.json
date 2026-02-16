@@ -15,6 +15,7 @@
   "profit_margin": 0.08,
   "operating_margin": 0.09,
   "dividend_yield": 0.028,
+  "dividend_yield_trailing": 0.025,
   "payout_ratio": 0.30,
   "revenue_growth": 0.15,
   "earnings_growth": 0.10,
