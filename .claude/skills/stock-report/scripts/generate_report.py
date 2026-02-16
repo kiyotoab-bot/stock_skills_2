@@ -27,6 +27,12 @@ try:
 except ImportError:
     HAS_HISTORY = False
 
+try:
+    from src.core.health_check import _detect_value_trap
+    HAS_VALUE_TRAP = True
+except ImportError:
+    HAS_VALUE_TRAP = False
+
 
 def main():
     if len(sys.argv) < 2:
@@ -88,6 +94,15 @@ def main():
     print("## 割安度判定")
     print(f"- **スコア**: {score:.1f} / 100")
     print(f"- **判定**: {verdict}")
+
+    # KIK-381: Value trap warning
+    if HAS_VALUE_TRAP:
+        vt = _detect_value_trap(data)
+        if vt["is_trap"]:
+            print()
+            print("## ⚠️ バリュートラップ注意")
+            for reason in vt["reasons"]:
+                print(f"- {reason}")
 
     # KIK-375: Shareholder return section
     if HAS_SHAREHOLDER_RETURN:

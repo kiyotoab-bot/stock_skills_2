@@ -943,3 +943,74 @@ class TestCrossEventAlerts:
         hist = pd.DataFrame({"Close": prices, "Volume": [1000] * 201})
         result = check_trend_health(hist)
         assert result["cross_signal"] == "none"
+
+
+# ===================================================================
+# Value trap detection tests (KIK-381)
+# ===================================================================
+
+from src.core.health_check import _detect_value_trap
+
+
+class TestDetectValueTrap:
+    """Tests for _detect_value_trap() (KIK-381)."""
+
+    def test_condition_a_low_per_negative_growth(self):
+        stock = {"per": 5.0, "eps_growth": -0.10}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is True
+        assert "低PERだが利益減少中" in result["reasons"]
+
+    def test_condition_b_low_per_revenue_decline(self):
+        stock = {"per": 8.0, "eps_growth": -0.08, "revenue_growth": -0.05}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is True
+        assert "低PER+売上減少トレンド" in result["reasons"]
+
+    def test_condition_c_low_pbr_low_roe(self):
+        stock = {"pbr": 0.6, "roe": 0.03, "eps_growth": -0.05}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is True
+        assert "低PBRだがROE低下・利益減少" in result["reasons"]
+
+    def test_no_trap_healthy_stock(self):
+        stock = {"per": 8.0, "eps_growth": 0.10, "revenue_growth": 0.05}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is False
+        assert result["reasons"] == []
+
+    def test_no_trap_high_per(self):
+        stock = {"per": 20.0, "eps_growth": -0.10}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is False
+
+    def test_none_values(self):
+        result = _detect_value_trap({})
+        assert result["is_trap"] is False
+        assert result["reasons"] == []
+
+    def test_none_stock_detail(self):
+        result = _detect_value_trap(None)
+        assert result["is_trap"] is False
+
+    def test_tre_like_data(self):
+        """TRE actual data: PER 5.22, eps_growth +2.43, revenue_growth -11.8%."""
+        stock = {"per": 5.22, "pbr": 1.02, "roe": 0.177, "eps_growth": 2.43, "revenue_growth": -0.118}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is True
+        assert "低PER+売上減少トレンド" in result["reasons"]
+
+    def test_condition_b_positive_eps_revenue_decline(self):
+        """Revenue declining with positive EPS should still trigger (cost-cutting trap)."""
+        stock = {"per": 7.0, "eps_growth": 1.5, "revenue_growth": -0.10}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is True
+        assert "低PER+売上減少トレンド" in result["reasons"]
+        assert "低PERだが利益減少中" not in result["reasons"]  # EPS is positive
+
+    def test_multiple_conditions_deduplicated(self):
+        """Conditions A+B overlap: reasons should be deduplicated."""
+        stock = {"per": 5.0, "eps_growth": -0.10, "revenue_growth": -0.05}
+        result = _detect_value_trap(stock)
+        assert result["is_trap"] is True
+        assert len(result["reasons"]) == len(set(result["reasons"]))
