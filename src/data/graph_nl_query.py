@@ -49,6 +49,13 @@ _TEMPLATES = [
     (r"取引.*履歴|売買.*記録|買った.*理由|トレード.*記録", "trade_context", _extract_symbol),
     (r"よく.*出.*買って.*ない|頻出.*未購入|買い忘れ", "recurring_picks", None),
     (r"メモ|ノート.*一覧|記録.*見せて|投資メモ", "notes", _extract_symbol),
+    # KIK-413 semantic sub-node queries
+    (r"ニュース.*履歴|過去.*ニュース|ニュース.*一覧", "stock_news", _extract_symbol),
+    (r"センチメント.*推移|感情.*推移|センチメント.*履歴", "sentiment_trend", _extract_symbol),
+    (r"カタリスト|材料|catalyst|好材料|悪材料", "catalysts", _extract_symbol),
+    (r"バリュエーション.*推移|PER.*推移|スコア.*推移|レポート.*推移", "report_trend", _extract_symbol),
+    (r"イベント|予定|upcoming|今後.*予定", "upcoming_events", None),
+    (r"指標.*推移|VIX.*推移|インディケーター|マクロ指標", "indicator_history", None),
 ]
 
 _COMPILED = [(re.compile(pat, re.IGNORECASE), qtype, extractor) for pat, qtype, extractor in _TEMPLATES]
@@ -122,6 +129,37 @@ def _execute(query_type: str, params: dict):
         if not symbol:
             return None
         return graph_query.get_trade_context(symbol)
+
+    # KIK-413 semantic queries
+    if query_type == "stock_news":
+        symbol = params.get("symbol")
+        if not symbol:
+            return None
+        return graph_query.get_stock_news_history(symbol)
+
+    if query_type == "sentiment_trend":
+        symbol = params.get("symbol")
+        if not symbol:
+            return None
+        return graph_query.get_sentiment_trend(symbol)
+
+    if query_type == "catalysts":
+        symbol = params.get("symbol")
+        if not symbol:
+            return None
+        return graph_query.get_catalysts(symbol)
+
+    if query_type == "report_trend":
+        symbol = params.get("symbol")
+        if not symbol:
+            return None
+        return graph_query.get_report_trend(symbol)
+
+    if query_type == "upcoming_events":
+        return graph_query.get_upcoming_events()
+
+    if query_type == "indicator_history":
+        return graph_query.get_recent_market_context()
 
     return None
 
@@ -217,6 +255,80 @@ def _fmt_notes(result, params: dict) -> str:
     return _fmt_trade_context(result, params)
 
 
+def _fmt_stock_news(result, params: dict) -> str:
+    symbol = params.get("symbol", "?")
+    if not result:
+        return f"{symbol} のニュース履歴は見つかりませんでした。"
+    lines = [f"## {symbol} のニュース履歴\n",
+             "| 日付 | ソース | タイトル |",
+             "|:-----|:-------|:---------|"]
+    for r in result:
+        title = (r.get("title") or "-")[:80]
+        lines.append(f"| {r.get('date', '-')} | {r.get('source', '-')} | {title} |")
+    return "\n".join(lines)
+
+
+def _fmt_sentiment_trend(result, params: dict) -> str:
+    symbol = params.get("symbol", "?")
+    if not result:
+        return f"{symbol} のセンチメント推移は見つかりませんでした。"
+    lines = [f"## {symbol} のセンチメント推移\n",
+             "| 日付 | ソース | スコア | サマリー |",
+             "|:-----|:-------|:-------|:---------|"]
+    for r in result:
+        summary = (r.get("summary") or "-")[:60]
+        score = r.get("score", "-")
+        lines.append(f"| {r.get('date', '-')} | {r.get('source', '-')} | {score} | {summary} |")
+    return "\n".join(lines)
+
+
+def _fmt_catalysts(result, params: dict) -> str:
+    symbol = params.get("symbol", "?")
+    pos = result.get("positive", [])
+    neg = result.get("negative", [])
+    if not pos and not neg:
+        return f"{symbol} のカタリスト情報は見つかりませんでした。"
+    lines = [f"## {symbol} のカタリスト\n"]
+    if pos:
+        lines.append("### ポジティブ材料\n")
+        for p in pos:
+            lines.append(f"- {(p or '-')[:100]}")
+    if neg:
+        lines.append("\n### ネガティブ材料\n")
+        for n in neg:
+            lines.append(f"- {(n or '-')[:100]}")
+    return "\n".join(lines)
+
+
+def _fmt_report_trend(result, params: dict) -> str:
+    symbol = params.get("symbol", "?")
+    if not result:
+        return f"{symbol} のバリュエーション推移は見つかりませんでした。"
+    lines = [f"## {symbol} のバリュエーション推移\n",
+             "| 日付 | スコア | 判定 | 株価 | PER | PBR |",
+             "|:-----|:-------|:-----|:-----|:----|:----|"]
+    for r in result:
+        lines.append(
+            f"| {r.get('date', '-')} | {r.get('score', '-')} | {r.get('verdict', '-')} "
+            f"| {r.get('price', '-')} | {r.get('per', '-')} | {r.get('pbr', '-')} |"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_upcoming_events(result, params: dict) -> str:
+    if not result:
+        return "今後のイベント情報は見つかりませんでした。"
+    lines = ["## 今後のイベント\n"]
+    for r in result:
+        lines.append(f"- [{r.get('date', '-')}] {(r.get('text') or '-')[:100]}")
+    return "\n".join(lines)
+
+
+def _fmt_indicator_history(result, params: dict) -> str:
+    """Reuse market_context formatter for indicator queries."""
+    return _fmt_market_context(result, params)
+
+
 _FORMATTERS = {
     "prior_report": _fmt_prior_report,
     "recurring_picks": _fmt_recurring_picks,
@@ -224,4 +336,11 @@ _FORMATTERS = {
     "market_context": _fmt_market_context,
     "trade_context": _fmt_trade_context,
     "notes": _fmt_notes,
+    # KIK-413
+    "stock_news": _fmt_stock_news,
+    "sentiment_trend": _fmt_sentiment_trend,
+    "catalysts": _fmt_catalysts,
+    "report_trend": _fmt_report_trend,
+    "upcoming_events": _fmt_upcoming_events,
+    "indicator_history": _fmt_indicator_history,
 }

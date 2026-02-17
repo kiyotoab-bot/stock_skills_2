@@ -1,12 +1,19 @@
-"""Neo4j graph store for investment knowledge graph (KIK-397/398).
+"""Neo4j graph store for investment knowledge graph (KIK-397/398/413).
 
 Provides schema initialization and CRUD operations for the knowledge graph.
 All writes use MERGE for idempotent operations.
 Graceful degradation: if Neo4j is unavailable, operations are silently skipped.
+
+NEO4J_MODE environment variable controls write depth (KIK-413):
+  - "off"     : No Neo4j writes (JSON only)
+  - "summary" : Current behavior -- score/verdict/summary only (backward compat)
+  - "full"    : Semantic sub-nodes (News, Sentiment, Catalyst, etc.) with relationships
+  Default: "full" if Neo4j reachable, "off" otherwise.
 """
 
 import os
 import re
+import time
 from datetime import date, datetime
 from typing import Optional
 
@@ -20,6 +27,38 @@ _NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 _NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password")
 
 _driver = None
+
+
+# ---------------------------------------------------------------------------
+# Write mode (KIK-413)
+# ---------------------------------------------------------------------------
+
+_mode_cache: tuple[str, float] = ("", 0.0)
+_MODE_TTL = 30.0
+
+
+def _get_mode() -> str:
+    """Return Neo4j write mode: 'off', 'summary', or 'full'.
+
+    Env var ``NEO4J_MODE`` overrides auto-detection.
+    Default: 'full' if Neo4j is reachable, 'off' otherwise.
+    Result is cached for ``_MODE_TTL`` seconds to avoid repeated connectivity checks.
+    """
+    global _mode_cache
+    env_mode = os.environ.get("NEO4J_MODE", "").lower()
+    if env_mode in ("off", "summary", "full"):
+        return env_mode
+    now = time.time()
+    if _mode_cache[0] and (now - _mode_cache[1]) < _MODE_TTL:
+        return _mode_cache[0]
+    mode = "full" if is_available() else "off"
+    _mode_cache = (mode, now)
+    return mode
+
+
+def get_mode() -> str:
+    """Public accessor for current Neo4j write mode."""
+    return _get_mode()
 
 
 def _get_driver():
@@ -71,6 +110,14 @@ _SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT research_id IF NOT EXISTS FOR (r:Research) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT watchlist_name IF NOT EXISTS FOR (w:Watchlist) REQUIRE w.name IS UNIQUE",
     "CREATE CONSTRAINT market_context_id IF NOT EXISTS FOR (m:MarketContext) REQUIRE m.id IS UNIQUE",
+    # KIK-413 full-mode nodes
+    "CREATE CONSTRAINT news_id IF NOT EXISTS FOR (n:News) REQUIRE n.id IS UNIQUE",
+    "CREATE CONSTRAINT sentiment_id IF NOT EXISTS FOR (s:Sentiment) REQUIRE s.id IS UNIQUE",
+    "CREATE CONSTRAINT catalyst_id IF NOT EXISTS FOR (c:Catalyst) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT analyst_view_id IF NOT EXISTS FOR (a:AnalystView) REQUIRE a.id IS UNIQUE",
+    "CREATE CONSTRAINT indicator_id IF NOT EXISTS FOR (i:Indicator) REQUIRE i.id IS UNIQUE",
+    "CREATE CONSTRAINT upcoming_event_id IF NOT EXISTS FOR (e:UpcomingEvent) REQUIRE e.id IS UNIQUE",
+    "CREATE CONSTRAINT sector_rotation_id IF NOT EXISTS FOR (r:SectorRotation) REQUIRE r.id IS UNIQUE",
 ]
 
 _SCHEMA_INDEXES = [
@@ -82,6 +129,11 @@ _SCHEMA_INDEXES = [
     "CREATE INDEX research_date IF NOT EXISTS FOR (r:Research) ON (r.date)",
     "CREATE INDEX research_type IF NOT EXISTS FOR (r:Research) ON (r.research_type)",
     "CREATE INDEX market_context_date IF NOT EXISTS FOR (m:MarketContext) ON (m.date)",
+    # KIK-413 full-mode indexes
+    "CREATE INDEX news_date IF NOT EXISTS FOR (n:News) ON (n.date)",
+    "CREATE INDEX sentiment_source IF NOT EXISTS FOR (s:Sentiment) ON (s.source)",
+    "CREATE INDEX catalyst_type IF NOT EXISTS FOR (c:Catalyst) ON (c.type)",
+    "CREATE INDEX indicator_date IF NOT EXISTS FOR (i:Indicator) ON (i.date)",
 ]
 
 
@@ -105,6 +157,8 @@ def init_schema() -> bool:
 
 def merge_stock(symbol: str, name: str = "", sector: str = "", country: str = "") -> bool:
     """Create or update a Stock node."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -137,6 +191,8 @@ def merge_screen(
     symbols: list[str],
 ) -> bool:
     """Create a Screen node and SURFACED relationships to stocks."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -170,6 +226,8 @@ def merge_report(
     report_date: str, symbol: str, score: float, verdict: str,
 ) -> bool:
     """Create a Report node and ANALYZED relationship."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -203,6 +261,8 @@ def merge_trade(
     shares: int, price: float, currency: str, memo: str = "",
 ) -> bool:
     """Create a Trade node and BOUGHT/SOLD relationship."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -236,6 +296,8 @@ def merge_trade(
 
 def merge_health(health_date: str, summary: dict, symbols: list[str]) -> bool:
     """Create a HealthCheck node and CHECKED relationships."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -272,6 +334,8 @@ def merge_note(
     symbol: Optional[str] = None, source: str = "",
 ) -> bool:
     """Create a Note node and ABOUT relationship to a stock."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -302,6 +366,8 @@ def merge_note(
 
 def tag_theme(symbol: str, theme: str) -> bool:
     """Tag a stock with a theme."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -337,6 +403,8 @@ def merge_research(
     For stock/business types, target is treated as a symbol and linked to Stock.
     For industry/market types, no Stock link is created.
     """
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -368,6 +436,8 @@ def merge_research(
 
 def merge_watchlist(name: str, symbols: list[str]) -> bool:
     """Create a Watchlist node and BOOKMARKED relationships to stocks."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -395,6 +465,8 @@ def merge_watchlist(name: str, symbols: list[str]) -> bool:
 
 def link_research_supersedes(research_type: str, target: str) -> bool:
     """Link Research nodes of same type+target in date order with SUPERSEDES."""
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -423,6 +495,8 @@ def merge_market_context(context_date: str, indices: list[dict]) -> bool:
 
     indices is stored as a JSON string (Neo4j can't store list-of-maps).
     """
+    if _get_mode() == "off":
+        return False
     driver = _get_driver()
     if driver is None:
         return False
@@ -454,6 +528,282 @@ def clear_all() -> bool:
     try:
         with driver.session() as session:
             session.run("MATCH (n) DETACH DELETE n")
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Query helpers
+# ---------------------------------------------------------------------------
+
+def _truncate(text: str, max_len: int = 500) -> str:
+    """Truncate text to max_len characters."""
+    if not isinstance(text, str):
+        return str(text)[:max_len] if text else ""
+    return text[:max_len]
+
+
+def merge_report_full(
+    report_date: str, symbol: str, score: float, verdict: str,
+    price: float = 0, per: float = 0, pbr: float = 0,
+    dividend_yield: float = 0, roe: float = 0, market_cap: float = 0,
+) -> bool:
+    """Extend an existing Report node with full valuation properties (KIK-413).
+
+    Calls merge_report() first, then SETs additional numeric fields.
+    Only runs in 'full' mode.
+    """
+    if _get_mode() != "full":
+        return merge_report(report_date, symbol, score, verdict)
+    # Ensure base Report node exists
+    merge_report(report_date, symbol, score, verdict)
+    driver = _get_driver()
+    if driver is None:
+        return False
+    report_id = f"report_{report_date}_{symbol}"
+    try:
+        with driver.session() as session:
+            session.run(
+                "MATCH (r:Report {id: $id}) "
+                "SET r.price = $price, r.per = $per, r.pbr = $pbr, "
+                "r.dividend_yield = $div, r.roe = $roe, r.market_cap = $mcap",
+                id=report_id, price=float(price or 0),
+                per=float(per or 0), pbr=float(pbr or 0),
+                div=float(dividend_yield or 0), roe=float(roe or 0),
+                mcap=float(market_cap or 0),
+            )
+        return True
+    except Exception:
+        return False
+
+
+def merge_research_full(
+    research_date: str, research_type: str, target: str,
+    summary: str = "",
+    grok_research: dict | None = None,
+    x_sentiment: dict | None = None,
+    news: list | None = None,
+) -> bool:
+    """Create Research node with semantic sub-nodes (KIK-413).
+
+    Expands grok_research data into News, Sentiment, Catalyst, AnalystView
+    nodes connected to the Research node via relationships.
+    Only creates sub-nodes in 'full' mode.
+    """
+    if _get_mode() != "full":
+        return merge_research(research_date, research_type, target, summary)
+    # Ensure base Research + Stock nodes exist
+    merge_research(research_date, research_type, target, summary)
+    driver = _get_driver()
+    if driver is None:
+        return False
+    research_id = f"research_{research_date}_{research_type}_{_safe_id(target)}"
+    try:
+        with driver.session() as session:
+            # --- News nodes (from grok recent_news + yahoo news) ---
+            news_items: list[dict | str] = []
+            if grok_research and isinstance(grok_research.get("recent_news"), list):
+                for item in grok_research["recent_news"][:5]:
+                    if isinstance(item, str):
+                        news_items.append({"title": item, "source": "grok"})
+                    elif isinstance(item, dict):
+                        news_items.append({**item, "source": "grok"})
+            if isinstance(news, list):
+                for item in news[:5]:
+                    if isinstance(item, dict):
+                        news_items.append({
+                            "title": item.get("title", ""),
+                            "source": item.get("publisher", "yahoo"),
+                            "link": item.get("link", ""),
+                        })
+            for i, nitem in enumerate(news_items[:10]):
+                nid = f"{research_id}_news_{i}"
+                title = _truncate(nitem.get("title", ""), 500)
+                source = nitem.get("source", "")[:50]
+                link = nitem.get("link", "")[:500]
+                session.run(
+                    "MERGE (n:News {id: $id}) "
+                    "SET n.date = $date, n.title = $title, "
+                    "n.source = $source, n.link = $link "
+                    "WITH n "
+                    "MATCH (r:Research {id: $rid}) "
+                    "MERGE (r)-[:HAS_NEWS]->(n)",
+                    id=nid, date=research_date, title=title,
+                    source=source, link=link, rid=research_id,
+                )
+                # MENTIONS→Stock for stock/business research
+                if research_type in ("stock", "business"):
+                    session.run(
+                        "MATCH (n:News {id: $nid}) "
+                        "MERGE (s:Stock {symbol: $symbol}) "
+                        "MERGE (n)-[:MENTIONS]->(s)",
+                        nid=nid, symbol=target,
+                    )
+
+            # --- Sentiment nodes ---
+            # From grok x_sentiment
+            if grok_research and isinstance(grok_research.get("x_sentiment"), dict):
+                xs = grok_research["x_sentiment"]
+                sid = f"{research_id}_sent_grok"
+                session.run(
+                    "MERGE (s:Sentiment {id: $id}) "
+                    "SET s.date = $date, s.source = 'grok_x', "
+                    "s.score = $score, s.summary = $summary "
+                    "WITH s "
+                    "MATCH (r:Research {id: $rid}) "
+                    "MERGE (r)-[:HAS_SENTIMENT]->(s)",
+                    id=sid, date=research_date,
+                    score=float(xs.get("score", 0)),
+                    summary=_truncate(xs.get("summary", ""), 500),
+                    rid=research_id,
+                )
+            # From top-level x_sentiment (yahoo/yfinance)
+            if isinstance(x_sentiment, dict) and x_sentiment:
+                sid2 = f"{research_id}_sent_yahoo"
+                pos = x_sentiment.get("positive", [])
+                neg = x_sentiment.get("negative", [])
+                pos_text = _truncate("; ".join(pos[:3]) if isinstance(pos, list) else str(pos), 500)
+                neg_text = _truncate("; ".join(neg[:3]) if isinstance(neg, list) else str(neg), 500)
+                session.run(
+                    "MERGE (s:Sentiment {id: $id}) "
+                    "SET s.date = $date, s.source = 'yahoo_x', "
+                    "s.positive = $pos, s.negative = $neg "
+                    "WITH s "
+                    "MATCH (r:Research {id: $rid}) "
+                    "MERGE (r)-[:HAS_SENTIMENT]->(s)",
+                    id=sid2, date=research_date,
+                    pos=pos_text, neg=neg_text, rid=research_id,
+                )
+
+            # --- Catalyst nodes ---
+            if grok_research and isinstance(grok_research.get("catalysts"), dict):
+                cats = grok_research["catalysts"]
+                for polarity in ("positive", "negative"):
+                    items = cats.get(polarity, [])
+                    if isinstance(items, list):
+                        for j, txt in enumerate(items[:5]):
+                            cid = f"{research_id}_cat_{polarity[0]}_{j}"
+                            session.run(
+                                "MERGE (c:Catalyst {id: $id}) "
+                                "SET c.date = $date, c.type = $polarity, "
+                                "c.text = $text "
+                                "WITH c "
+                                "MATCH (r:Research {id: $rid}) "
+                                "MERGE (r)-[:HAS_CATALYST]->(c)",
+                                id=cid, date=research_date, polarity=polarity,
+                                text=_truncate(str(txt), 500), rid=research_id,
+                            )
+
+            # --- AnalystView nodes ---
+            if grok_research and isinstance(grok_research.get("analyst_views"), list):
+                for k, view_text in enumerate(grok_research["analyst_views"][:5]):
+                    avid = f"{research_id}_av_{k}"
+                    session.run(
+                        "MERGE (a:AnalystView {id: $id}) "
+                        "SET a.date = $date, a.text = $text "
+                        "WITH a "
+                        "MATCH (r:Research {id: $rid}) "
+                        "MERGE (r)-[:HAS_ANALYST_VIEW]->(a)",
+                        id=avid, date=research_date,
+                        text=_truncate(str(view_text), 500),
+                        rid=research_id,
+                    )
+        return True
+    except Exception:
+        return False
+
+
+def merge_market_context_full(
+    context_date: str, indices: list[dict],
+    grok_research: dict | None = None,
+) -> bool:
+    """Create MarketContext with semantic sub-nodes (KIK-413).
+
+    Expands indices into Indicator nodes, and grok_research into
+    UpcomingEvent, SectorRotation, and Sentiment nodes.
+    Only creates sub-nodes in 'full' mode.
+    """
+    if _get_mode() != "full":
+        return merge_market_context(context_date, indices)
+    # Ensure base MarketContext node exists
+    merge_market_context(context_date, indices)
+    driver = _get_driver()
+    if driver is None:
+        return False
+    context_id = f"market_context_{context_date}"
+    try:
+        with driver.session() as session:
+            # --- Indicator nodes (from indices) ---
+            for i, idx in enumerate(indices[:20]):
+                iid = f"{context_id}_ind_{i}"
+                session.run(
+                    "MERGE (ind:Indicator {id: $id}) "
+                    "SET ind.date = $date, ind.name = $name, "
+                    "ind.symbol = $symbol, ind.price = $price, "
+                    "ind.daily_change = $dchange, ind.weekly_change = $wchange "
+                    "WITH ind "
+                    "MATCH (m:MarketContext {id: $mid}) "
+                    "MERGE (m)-[:INCLUDES]->(ind)",
+                    id=iid, date=context_date,
+                    name=str(idx.get("name", ""))[:100],
+                    symbol=str(idx.get("symbol", ""))[:20],
+                    price=float(idx.get("price", 0) or 0),
+                    dchange=float(idx.get("daily_change", 0) or 0),
+                    wchange=float(idx.get("weekly_change", 0) or 0),
+                    mid=context_id,
+                )
+
+            if not grok_research:
+                return True
+
+            # --- UpcomingEvent nodes ---
+            events = grok_research.get("upcoming_events", [])
+            if isinstance(events, list):
+                for j, ev in enumerate(events[:5]):
+                    eid = f"{context_id}_event_{j}"
+                    session.run(
+                        "MERGE (e:UpcomingEvent {id: $id}) "
+                        "SET e.date = $date, e.text = $text "
+                        "WITH e "
+                        "MATCH (m:MarketContext {id: $mid}) "
+                        "MERGE (m)-[:HAS_EVENT]->(e)",
+                        id=eid, date=context_date,
+                        text=_truncate(str(ev), 500), mid=context_id,
+                    )
+
+            # --- SectorRotation nodes ---
+            rotations = grok_research.get("sector_rotation", [])
+            if isinstance(rotations, list):
+                for k, rot in enumerate(rotations[:3]):
+                    rid = f"{context_id}_rot_{k}"
+                    session.run(
+                        "MERGE (sr:SectorRotation {id: $id}) "
+                        "SET sr.date = $date, sr.text = $text "
+                        "WITH sr "
+                        "MATCH (m:MarketContext {id: $mid}) "
+                        "MERGE (m)-[:HAS_ROTATION]->(sr)",
+                        id=rid, date=context_date,
+                        text=_truncate(str(rot), 500), mid=context_id,
+                    )
+
+            # --- Sentiment node (market-level) ---
+            sentiment = grok_research.get("sentiment")
+            if isinstance(sentiment, dict):
+                sid = f"{context_id}_sent"
+                session.run(
+                    "MERGE (s:Sentiment {id: $id}) "
+                    "SET s.date = $date, s.source = 'market', "
+                    "s.score = $score, s.summary = $summary "
+                    "WITH s "
+                    "MATCH (m:MarketContext {id: $mid}) "
+                    "MERGE (m)-[:HAS_SENTIMENT]->(s)",
+                    id=sid, date=context_date,
+                    score=float(sentiment.get("score", 0)),
+                    summary=_truncate(sentiment.get("summary", ""), 500),
+                    mid=context_id,
+                )
+
         return True
     except Exception:
         return False

@@ -1,6 +1,7 @@
-"""Graph query helpers for enriching skill output (KIK-406).
+"""Graph query helpers for enriching skill output (KIK-406/413).
 
 All functions return empty/None when Neo4j is unavailable (graceful degradation).
+KIK-413 additions: semantic sub-node queries (news, sentiment, catalysts, report trend, events).
 """
 
 import json
@@ -185,6 +186,141 @@ def get_recurring_picks(min_count: int = 2) -> list[dict]:
                 "RETURN symbol, cnt AS count, last_date "
                 "ORDER BY cnt DESC, last_date DESC",
                 min_count=min_count,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 7. Stock news history (KIK-413)
+# ---------------------------------------------------------------------------
+
+def get_stock_news_history(symbol: str, limit: int = 10) -> list[dict]:
+    """Get News nodes linked to a stock via News→MENTIONS→Stock.
+
+    Returns list of {date, title, source}.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (n:News)-[:MENTIONS]->(s:Stock {symbol: $symbol}) "
+                "RETURN n.date AS date, n.title AS title, n.source AS source "
+                "ORDER BY n.date DESC LIMIT $limit",
+                symbol=symbol, limit=limit,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 8. Sentiment trend (KIK-413)
+# ---------------------------------------------------------------------------
+
+def get_sentiment_trend(symbol: str, limit: int = 5) -> list[dict]:
+    """Get Sentiment nodes linked via Research→HAS_SENTIMENT for a stock.
+
+    Returns list of {date, source, score, summary}.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (r:Research)-[:RESEARCHED]->(s:Stock {symbol: $symbol}) "
+                "MATCH (r)-[:HAS_SENTIMENT]->(sent:Sentiment) "
+                "RETURN sent.date AS date, sent.source AS source, "
+                "sent.score AS score, sent.summary AS summary "
+                "ORDER BY sent.date DESC LIMIT $limit",
+                symbol=symbol, limit=limit,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 9. Catalysts (KIK-413)
+# ---------------------------------------------------------------------------
+
+def get_catalysts(symbol: str) -> dict:
+    """Get Catalyst nodes linked via Research→HAS_CATALYST for a stock.
+
+    Returns {positive: [text], negative: [text]}.
+    """
+    empty = {"positive": [], "negative": []}
+    driver = _get_driver()
+    if driver is None:
+        return empty
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (r:Research)-[:RESEARCHED]->(s:Stock {symbol: $symbol}) "
+                "MATCH (r)-[:HAS_CATALYST]->(c:Catalyst) "
+                "RETURN c.type AS type, c.text AS text "
+                "ORDER BY r.date DESC",
+                symbol=symbol,
+            )
+            out = {"positive": [], "negative": []}
+            for rec in result:
+                polarity = rec["type"]
+                if polarity in out:
+                    out[polarity].append(rec["text"])
+            return out
+    except Exception:
+        return empty
+
+
+# ---------------------------------------------------------------------------
+# 10. Report trend (KIK-413)
+# ---------------------------------------------------------------------------
+
+def get_report_trend(symbol: str, limit: int = 10) -> list[dict]:
+    """Get Report nodes with extended properties for a stock, newest first.
+
+    Returns list of {date, score, verdict, price, per, pbr}.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (r:Report)-[:ANALYZED]->(s:Stock {symbol: $symbol}) "
+                "RETURN r.date AS date, r.score AS score, r.verdict AS verdict, "
+                "r.price AS price, r.per AS per, r.pbr AS pbr "
+                "ORDER BY r.date DESC LIMIT $limit",
+                symbol=symbol, limit=limit,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 11. Upcoming events (KIK-413)
+# ---------------------------------------------------------------------------
+
+def get_upcoming_events(limit: int = 10) -> list[dict]:
+    """Get UpcomingEvent nodes from the most recent MarketContext.
+
+    Returns list of {date, text}.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (m:MarketContext)-[:HAS_EVENT]->(e:UpcomingEvent) "
+                "RETURN e.date AS date, e.text AS text "
+                "ORDER BY m.date DESC, e.id LIMIT $limit",
+                limit=limit,
             )
             return [dict(r) for r in result]
     except Exception:

@@ -5,6 +5,7 @@
 - Python 3.10+
 - 主要依存: yfinance, pyyaml, numpy, pandas, pytest
 - Grok API 利用時は `XAI_API_KEY` 環境変数を設定（未設定でも動作する）
+- Neo4j 書き込み深度は `NEO4J_MODE` 環境変数で制御: `off`/`summary`/`full`（デフォルト: 接続可能なら `full`）(KIK-413)
 
 ## コーディング規約
 

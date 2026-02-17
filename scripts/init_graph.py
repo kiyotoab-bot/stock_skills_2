@@ -26,14 +26,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.graph_store import (
     clear_all,
+    get_mode,
     init_schema,
     is_available,
     link_research_supersedes,
     merge_health,
     merge_market_context,
+    merge_market_context_full,
     merge_note,
     merge_report,
+    merge_report_full,
     merge_research,
+    merge_research_full,
     merge_screen,
     merge_stock,
     merge_trade,
@@ -92,11 +96,17 @@ def import_reports(history_dir: str) -> int:
                 name=data.get("name", ""),
                 sector=data.get("sector", ""),
             )
-            merge_report(
+            merge_report_full(
                 report_date=data.get("date", ""),
                 symbol=symbol,
                 score=data.get("value_score", 0),
                 verdict=data.get("verdict", ""),
+                price=data.get("price", 0),
+                per=data.get("per", 0),
+                pbr=data.get("pbr", 0),
+                dividend_yield=data.get("dividend_yield", 0),
+                roe=data.get("roe", 0),
+                market_cap=data.get("market_cap", 0),
             )
             count += 1
         except (json.JSONDecodeError, OSError):
@@ -176,11 +186,14 @@ def import_research(history_dir: str) -> int:
             if research_type in ("stock", "business"):
                 merge_stock(symbol=target, name=data.get("name", ""))
 
-            merge_research(
+            merge_research_full(
                 research_date=research_date,
                 research_type=research_type,
                 target=target,
                 summary=data.get("summary", ""),
+                grok_research=data.get("grok_research"),
+                x_sentiment=data.get("x_sentiment"),
+                news=data.get("news"),
             )
             targets[research_type].add(target)
             count += 1
@@ -209,7 +222,10 @@ def import_market_context(history_dir: str) -> int:
             if not context_date:
                 continue
             indices = data.get("indices", [])
-            merge_market_context(context_date=context_date, indices=indices)
+            merge_market_context_full(
+                context_date=context_date, indices=indices,
+                grok_research=data.get("grok_research"),
+            )
             count += 1
         except (json.JSONDecodeError, OSError):
             continue
