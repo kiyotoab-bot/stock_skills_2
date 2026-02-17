@@ -44,6 +44,30 @@ try:
 except ImportError:
     HAS_HISTORY = False
 
+try:
+    from src.data.graph_query import get_research_chain
+    HAS_GRAPH_QUERY = True
+except ImportError:
+    HAS_GRAPH_QUERY = False
+
+
+def _print_research_history(research_type: str, target: str):
+    """Print prior research history if graph data available (KIK-406)."""
+    if not HAS_GRAPH_QUERY:
+        return
+    try:
+        chain = get_research_chain(research_type, target, limit=3)
+        if chain:
+            print(f"\n### リサーチ履歴 ({len(chain)}回)")
+            for entry in chain:
+                d = entry.get("date", "?")
+                s = entry.get("summary", "")
+                summary_short = s[:60] + "..." if len(s) > 60 else s
+                print(f"  - {d}: {summary_short}")
+            print()
+    except Exception:
+        pass
+
 
 def cmd_stock(args):
     """銘柄リサーチ"""
@@ -51,6 +75,7 @@ def cmd_stock(args):
         print("Error: researcher モジュールが見つかりません。")
         sys.exit(1)
 
+    _print_research_history("stock", args.symbol)
     print(f"リサーチ中: {args.symbol} ...")
     result = research_stock(args.symbol, yahoo_client)
 
@@ -73,6 +98,7 @@ def cmd_industry(args):
         print("Error: researcher モジュールが見つかりません。")
         sys.exit(1)
 
+    _print_research_history("industry", args.theme)
     print(f"業界リサーチ中: {args.theme} ...")
     result = research_industry(args.theme)
 
@@ -95,6 +121,7 @@ def cmd_market(args):
         print("Error: researcher モジュールが見つかりません。")
         sys.exit(1)
 
+    _print_research_history("market", args.market)
     print(f"マーケットリサーチ中: {args.market} ...")
     result = research_market(args.market, yahoo_client)
 
@@ -121,6 +148,7 @@ def cmd_business(args):
         print("Error: researcher モジュール (research_business) が見つかりません。")
         sys.exit(1)
 
+    _print_research_history("business", args.symbol)
     print(f"ビジネスモデル分析中: {args.symbol} ...")
     result = research_business(args.symbol, yahoo_client)
 

@@ -80,8 +80,8 @@ class TestSchema:
     def test_init_schema_success(self, gs_with_driver):
         gs, _, session = gs_with_driver
         assert gs.init_schema() is True
-        # 10 constraints + 7 indexes = 17 statements
-        assert session.run.call_count == 17
+        # 11 constraints + 8 indexes = 19 statements
+        assert session.run.call_count == 19
 
     def test_init_schema_no_driver(self):
         import src.data.graph_store as gs
@@ -440,6 +440,41 @@ class TestClearAll:
 # ===================================================================
 # _safe_id tests (KIK-398)
 # ===================================================================
+
+# ===================================================================
+# merge_market_context tests (KIK-399)
+# ===================================================================
+
+class TestMergeMarketContext:
+    def test_merge_market_context_basic(self, gs_with_driver):
+        gs, _, session = gs_with_driver
+        indices = [{"name": "S&P500", "price": 5800}, {"name": "日経平均", "price": 40000}]
+        assert gs.merge_market_context("2025-02-17", indices) is True
+        assert session.run.call_count == 1
+        kwargs = session.run.call_args[1]
+        assert kwargs["id"] == "market_context_2025-02-17"
+        assert kwargs["date"] == "2025-02-17"
+        import json
+        parsed = json.loads(kwargs["indices"])
+        assert len(parsed) == 2
+        assert parsed[0]["name"] == "S&P500"
+
+    def test_merge_market_context_empty_indices(self, gs_with_driver):
+        gs, _, session = gs_with_driver
+        assert gs.merge_market_context("2025-02-17", []) is True
+        kwargs = session.run.call_args[1]
+        assert kwargs["indices"] == "[]"
+
+    def test_merge_market_context_no_driver(self):
+        import src.data.graph_store as gs
+        with patch("src.data.graph_store._get_driver", return_value=None):
+            assert gs.merge_market_context("2025-02-17", []) is False
+
+    def test_merge_market_context_error(self, gs_with_driver):
+        gs, driver, _ = gs_with_driver
+        driver.session.return_value.__enter__.return_value.run.side_effect = Exception("err")
+        assert gs.merge_market_context("2025-02-17", []) is False
+
 
 class TestSafeId:
     def test_safe_id_symbol(self):

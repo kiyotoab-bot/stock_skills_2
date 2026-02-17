@@ -39,6 +39,12 @@ try:
 except ImportError:
     HAS_VALUE_TRAP = False
 
+try:
+    from src.data.graph_query import get_prior_report
+    HAS_GRAPH_QUERY = True
+except ImportError:
+    HAS_GRAPH_QUERY = False
+
 
 def main():
     if len(sys.argv) < 2:
@@ -190,6 +196,20 @@ def main():
                     fy_str = f"{fy}年: " if fy else ""
                     print(f"- {fy_str}総還元率 {rate*100:.2f}%")
                 print(f"- **安定度**: {stab_label}")
+
+    # KIK-406: Prior report comparison
+    if HAS_GRAPH_QUERY:
+        try:
+            prior = get_prior_report(symbol)
+            if prior and prior.get("score") is not None:
+                diff = score - prior["score"]
+                print()
+                print("## 前回レポートとの比較")
+                print(f"- 前回: {prior['date']} / スコア {prior['score']:.1f} / {prior.get('verdict', '-')}")
+                print(f"- 今回: スコア {score:.1f} / {verdict}")
+                print(f"- 変化: {diff:+.1f}pt")
+        except Exception:
+            pass
 
     if HAS_HISTORY:
         try:
