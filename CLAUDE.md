@@ -173,8 +173,15 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       テンプレートマッチ→graph_query関数,
                       前回レポート/常連銘柄/リサーチ履歴/
                       市況/取引コンテキスト/メモ照会)
+                     auto_context.py
+                     (自動コンテキスト注入エンジン(KIK-411),
+                      ティッカー検出+企業名逆引き,
+                      グラフ状態判定→スキル推奨,
+                      保有/ウォッチ/注目/未知の関係性判定,
+                      graceful degradation)
 
   Scripts: scripts/
+           get_context.py ─ 自動コンテキスト注入CLI(KIK-411)
            init_graph.py ─ Neo4jスキーマ初期化+既存履歴インポート
            hooks/pre-commit ─ src/変更時のドキュメント更新チェック(KIK-407)
                            (screen/report/trade/health/research/
@@ -185,6 +192,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
           config/exchanges.yaml (60+地域の取引所・閾値)
 
   Rules: .claude/rules/
+          graph-context.md   ─ 自動コンテキスト注入ルール（スキル実行前のグラフ照会指示）(KIK-411)
           intent-routing.md  ─ 自然言語→スキル判定ルール（2段階ドメインルーティング）
           workflow.md        ─ 開発ワークフロー（設計→実装→テスト→レビュー→ドキュメント更新→完了）
           development.md     ─ 開発ルール・Git・テスト
