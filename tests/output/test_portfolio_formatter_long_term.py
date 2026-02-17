@@ -92,3 +92,90 @@ class TestFormatHealthCheckLongTerm:
         lines = result.split("\n")
         lt_context_lines = [l for l in lines if "長期適性:" in l]
         assert len(lt_context_lines) == 0
+
+
+# ===================================================================
+# Return stability display tests (KIK-403)
+# ===================================================================
+
+
+class TestFormatHealthCheckReturnStability:
+    """Tests for return stability display in format_health_check() (KIK-403)."""
+
+    def test_return_stability_column_header(self):
+        data = _make_health_data(
+            long_term={"label": "長期向き", "summary": "高ROE"},
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "stable", "label": "✅ 安定高還元",
+            "latest_rate": 0.06, "avg_rate": 0.06, "reason": "3年平均6.0%で安定",
+        }
+        result = format_health_check(data)
+        assert "還元安定度" in result
+
+    def test_stable_label_displayed(self):
+        data = _make_health_data(
+            long_term={"label": "長期向き", "summary": "高ROE"},
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "stable", "label": "✅ 安定高還元",
+            "latest_rate": 0.06, "avg_rate": 0.06, "reason": "3年平均6.0%で安定",
+        }
+        result = format_health_check(data)
+        assert "安定高還元" in result
+
+    def test_temporary_label_in_table(self):
+        data = _make_health_data(
+            long_term={"label": "長期向き", "summary": "高ROE"},
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "temporary", "label": "⚠️ 一時的高還元",
+            "latest_rate": 0.12, "avg_rate": 0.06, "reason": "前年比2.0倍に急増",
+        }
+        result = format_health_check(data)
+        assert "一時的高還元" in result
+
+    def test_temporary_shown_in_alert_details(self):
+        data = _make_health_data(
+            long_term={"label": "要検討", "summary": "EPS減少"},
+            alert_level="early_warning",
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "temporary", "label": "⚠️ 一時的高還元",
+            "latest_rate": 0.12, "avg_rate": 0.06, "reason": "前年比2.0倍に急増",
+        }
+        data["alerts"][0]["return_stability"] = data["positions"][0]["return_stability"]
+        result = format_health_check(data)
+        assert "一時的高還元" in result
+        assert "12.0%" in result
+
+    def test_decreasing_shown_in_alert_details(self):
+        data = _make_health_data(
+            long_term={"label": "要検討", "summary": "EPS減少"},
+            alert_level="early_warning",
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "decreasing", "label": "📉 減少傾向",
+            "latest_rate": 0.02, "avg_rate": 0.04, "reason": "3年連続減少",
+        }
+        data["alerts"][0]["return_stability"] = data["positions"][0]["return_stability"]
+        result = format_health_check(data)
+        assert "還元減少傾向" in result
+
+    def test_no_stability_data_graceful(self):
+        """Health data without return_stability should not crash."""
+        data = _make_health_data(long_term={"label": "要検討", "summary": "EPS減少"})
+        result = format_health_check(data)
+        assert "TEST.T" in result
+
+    def test_no_data_stability_shows_dash(self):
+        data = _make_health_data(
+            long_term={"label": "長期向き", "summary": "高ROE"},
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "no_data", "label": "-",
+            "latest_rate": None, "avg_rate": None, "reason": None,
+        }
+        result = format_health_check(data)
+        # Table row should have the dash label
+        assert "TEST.T" in result

@@ -307,3 +307,112 @@ class TestCheckLongTermSuitability:
         }
         result = check_long_term_suitability(detail)
         assert result["eps_growth_status"] == "unknown"
+
+
+# ===================================================================
+# Shareholder return integration tests (KIK-403)
+# ===================================================================
+
+
+class TestCheckLongTermSuitabilityWithShareholderReturn:
+    """Tests for shareholder return integration in check_long_term_suitability (KIK-403)."""
+
+    def test_total_return_rate_used_when_provided(self):
+        """Total return rate should be used instead of dividend_yield."""
+        detail = {
+            "symbol": "HIGH.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.005,  # Low dividend alone
+            "per": 15.0,
+            "sector": "Technology",
+        }
+        # Without shareholder return: dividend_status = "medium" (0.5%)
+        result_without = check_long_term_suitability(detail)
+        assert result_without["dividend_status"] == "medium"
+
+        # With shareholder return: total_return_rate = 5% (>2%)
+        sh_return = {"total_return_rate": 0.05}
+        result_with = check_long_term_suitability(detail, shareholder_return_data=sh_return)
+        assert result_with["dividend_status"] == "high"
+
+    def test_none_shareholder_return_falls_back_to_dividend(self):
+        """When shareholder_return_data is None, dividend_yield is used."""
+        detail = {
+            "symbol": "X.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.03,
+            "per": 15.0,
+            "sector": "Technology",
+        }
+        result = check_long_term_suitability(detail, shareholder_return_data=None)
+        assert result["dividend_status"] == "high"
+
+    def test_no_total_return_rate_key_falls_back(self):
+        """When shareholder_return_data has no total_return_rate, fall back."""
+        detail = {
+            "symbol": "X.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.03,
+            "per": 15.0,
+            "sector": "Technology",
+        }
+        sh_return = {"total_return_rate": None}
+        result = check_long_term_suitability(detail, shareholder_return_data=sh_return)
+        assert result["dividend_status"] == "high"  # falls back to 3%
+
+    def test_summary_shows_high_return_label(self):
+        """Summary should show '高還元' when total return is used."""
+        detail = {
+            "symbol": "X.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.005,
+            "per": 15.0,
+            "sector": "Technology",
+        }
+        sh_return = {"total_return_rate": 0.05}
+        result = check_long_term_suitability(detail, shareholder_return_data=sh_return)
+        assert "高還元" in result["summary"]
+
+    def test_summary_shows_high_dividend_without_return_data(self):
+        """Summary should show '高配当' when no shareholder_return_data."""
+        detail = {
+            "symbol": "X.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.03,
+            "per": 15.0,
+            "sector": "Technology",
+        }
+        result = check_long_term_suitability(detail)
+        assert "高配当" in result["summary"]
+
+    def test_backward_compatible_no_arg(self):
+        """Existing callers without shareholder_return_data should still work."""
+        detail = {
+            "symbol": "7203.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.03,
+            "per": 15.0,
+            "sector": "Consumer Cyclical",
+        }
+        result = check_long_term_suitability(detail)
+        assert result["label"] == "長期向き"
+
+    def test_low_buyback_with_high_dividend_still_high(self):
+        """Total return 2.5% (mostly dividend) -> high."""
+        detail = {
+            "symbol": "X.T",
+            "roe": 0.18,
+            "eps_growth": 0.15,
+            "dividend_yield": 0.02,
+            "per": 15.0,
+            "sector": "Technology",
+        }
+        sh_return = {"total_return_rate": 0.025}
+        result = check_long_term_suitability(detail, shareholder_return_data=sh_return)
+        assert result["dividend_status"] == "high"
