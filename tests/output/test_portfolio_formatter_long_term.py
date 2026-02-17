@@ -179,3 +179,45 @@ class TestFormatHealthCheckReturnStability:
         result = format_health_check(data)
         # Table row should have the dash label
         assert "TEST.T" in result
+
+    def test_single_high_label_displayed(self):
+        """single_high stability should show 💰 高還元 in table."""
+        data = _make_health_data(
+            long_term={"label": "長期向き", "summary": "高ROE"},
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "single_high", "label": "💰 高還元",
+            "latest_rate": 0.0782, "avg_rate": 0.0782,
+            "reason": "1年データ（7.8%）",
+        }
+        result = format_health_check(data)
+        assert "高還元" in result
+
+    def test_single_high_in_alert_details(self):
+        """single_high stability should show in alert details when alert exists."""
+        data = _make_health_data(
+            long_term={"label": "要検討", "summary": "EPS減少"},
+            alert_level="early_warning",
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "single_high", "label": "💰 高還元",
+            "latest_rate": 0.0782, "avg_rate": 0.0782,
+            "reason": "1年データ（7.8%）",
+        }
+        data["alerts"][0]["return_stability"] = data["positions"][0]["return_stability"]
+        result = format_health_check(data)
+        assert "高還元" in result
+        assert "1年データ" in result
+
+    def test_single_low_label_displayed(self):
+        """single_low stability should show ➖ 低還元 in table."""
+        data = _make_health_data(
+            long_term={"label": "短期向き", "summary": "低配当"},
+        )
+        data["positions"][0]["return_stability"] = {
+            "stability": "single_low", "label": "➖ 低還元",
+            "latest_rate": 0.005, "avg_rate": 0.005,
+            "reason": "1年データ（0.5%）",
+        }
+        result = format_health_check(data)
+        assert "低還元" in result

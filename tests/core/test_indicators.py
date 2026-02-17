@@ -705,13 +705,67 @@ class TestAssessReturnStability:
         assert "変動" in result["label"]
         assert "3年平均:" in result["reason"]
 
-    def test_unknown_single_year(self):
-        """Only 1 year of data -> unknown."""
+    def test_single_year_high_return(self):
+        """1 year of high return (>= 5%) -> single_high."""
         history = [{"total_return_rate": 0.05}]
         result = assess_return_stability(history)
-        assert result["stability"] == "unknown"
+        assert result["stability"] == "single_high"
         assert result["latest_rate"] == 0.05
-        assert result["reason"] is None
+        assert result["avg_rate"] == 0.05
+        assert "高還元" in result["label"]
+        assert "1年データ" in result["reason"]
+
+    def test_single_year_moderate_return(self):
+        """1 year of moderate return (2-5%) -> single_moderate."""
+        history = [{"total_return_rate": 0.03}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_moderate"
+        assert "還元あり" in result["label"]
+        assert "1年データ" in result["reason"]
+
+    def test_single_year_low_return(self):
+        """1 year of low return (< 2%) -> single_low."""
+        history = [{"total_return_rate": 0.01}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_low"
+        assert "低還元" in result["label"]
+
+    def test_single_year_zero_return(self):
+        """1 year of zero return -> single_low."""
+        history = [{"total_return_rate": 0.0}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_low"
+
+    def test_single_year_boundary_5pct(self):
+        """Exactly 5% -> single_high (boundary)."""
+        history = [{"total_return_rate": 0.05}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_high"
+
+    def test_single_year_boundary_2pct(self):
+        """Exactly 2% -> single_moderate (boundary)."""
+        history = [{"total_return_rate": 0.02}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_moderate"
+
+    def test_single_year_just_below_5pct(self):
+        """Just below 5% -> single_moderate."""
+        history = [{"total_return_rate": 0.0499}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_moderate"
+
+    def test_single_year_just_below_2pct(self):
+        """Just below 2% -> single_low."""
+        history = [{"total_return_rate": 0.0199}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_low"
+
+    def test_single_year_tre_like(self):
+        """TRE Holdings-like: 7.82% total return -> single_high."""
+        history = [{"total_return_rate": 0.0782}]
+        result = assess_return_stability(history)
+        assert result["stability"] == "single_high"
+        assert result["latest_rate"] == 0.0782
 
     def test_unknown_empty(self):
         """Empty history -> no_data (KIK-388)."""

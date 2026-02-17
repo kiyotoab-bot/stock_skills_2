@@ -1160,3 +1160,48 @@ class TestReturnStabilityAlertIntegration:
         assert result["level"] == ALERT_EARLY_WARNING
         assert any("一時的高還元" in r for r in result["reasons"])
         assert any("低PER" in r for r in result["reasons"])
+
+    def test_single_high_no_escalation(self):
+        """stability='single_high' should not escalate alert level."""
+        stability = {
+            "stability": "single_high",
+            "label": "💰 高還元",
+            "latest_rate": 0.08,
+            "avg_rate": 0.08,
+            "reason": "1年データ（8.0%）",
+        }
+        result = compute_alert_level(
+            self._healthy_trend(), self._healthy_change(),
+            return_stability=stability,
+        )
+        assert result["level"] == ALERT_NONE
+
+    def test_single_moderate_no_escalation(self):
+        """stability='single_moderate' should not escalate alert level."""
+        stability = {
+            "stability": "single_moderate",
+            "label": "💰 還元あり",
+            "latest_rate": 0.03,
+            "avg_rate": 0.03,
+            "reason": "1年データ（3.0%）",
+        }
+        result = compute_alert_level(
+            self._healthy_trend(), self._healthy_change(),
+            return_stability=stability,
+        )
+        assert result["level"] == ALERT_NONE
+
+    def test_single_low_no_escalation(self):
+        """stability='single_low' should not escalate alert level."""
+        stability = {
+            "stability": "single_low",
+            "label": "➖ 低還元",
+            "latest_rate": 0.01,
+            "avg_rate": 0.01,
+            "reason": "1年データ（1.0%）",
+        }
+        result = compute_alert_level(
+            self._healthy_trend(), self._healthy_change(),
+            return_stability=stability,
+        )
+        assert result["level"] == ALERT_NONE
