@@ -4,7 +4,7 @@
 
 ---
 
-## Node Types (18)
+## Node Types (19)
 
 ### Stock
 中心ノード。すべてのアクティビティがこのノードに接続される。
@@ -195,6 +195,13 @@
 | date | string | 記録日 |
 | text | string | ローテーション内容 |
 
+### Portfolio (KIK-414)
+ポートフォリオアンカーノード。HOLDS リレーションで保有銘柄に接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| name | string (UNIQUE) | ポートフォリオ名 (デフォルト: "default") |
+
 ---
 
 ## Relationships
@@ -221,6 +228,7 @@ graph LR
     MarketContext -- HAS_EVENT --> UpcomingEvent
     MarketContext -- HAS_ROTATION --> SectorRotation
     MarketContext -- HAS_SENTIMENT --> Sentiment
+    Portfolio -- HOLDS --> Stock
 ```
 
 | Relationship | From | To | Description |
@@ -244,10 +252,11 @@ graph LR
 | INCLUDES | MarketContext | Indicator | マクロ指標値 (KIK-413) |
 | HAS_EVENT | MarketContext | UpcomingEvent | 今後のイベント (KIK-413) |
 | HAS_ROTATION | MarketContext | SectorRotation | セクターローテーション (KIK-413) |
+| HOLDS | Portfolio | Stock | 現在保有中の銘柄 (KIK-414)。プロパティ: shares, cost_price, cost_currency, purchase_date |
 
 ---
 
-## Constraints (18)
+## Constraints (19)
 
 ```cypher
 CREATE CONSTRAINT stock_symbol IF NOT EXISTS FOR (s:Stock) REQUIRE s.symbol IS UNIQUE
@@ -269,6 +278,8 @@ CREATE CONSTRAINT analyst_view_id IF NOT EXISTS FOR (a:AnalystView) REQUIRE a.id
 CREATE CONSTRAINT indicator_id IF NOT EXISTS FOR (i:Indicator) REQUIRE i.id IS UNIQUE
 CREATE CONSTRAINT upcoming_event_id IF NOT EXISTS FOR (e:UpcomingEvent) REQUIRE e.id IS UNIQUE
 CREATE CONSTRAINT sector_rotation_id IF NOT EXISTS FOR (r:SectorRotation) REQUIRE r.id IS UNIQUE
+-- KIK-414 portfolio sync
+CREATE CONSTRAINT portfolio_name IF NOT EXISTS FOR (p:Portfolio) REQUIRE p.name IS UNIQUE
 ```
 
 ## Indexes (12)
@@ -377,6 +388,15 @@ ORDER BY r.date DESC LIMIT 10
 MATCH (m:MarketContext)-[:HAS_EVENT]->(e:UpcomingEvent)
 RETURN e.date AS date, e.text AS text
 ORDER BY m.date DESC LIMIT 10
+```
+
+### 11. 現在の保有銘柄一覧 (KIK-414)
+```cypher
+MATCH (p:Portfolio {name: 'default'})-[r:HOLDS]->(s:Stock)
+RETURN s.symbol AS symbol, r.shares AS shares,
+       r.cost_price AS cost_price, r.cost_currency AS cost_currency,
+       r.purchase_date AS purchase_date
+ORDER BY s.symbol
 ```
 
 ---

@@ -92,6 +92,9 @@ _IMPORT_REGISTRY = [
     ("src.data.graph_query", "GRAPH_QUERY", [
         ("get_recent_market_context", None),
     ]),
+    ("src.data.graph_store", "GRAPH_STORE", [
+        ("sync_portfolio", None),
+    ]),
 ]
 
 for _mod_path, _flag_suffix, _names in _IMPORT_REGISTRY:
@@ -357,6 +360,14 @@ def cmd_buy(
             print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         _save_trade_market_context()
 
+    # KIK-414: Sync portfolio to Neo4j
+    if HAS_GRAPH_STORE:
+        try:
+            _holdings = load_portfolio(csv_path) if HAS_PORTFOLIO_MANAGER else _fallback_load_csv(csv_path)
+            sync_portfolio(_holdings)
+        except Exception:
+            pass
+
 
 # ---------------------------------------------------------------------------
 # Command: sell
@@ -409,6 +420,14 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
         except Exception as e:
             print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         _save_trade_market_context()
+
+    # KIK-414: Sync portfolio to Neo4j
+    if HAS_GRAPH_STORE:
+        try:
+            _holdings = load_portfolio(csv_path) if HAS_PORTFOLIO_MANAGER else _fallback_load_csv(csv_path)
+            sync_portfolio(_holdings)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

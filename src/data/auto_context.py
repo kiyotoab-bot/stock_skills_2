@@ -149,13 +149,15 @@ def _has_concern_notes(history: dict) -> bool:
 # Skill recommendation
 # ---------------------------------------------------------------------------
 
-def _recommend_skill(history: dict, is_bookmarked: bool) -> tuple[str, str, str]:
+def _recommend_skill(history: dict, is_bookmarked: bool,
+                     is_held: bool = False) -> tuple[str, str, str]:
     """Determine recommended skill based on graph state.
 
     Returns (skill, reason, relationship).
     """
     # Priority order: higher = checked first
-    if _has_bought_not_sold(history):
+    # KIK-414: HOLDS relationship is authoritative for current holdings
+    if is_held or _has_bought_not_sold(history):
         if _thesis_needs_review(history, 90):
             return ("health", "テーゼ3ヶ月経過 → レビュー促し", "保有(要レビュー)")
         return ("health", "保有銘柄 → ヘルスチェック優先", "保有")
@@ -328,7 +330,10 @@ def get_context(user_input: str) -> Optional[dict]:
 
     history = graph_store.get_stock_history(symbol)
     is_bookmarked = _check_bookmarked(symbol)
-    skill, reason, relationship = _recommend_skill(history, is_bookmarked)
+    # KIK-414: HOLDS relationship for authoritative held-stock detection
+    held = graph_store.is_held(symbol)
+    skill, reason, relationship = _recommend_skill(history, is_bookmarked,
+                                                   is_held=held)
     context_md = _format_context(symbol, history, skill, reason, relationship)
 
     return {
