@@ -4,7 +4,7 @@
 
 ---
 
-## Node Types (11)
+## Node Types (18)
 
 ### Stock
 中心ノード。すべてのアクティビティがこのノードに接続される。
@@ -28,7 +28,7 @@
 | count | int | ヒット件数 |
 
 ### Report
-個別銘柄レポート。
+個別銘柄レポート。full モードでは拡張プロパティあり。
 
 | Property | Type | Description |
 |:---|:---|:---|
@@ -37,6 +37,12 @@
 | symbol | string | 対象銘柄 |
 | score | float | バリュースコア (0-100) |
 | verdict | string | 判定 (割安/適正/割高) |
+| price | float | 株価 (full モードのみ) |
+| per | float | PER (full モードのみ) |
+| pbr | float | PBR (full モードのみ) |
+| dividend_yield | float | 配当利回り (full モードのみ) |
+| roe | float | ROE (full モードのみ) |
+| market_cap | float | 時価総額 (full モードのみ) |
 
 ### Trade
 売買記録。
@@ -115,6 +121,80 @@
 | date | string | 取得日 |
 | indices | string (JSON) | 指数データ (JSON 文字列) |
 
+### News (KIK-413 full mode)
+ニュース記事。Research から HAS_NEWS で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{research_id}_news_{i}` |
+| date | string | 記録日 |
+| title | string | 見出し (最大500文字) |
+| source | string | ソース (grok/yahoo/publisher名) |
+| link | string | URL |
+
+### Sentiment (KIK-413 full mode)
+センチメント分析結果。Research/MarketContext から HAS_SENTIMENT で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{parent_id}_sent_{source}` |
+| date | string | 記録日 |
+| source | string | grok_x / yahoo_x / market |
+| score | float | スコア (0.0-1.0) |
+| summary | string | 要約 |
+| positive | string | ポジティブ要因 (yahoo_x のみ) |
+| negative | string | ネガティブ要因 (yahoo_x のみ) |
+
+### Catalyst (KIK-413 full mode)
+好材料・悪材料。Research から HAS_CATALYST で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{research_id}_cat_{p/n}_{i}` |
+| date | string | 記録日 |
+| type | string | positive / negative |
+| text | string | 内容 (最大500文字) |
+
+### AnalystView (KIK-413 full mode)
+アナリスト見解。Research から HAS_ANALYST_VIEW で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{research_id}_av_{i}` |
+| date | string | 記録日 |
+| text | string | 見解テキスト (最大500文字) |
+
+### Indicator (KIK-413 full mode)
+マクロ指標スナップショット。MarketContext から INCLUDES で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{context_id}_ind_{i}` |
+| date | string | 記録日 |
+| name | string | 指標名 (e.g. S&P500, 日経平均) |
+| symbol | string | シンボル (e.g. ^GSPC) |
+| price | float | 値 |
+| daily_change | float | 日次変化率 |
+| weekly_change | float | 週次変化率 |
+
+### UpcomingEvent (KIK-413 full mode)
+今後のイベント。MarketContext から HAS_EVENT で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{context_id}_event_{i}` |
+| date | string | 記録日 |
+| text | string | イベント内容 |
+
+### SectorRotation (KIK-413 full mode)
+セクターローテーション情報。MarketContext から HAS_ROTATION で接続。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `{context_id}_rot_{i}` |
+| date | string | 記録日 |
+| text | string | ローテーション内容 |
+
 ---
 
 ## Relationships
@@ -132,6 +212,15 @@ graph LR
     Stock -- HAS_THEME --> Theme
     Screen -- HAS_THEME --> Theme
     Research -- SUPERSEDES --> Research
+    Research -- HAS_NEWS --> News
+    News -- MENTIONS --> Stock
+    Research -- HAS_SENTIMENT --> Sentiment
+    Research -- HAS_CATALYST --> Catalyst
+    Research -- HAS_ANALYST_VIEW --> AnalystView
+    MarketContext -- INCLUDES --> Indicator
+    MarketContext -- HAS_EVENT --> UpcomingEvent
+    MarketContext -- HAS_ROTATION --> SectorRotation
+    MarketContext -- HAS_SENTIMENT --> Sentiment
 ```
 
 | Relationship | From | To | Description |
@@ -147,10 +236,18 @@ graph LR
 | RESEARCHED | Research | Stock | リサーチ対象 (stock/business タイプのみ) |
 | BOOKMARKED | Watchlist | Stock | ウォッチ対象 |
 | SUPERSEDES | Research | Research | 同じ対象の新旧リサーチチェーン (日付順) |
+| HAS_NEWS | Research | News | リサーチに紐づくニュース (KIK-413) |
+| MENTIONS | News | Stock | ニュースが言及する銘柄 (KIK-413) |
+| HAS_SENTIMENT | Research/MarketContext | Sentiment | センチメント分析結果 (KIK-413) |
+| HAS_CATALYST | Research | Catalyst | 好材料・悪材料 (KIK-413) |
+| HAS_ANALYST_VIEW | Research | AnalystView | アナリスト見解 (KIK-413) |
+| INCLUDES | MarketContext | Indicator | マクロ指標値 (KIK-413) |
+| HAS_EVENT | MarketContext | UpcomingEvent | 今後のイベント (KIK-413) |
+| HAS_ROTATION | MarketContext | SectorRotation | セクターローテーション (KIK-413) |
 
 ---
 
-## Constraints (11)
+## Constraints (18)
 
 ```cypher
 CREATE CONSTRAINT stock_symbol IF NOT EXISTS FOR (s:Stock) REQUIRE s.symbol IS UNIQUE
@@ -164,9 +261,17 @@ CREATE CONSTRAINT sector_name IF NOT EXISTS FOR (s:Sector) REQUIRE s.name IS UNI
 CREATE CONSTRAINT research_id IF NOT EXISTS FOR (r:Research) REQUIRE r.id IS UNIQUE
 CREATE CONSTRAINT watchlist_name IF NOT EXISTS FOR (w:Watchlist) REQUIRE w.name IS UNIQUE
 CREATE CONSTRAINT market_context_id IF NOT EXISTS FOR (m:MarketContext) REQUIRE m.id IS UNIQUE
+-- KIK-413 full-mode nodes
+CREATE CONSTRAINT news_id IF NOT EXISTS FOR (n:News) REQUIRE n.id IS UNIQUE
+CREATE CONSTRAINT sentiment_id IF NOT EXISTS FOR (s:Sentiment) REQUIRE s.id IS UNIQUE
+CREATE CONSTRAINT catalyst_id IF NOT EXISTS FOR (c:Catalyst) REQUIRE c.id IS UNIQUE
+CREATE CONSTRAINT analyst_view_id IF NOT EXISTS FOR (a:AnalystView) REQUIRE a.id IS UNIQUE
+CREATE CONSTRAINT indicator_id IF NOT EXISTS FOR (i:Indicator) REQUIRE i.id IS UNIQUE
+CREATE CONSTRAINT upcoming_event_id IF NOT EXISTS FOR (e:UpcomingEvent) REQUIRE e.id IS UNIQUE
+CREATE CONSTRAINT sector_rotation_id IF NOT EXISTS FOR (r:SectorRotation) REQUIRE r.id IS UNIQUE
 ```
 
-## Indexes (8)
+## Indexes (12)
 
 ```cypher
 CREATE INDEX stock_sector IF NOT EXISTS FOR (s:Stock) ON (s.sector)
@@ -177,6 +282,11 @@ CREATE INDEX note_type IF NOT EXISTS FOR (n:Note) ON (n.type)
 CREATE INDEX research_date IF NOT EXISTS FOR (r:Research) ON (r.date)
 CREATE INDEX research_type IF NOT EXISTS FOR (r:Research) ON (r.research_type)
 CREATE INDEX market_context_date IF NOT EXISTS FOR (m:MarketContext) ON (m.date)
+-- KIK-413 full-mode indexes
+CREATE INDEX news_date IF NOT EXISTS FOR (n:News) ON (n.date)
+CREATE INDEX sentiment_source IF NOT EXISTS FOR (s:Sentiment) ON (s.source)
+CREATE INDEX catalyst_type IF NOT EXISTS FOR (c:Catalyst) ON (c.type)
+CREATE INDEX indicator_date IF NOT EXISTS FOR (i:Indicator) ON (i.date)
 ```
 
 ---
@@ -228,6 +338,70 @@ UNION ALL
 MATCH (n:Note)-[:ABOUT]->(s:Stock {symbol: "AAPL"})
 RETURN n.date, n.type AS type, n.content AS content, null AS price
 ORDER BY n.date DESC
+```
+
+---
+
+### 6. 銘柄のニュース履歴 (KIK-413)
+```cypher
+MATCH (n:News)-[:MENTIONS]->(s:Stock {symbol: "NVDA"})
+RETURN n.date AS date, n.title AS title, n.source AS source
+ORDER BY n.date DESC LIMIT 10
+```
+
+### 7. センチメント推移 (KIK-413)
+```cypher
+MATCH (r:Research)-[:RESEARCHED]->(s:Stock {symbol: "NVDA"})
+MATCH (r)-[:HAS_SENTIMENT]->(sent:Sentiment)
+RETURN sent.date AS date, sent.source AS source, sent.score AS score
+ORDER BY sent.date DESC
+```
+
+### 8. カタリスト一覧 (KIK-413)
+```cypher
+MATCH (r:Research)-[:RESEARCHED]->(s:Stock {symbol: "NVDA"})
+MATCH (r)-[:HAS_CATALYST]->(c:Catalyst)
+RETURN c.type AS type, c.text AS text
+ORDER BY r.date DESC
+```
+
+### 9. バリュエーション推移 (KIK-413)
+```cypher
+MATCH (r:Report)-[:ANALYZED]->(s:Stock {symbol: "7203.T"})
+RETURN r.date, r.score, r.verdict, r.price, r.per, r.pbr
+ORDER BY r.date DESC LIMIT 10
+```
+
+### 10. 今後のイベント (KIK-413)
+```cypher
+MATCH (m:MarketContext)-[:HAS_EVENT]->(e:UpcomingEvent)
+RETURN e.date AS date, e.text AS text
+ORDER BY m.date DESC LIMIT 10
+```
+
+---
+
+## NEO4J_MODE (KIK-413)
+
+`NEO4J_MODE` 環境変数で Neo4j への書き込み深度を制御する。
+
+| Mode | Description |
+|:---|:---|
+| `off` | Neo4j 書き込みなし (JSON のみ) |
+| `summary` | 従来の要約のみ (score/verdict/summary) — 後方互換 |
+| `full` | 意味情報サブノード (News/Sentiment/Catalyst 等) も展開 |
+
+**デフォルト**: 環境変数未設定時は Neo4j 接続可能なら `full`、不可なら `off`。
+
+```bash
+# fullモードでリサーチ実行
+NEO4J_MODE=full python3 .claude/skills/market-research/scripts/run_research.py stock NVDA
+
+# summaryモードで後方互換動作
+NEO4J_MODE=summary python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
+
+# Neo4j書き込み無効
+NEO4J_MODE=off python3 .claude/skills/stock-report/scripts/generate_report.py 7203.T
 ```
 
 ---

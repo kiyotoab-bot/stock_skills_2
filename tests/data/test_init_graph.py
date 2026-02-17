@@ -76,7 +76,7 @@ class TestImportScreens:
 # ===================================================================
 
 class TestImportReports:
-    @patch("scripts.init_graph.merge_report")
+    @patch("scripts.init_graph.merge_report_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_reports_basic(self, mock_stock, mock_report, tmp_path):
         d = tmp_path / "report"
@@ -93,7 +93,7 @@ class TestImportReports:
         mock_stock.assert_called_once_with(symbol="7203.T", name="Toyota", sector="Automotive")
         mock_report.assert_called_once()
 
-    @patch("scripts.init_graph.merge_report")
+    @patch("scripts.init_graph.merge_report_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_reports_no_symbol(self, mock_stock, mock_report, tmp_path):
         d = tmp_path / "report"
@@ -244,7 +244,7 @@ class TestImportNotes:
 
 class TestImportResearch:
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_stock(self, mock_stock, mock_research, mock_link, tmp_path):
         d = tmp_path / "research"
@@ -263,11 +263,14 @@ class TestImportResearch:
             research_type="stock",
             target="7203.T",
             summary="Strong fundamentals",
+            grok_research=None,
+            x_sentiment=None,
+            news=None,
         )
         mock_link.assert_called_once_with("stock", "7203.T")
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_industry(self, mock_stock, mock_research, mock_link, tmp_path):
         d = tmp_path / "research"
@@ -284,7 +287,7 @@ class TestImportResearch:
         mock_link.assert_called_once_with("industry", "半導体")
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_market(self, mock_stock, mock_research, mock_link, tmp_path):
         d = tmp_path / "research"
@@ -299,7 +302,7 @@ class TestImportResearch:
         mock_stock.assert_not_called()  # market type: no Stock merge
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_business(self, mock_stock, mock_research, mock_link, tmp_path):
         d = tmp_path / "research"
@@ -315,7 +318,7 @@ class TestImportResearch:
         mock_research.assert_called_once()
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_no_target_skipped(self, mock_stock, mock_research, mock_link, tmp_path):
         d = tmp_path / "research"
@@ -328,7 +331,7 @@ class TestImportResearch:
         mock_research.assert_not_called()
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_supersedes_chains(self, mock_stock, mock_research, mock_link, tmp_path):
         """Multiple research files for same target should create one SUPERSEDES chain."""
@@ -352,14 +355,14 @@ class TestImportResearch:
         mock_link.assert_called_once_with("stock", "7203.T")
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_empty_dir(self, mock_stock, mock_research, mock_link, tmp_path):
         count = import_research(str(tmp_path))
         assert count == 0
 
     @patch("scripts.init_graph.link_research_supersedes")
-    @patch("scripts.init_graph.merge_research")
+    @patch("scripts.init_graph.merge_research_full")
     @patch("scripts.init_graph.merge_stock")
     def test_import_research_corrupted_file(self, mock_stock, mock_research, mock_link, tmp_path):
         d = tmp_path / "research"
@@ -484,7 +487,7 @@ class TestImportWatchlists:
 # ===================================================================
 
 class TestImportMarketContext:
-    @patch("scripts.init_graph.merge_market_context")
+    @patch("scripts.init_graph.merge_market_context_full")
     def test_import_market_context_basic(self, mock_mc, tmp_path):
         d = tmp_path / "market_context"
         _write_json(d / "2025-02-17_context.json", {
@@ -502,15 +505,16 @@ class TestImportMarketContext:
                 {"name": "S&P500", "price": 5800},
                 {"name": "日経平均", "price": 40000},
             ],
+            grok_research=None,
         )
 
-    @patch("scripts.init_graph.merge_market_context")
+    @patch("scripts.init_graph.merge_market_context_full")
     def test_import_market_context_empty_dir(self, mock_mc, tmp_path):
         count = import_market_context(str(tmp_path))
         assert count == 0
         mock_mc.assert_not_called()
 
-    @patch("scripts.init_graph.merge_market_context")
+    @patch("scripts.init_graph.merge_market_context_full")
     def test_import_market_context_no_date_skipped(self, mock_mc, tmp_path):
         d = tmp_path / "market_context"
         _write_json(d / "2025-02-17_context.json", {
@@ -520,7 +524,7 @@ class TestImportMarketContext:
         assert count == 0
         mock_mc.assert_not_called()
 
-    @patch("scripts.init_graph.merge_market_context")
+    @patch("scripts.init_graph.merge_market_context_full")
     def test_import_market_context_corrupted_file(self, mock_mc, tmp_path):
         d = tmp_path / "market_context"
         d.mkdir(parents=True)

@@ -157,12 +157,18 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       Stock/Screen/Report/Trade/Health/
                       Research/Watchlist/Note/MarketContext,
                       SUPERSEDES チェーン,
+                      NEO4J_MODE環境変数(off/summary/full)(KIK-413),
+                      full: News/Sentiment/Catalyst/AnalystView/
+                      Indicator/UpcomingEvent/SectorRotation展開,
                       graceful degradation)
                      graph_query.py
                      (Neo4jナレッジグラフ照会,
                       前回レポート比較/再出現銘柄/
                       リサーチ履歴/市況コンテキスト/
                       売買コンテキスト/常連銘柄,
+                      ニュース履歴/センチメント推移/
+                      カタリスト/バリュエーション推移/
+                      今後のイベント(KIK-413),
                       Neo4j不可時は空/None返却)
                      note_manager.py
                      (投資メモ管理,
@@ -172,7 +178,10 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                      (自然言語→グラフ照会ディスパッチ,
                       テンプレートマッチ→graph_query関数,
                       前回レポート/常連銘柄/リサーチ履歴/
-                      市況/取引コンテキスト/メモ照会)
+                      市況/取引コンテキスト/メモ照会/
+                      ニュース履歴/センチメント推移/
+                      カタリスト/バリュエーション推移/
+                      イベント/指標推移(KIK-413))
                      auto_context.py
                      (自動コンテキスト注入エンジン(KIK-411),
                       ティッカー検出+企業名逆引き,
@@ -202,7 +211,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
 
   Docs: docs/
           architecture.md    ─ システムアーキテクチャ（3層構成、Mermaid図、設計原則）
-          neo4j-schema.md    ─ Neo4jスキーマリファレンス（11ノード、リレーション、Cypher例）
+          neo4j-schema.md    ─ Neo4jスキーマリファレンス（18ノード、リレーション、NEO4J_MODE、Cypher例）
           skill-catalog.md   ─ 8スキルのカタログ（入出力、依存モジュール、コマンド例）
 ```
 

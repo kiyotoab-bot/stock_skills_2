@@ -634,13 +634,13 @@ class TestGraphDualWrite:
             assert Path(path).exists()
 
     def test_research_graph_failure_still_saves(self, tmp_path):
-        with patch("src.data.graph_store.merge_research", side_effect=Exception("Neo4j down")):
+        with patch("src.data.graph_store.merge_research_full", side_effect=Exception("Neo4j down")):
             result = {"type": "stock", "symbol": "7203.T", "summary": "test"}
             path = save_research("stock", "7203.T", result, base_dir=str(tmp_path))
             assert Path(path).exists()
 
     def test_market_context_graph_failure_still_saves(self, tmp_path):
-        with patch("src.data.graph_store.merge_market_context", side_effect=Exception("Neo4j down")):
+        with patch("src.data.graph_store.merge_market_context_full", side_effect=Exception("Neo4j down")):
             context = {"indices": [{"name": "VIX", "price": 20.0}]}
             path = save_market_context(context, base_dir=str(tmp_path))
             assert Path(path).exists()

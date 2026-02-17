@@ -154,11 +154,16 @@ def save_report(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399) -- graceful degradation
+    # Neo4j dual-write (KIK-399/413) -- graceful degradation
     try:
-        from src.data.graph_store import merge_report, merge_stock
+        from src.data.graph_store import merge_report_full, merge_stock, get_mode
         merge_stock(symbol=symbol, name=data.get("name", ""), sector=data.get("sector", ""))
-        merge_report(report_date=today, symbol=symbol, score=score, verdict=verdict)
+        merge_report_full(
+            report_date=today, symbol=symbol, score=score, verdict=verdict,
+            price=data.get("price", 0), per=data.get("per", 0),
+            pbr=data.get("pbr", 0), dividend_yield=data.get("dividend_yield", 0),
+            roe=data.get("roe", 0), market_cap=data.get("market_cap", 0),
+        )
     except Exception:
         pass
 
@@ -316,14 +321,17 @@ def save_research(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399) -- graceful degradation
+    # Neo4j dual-write (KIK-399/413) -- graceful degradation
     try:
-        from src.data.graph_store import merge_research, merge_stock, link_research_supersedes
+        from src.data.graph_store import merge_research_full, merge_stock, link_research_supersedes
         if research_type in ("stock", "business"):
             merge_stock(symbol=target, name=result.get("name", ""))
-        merge_research(
+        merge_research_full(
             research_date=today, research_type=research_type,
             target=target, summary=result.get("summary", ""),
+            grok_research=result.get("grok_research"),
+            x_sentiment=result.get("x_sentiment"),
+            news=result.get("news"),
         )
         link_research_supersedes(research_type, target)
     except Exception:
@@ -368,10 +376,13 @@ def save_market_context(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399) -- graceful degradation
+    # Neo4j dual-write (KIK-399/413) -- graceful degradation
     try:
-        from src.data.graph_store import merge_market_context
-        merge_market_context(context_date=today, indices=context.get("indices", []))
+        from src.data.graph_store import merge_market_context_full
+        merge_market_context_full(
+            context_date=today, indices=context.get("indices", []),
+            grok_research=context.get("grok_research"),
+        )
     except Exception:
         pass
 
