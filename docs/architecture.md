@@ -77,28 +77,32 @@ graph TD
 ```
 1. ユーザー発言
    ↓
-2. Intent Routing (intent-routing.md)
-   ├─ ドメイン判定（発見/分析/保有管理/リスク/監視/記録/知識/メタ）
-   └─ スキル選択 + パラメータ推定
+2. Auto Context Injection (graph-context.md + scripts/get_context.py)
+   ├─ ティッカー/企業名検出 → Neo4j 照会 → 過去の経緯取得
+   └─ グラフ状態に基づくスキル推奨
    ↓
-3. Skill Script (scripts/*.py)
+3. Intent Routing (intent-routing.md)
+   ├─ ドメイン判定（発見/分析/保有管理/リスク/監視/記録/知識/メタ）
+   └─ スキル選択 + パラメータ推定（コンテキスト推奨 + ユーザー意図で最終判断）
+   ↓
+4. Skill Script (scripts/*.py)
    ├─ argparse CLI
    └─ sys.path.insert で src/ を import
    ↓
-4. Core Module (src/core/)
+5. Core Module (src/core/)
    ├─ ビジネスロジック実行
    └─ Data Layer 経由でデータ取得
    ↓
-5. Data Layer (src/data/)
+6. Data Layer (src/data/)
    ├─ yahoo_client: yfinance + 24h JSON cache
    ├─ grok_client: Grok API (X/Web検索)
    ├─ graph_store: Neo4j CRUD (MERGE ベース)
    └─ history_store: 実行結果の JSON 蓄積
    ↓
-6. Output Layer (src/output/)
+7. Output Layer (src/output/)
    └─ Markdown テーブル/レポートとして整形
    ↓
-7. 結果表示 + history_store/graph_store に自動蓄積
+8. 結果表示 + history_store/graph_store に自動蓄積
 ```
 
 ---
@@ -174,6 +178,7 @@ except ImportError:
 | graph_query.py | Neo4j 照会ヘルパー (6関数) |
 | graph_nl_query.py | 自然言語 → Cypher テンプレートマッチ |
 | note_manager.py | 投資メモ管理 (JSON + Neo4j dual-write) |
+| auto_context.py | 自動コンテキスト注入 (シンボル検出 + グラフ状態判定 + スキル推奨) |
 
 ### Config
 

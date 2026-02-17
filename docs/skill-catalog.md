@@ -263,4 +263,8 @@ stock-portfolio → portfolio/{portfolio_manager,concentration,rebalancer,simula
 investment-note → note_manager, graph_store
 
 graph-query ────→ graph_nl_query, graph_query, graph_store
+
+(auto-context) ─→ auto_context (graph_store, graph_query)
+                   ※ スキルではなく rules/graph-context.md + scripts/get_context.py
+                   ※ スキル実行前に自動でコンテキスト注入
 ```

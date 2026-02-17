@@ -46,6 +46,13 @@
 
 新しいスキルやノードタイプを追加した場合は対応するドキュメントも更新すること。
 
+## 自動コンテキスト注入 (KIK-411)
+
+- `.claude/rules/graph-context.md` — スキル実行前にティッカー/企業名を検出し、Neo4j から過去の経緯を取得するルール
+- `src/data/auto_context.py` — コンテキスト取得エンジン（シンボル検出 + グラフ状態判定 + スキル推奨）
+- `scripts/get_context.py` — CLI ラッパー（Bash 経由で呼び出し）
+- Neo4j 未接続時は graceful degradation（「コンテキストなし」→ intent-routing のみで判断）
+
 ## gitignore 対象
 
 - `data/cache/` — 銘柄ごと JSON キャッシュ（TTL 24時間）
