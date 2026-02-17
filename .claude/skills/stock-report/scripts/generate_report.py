@@ -177,6 +177,19 @@ def main():
                         print(f"- **安定度**: {stab_label}（3年平均: {avg_rate*100:.2f}%）")
                     else:
                         print(f"- **安定度**: {stab_label}")
+        elif len(sr_hist) == 1 and HAS_RETURN_STABILITY:
+            stability = assess_return_stability(sr_hist)
+            stab_label = stability.get("label", "")
+            if stab_label and stab_label != "-":
+                print()
+                print("## 株主還元安定度")
+                entry = sr_hist[0]
+                rate = entry.get("total_return_rate")
+                if rate is not None:
+                    fy = entry.get("fiscal_year")
+                    fy_str = f"{fy}年: " if fy else ""
+                    print(f"- {fy_str}総還元率 {rate*100:.2f}%")
+                print(f"- **安定度**: {stab_label}")
 
     if HAS_HISTORY:
         try:

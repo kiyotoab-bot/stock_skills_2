@@ -492,6 +492,11 @@ def format_health_check(health_data: dict) -> str:
                         f"- {rs.get('label', '')} "
                         f"\uff08\u76f4\u8fd1 {latest_pct:.1f}%\uff09"
                     )
+                elif stability and stability.startswith("single_"):
+                    lines.append(
+                        f"- {rs.get('label', '')} "
+                        f"\uff08{rs.get('reason', '')}\uff09"
+                    )
 
             # Action suggestion based on alert level
             level = alert.get("level", "none")

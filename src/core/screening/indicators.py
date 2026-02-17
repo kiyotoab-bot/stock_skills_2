@@ -193,7 +193,9 @@ def assess_return_stability(history: list[dict]) -> dict:
     - ``decreasing``: Rates falling year-over-year
     - ``stable``: All years >= 5%
     - ``mixed``: None of the above patterns
-    - ``unknown``: Insufficient data (1 year only, cannot assess trend)
+    - ``single_high``: 1 year only, total return >= 5%
+    - ``single_moderate``: 1 year only, total return 2-5%
+    - ``single_low``: 1 year only, total return < 2%
     - ``no_data``: No valid return rate data at all
 
     Returns dict with keys: stability, label, latest_rate, avg_rate, reason.
@@ -215,13 +217,31 @@ def assess_return_stability(history: list[dict]) -> dict:
         }
 
     if len(rates) < 2:
-        return {
-            "stability": "unknown",
-            "label": "❓ データ不足",
-            "latest_rate": rates[0],
-            "avg_rate": rates[0],
-            "reason": None,
-        }
+        rate = rates[0]
+        if rate >= 0.05:
+            return {
+                "stability": "single_high",
+                "label": "💰 高還元",
+                "latest_rate": rate,
+                "avg_rate": rate,
+                "reason": f"1年データ（{rate * 100:.1f}%）",
+            }
+        elif rate >= 0.02:
+            return {
+                "stability": "single_moderate",
+                "label": "💰 還元あり",
+                "latest_rate": rate,
+                "avg_rate": rate,
+                "reason": f"1年データ（{rate * 100:.1f}%）",
+            }
+        else:
+            return {
+                "stability": "single_low",
+                "label": "➖ 低還元",
+                "latest_rate": rate,
+                "avg_rate": rate,
+                "reason": f"1年データ（{rate * 100:.1f}%）",
+            }
 
     latest = rates[0]
     prev = rates[1]
