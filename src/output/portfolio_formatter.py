@@ -1285,3 +1285,36 @@ def format_rebalance_report(proposal: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def format_shareholder_return_analysis(data: dict) -> str:
+    """Format portfolio shareholder return analysis as markdown.
+
+    Parameters
+    ----------
+    data : dict
+        Output of portfolio_manager.get_portfolio_shareholder_return().
+        Keys: positions, weighted_avg_rate.
+
+    Returns
+    -------
+    str
+        Markdown-formatted section.
+    """
+    positions = data.get("positions", [])
+    avg_rate = data.get("weighted_avg_rate")
+    if not positions:
+        return ""
+
+    lines: list[str] = []
+    lines.append("## 株主還元分析")
+    lines.append("")
+    lines.append("| 銘柄 | 総株主還元率 |")
+    lines.append("|:-----|-----:|")
+    for pr in positions:
+        lines.append(f"| {pr['symbol']} | {pr['rate'] * 100:.2f}% |")
+    lines.append("")
+    if avg_rate is not None:
+        lines.append(f"- **加重平均 総株主還元率**: {avg_rate * 100:.2f}%")
+        lines.append("")
+    return "\n".join(lines)

@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 
 from src.data import yahoo_client
 from src.core.portfolio.concentration import analyze_concentration, compute_hhi
+from src.core.ticker_utils import infer_country as _infer_country
 
 # Team 2 module
 try:
@@ -60,45 +61,6 @@ try:
 except ImportError:
     generate_recommendations = None
 
-
-# ---------------------------------------------------------------------------
-# Country inference from ticker suffix
-# ---------------------------------------------------------------------------
-
-_SUFFIX_TO_COUNTRY = {
-    ".T": "Japan",
-    ".SI": "Singapore",
-    ".BK": "Thailand",
-    ".KL": "Malaysia",
-    ".JK": "Indonesia",
-    ".PS": "Philippines",
-    ".HK": "Hong Kong",
-    ".KS": "South Korea",
-    ".KQ": "South Korea",
-    ".TW": "Taiwan",
-    ".TWO": "Taiwan",
-    ".SS": "China",
-    ".SZ": "China",
-    ".L": "United Kingdom",
-    ".DE": "Germany",
-    ".PA": "France",
-    ".TO": "Canada",
-    ".AX": "Australia",
-    ".SA": "Brazil",
-    ".NS": "India",
-    ".BO": "India",
-}
-
-
-def _infer_country(symbol: str) -> str:
-    """Infer the country/region from the ticker symbol suffix."""
-    for suffix, country in _SUFFIX_TO_COUNTRY.items():
-        if symbol.upper().endswith(suffix.upper()):
-            return country
-    # No suffix typically means US stock
-    if "." not in symbol:
-        return "United States"
-    return "Unknown"
 
 
 # ---------------------------------------------------------------------------

@@ -572,6 +572,59 @@ def get_structure_analysis(csv_path: str, client) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def get_portfolio_shareholder_return(csv_path: str, client) -> dict:
+    """Calculate weighted-average shareholder return for the portfolio.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to portfolio CSV.
+    client
+        yahoo_client module (must expose ``get_stock_detail``).
+
+    Returns
+    -------
+    dict
+        Keys: positions (list of {symbol, rate, market_value}),
+        weighted_avg_rate (float or None).
+    """
+    from src.core.screening.indicators import calculate_shareholder_return
+
+    holdings = load_portfolio(csv_path)
+    if not holdings:
+        return {"positions": [], "weighted_avg_rate": None}
+
+    total_mv = 0.0
+    weighted_rate = 0.0
+    position_returns: list[dict] = []
+
+    for h in holdings:
+        symbol = h["symbol"]
+        if _is_cash(symbol):
+            continue
+        detail = client.get_stock_detail(symbol)
+        if detail is None:
+            continue
+        sr = calculate_shareholder_return(detail)
+        rate = sr.get("total_return_rate")
+        price = detail.get("price") or 0
+        mv = price * h["shares"]
+        if rate is not None and mv > 0:
+            position_returns.append({
+                "symbol": symbol,
+                "rate": rate,
+                "market_value": mv,
+            })
+            weighted_rate += rate * mv
+            total_mv += mv
+
+    avg_rate = weighted_rate / total_mv if total_mv > 0 else None
+    return {
+        "positions": sorted(position_returns, key=lambda x: -x["rate"]),
+        "weighted_avg_rate": avg_rate,
+    }
+
+
 def merge_positions(
     current: list[dict], proposed: list[dict]
 ) -> list[dict]:

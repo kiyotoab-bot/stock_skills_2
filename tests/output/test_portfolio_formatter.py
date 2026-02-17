@@ -343,3 +343,43 @@ class TestFormatTradeResult:
 
         output_sell = format_trade_result(result, "売却")
         assert "売却" in output_sell
+
+
+class TestFormatShareholderReturnAnalysis:
+    """Tests for format_shareholder_return_analysis (KIK-393)."""
+
+    def test_basic(self):
+        from src.output.portfolio_formatter import format_shareholder_return_analysis
+
+        data = {
+            "positions": [
+                {"symbol": "7203.T", "rate": 0.05, "market_value": 300000},
+                {"symbol": "AAPL", "rate": 0.03, "market_value": 200000},
+            ],
+            "weighted_avg_rate": 0.042,
+        }
+        result = format_shareholder_return_analysis(data)
+        assert "株主還元分析" in result
+        assert "7203.T" in result
+        assert "5.00%" in result
+        assert "3.00%" in result
+        assert "4.20%" in result
+
+    def test_empty_positions(self):
+        from src.output.portfolio_formatter import format_shareholder_return_analysis
+
+        data = {"positions": [], "weighted_avg_rate": None}
+        assert format_shareholder_return_analysis(data) == ""
+
+    def test_no_avg_rate(self):
+        from src.output.portfolio_formatter import format_shareholder_return_analysis
+
+        data = {
+            "positions": [
+                {"symbol": "7203.T", "rate": 0.05, "market_value": 300000},
+            ],
+            "weighted_avg_rate": None,
+        }
+        result = format_shareholder_return_analysis(data)
+        assert "7203.T" in result
+        assert "加重平均" not in result
