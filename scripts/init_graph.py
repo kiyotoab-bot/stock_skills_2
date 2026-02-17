@@ -42,6 +42,7 @@ from src.data.graph_store import (
     merge_stock,
     merge_trade,
     merge_watchlist,
+    sync_portfolio,
 )
 
 
@@ -262,11 +263,12 @@ def import_notes(notes_dir: str) -> int:
 
 
 def import_portfolio(csv_path: str) -> int:
-    """Import portfolio holdings as Stock nodes (skip cash positions)."""
+    """Import portfolio holdings as Stock nodes and sync HOLDS relationships."""
     p = Path(csv_path)
     if not p.exists():
         return 0
     count = 0
+    holdings = []
     try:
         with open(p, encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -275,9 +277,18 @@ def import_portfolio(csv_path: str) -> int:
                 if not symbol or symbol.upper().endswith(".CASH"):
                     continue
                 merge_stock(symbol=symbol, name=row.get("memo", ""))
+                holdings.append(row)
                 count += 1
     except (OSError, csv.Error):
         pass
+
+    # KIK-414: Sync Portfolio→HOLDS→Stock relationships
+    if holdings:
+        try:
+            sync_portfolio(holdings)
+        except Exception:
+            pass
+
     return count
 
 

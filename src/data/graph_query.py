@@ -306,6 +306,7 @@ def get_report_trend(symbol: str, limit: int = 10) -> list[dict]:
 # 11. Upcoming events (KIK-413)
 # ---------------------------------------------------------------------------
 
+
 def get_upcoming_events(limit: int = 10) -> list[dict]:
     """Get UpcomingEvent nodes from the most recent MarketContext.
 
@@ -321,6 +322,33 @@ def get_upcoming_events(limit: int = 10) -> list[dict]:
                 "RETURN e.date AS date, e.text AS text "
                 "ORDER BY m.date DESC, e.id LIMIT $limit",
                 limit=limit,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 12. Current portfolio holdings (KIK-414)
+# ---------------------------------------------------------------------------
+
+
+def get_current_holdings() -> list[dict]:
+    """Get stocks currently held in portfolio via HOLDS relationship.
+
+    Returns list of {symbol, shares, cost_price, cost_currency, purchase_date}.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (p:Portfolio {name: 'default'})-[r:HOLDS]->(s:Stock) "
+                "RETURN s.symbol AS symbol, r.shares AS shares, "
+                "r.cost_price AS cost_price, r.cost_currency AS cost_currency, "
+                "r.purchase_date AS purchase_date "
+                "ORDER BY s.symbol"
             )
             return [dict(r) for r in result]
     except Exception:

@@ -118,6 +118,8 @@ _SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT indicator_id IF NOT EXISTS FOR (i:Indicator) REQUIRE i.id IS UNIQUE",
     "CREATE CONSTRAINT upcoming_event_id IF NOT EXISTS FOR (e:UpcomingEvent) REQUIRE e.id IS UNIQUE",
     "CREATE CONSTRAINT sector_rotation_id IF NOT EXISTS FOR (r:SectorRotation) REQUIRE r.id IS UNIQUE",
+    # KIK-414 portfolio sync
+    "CREATE CONSTRAINT portfolio_name IF NOT EXISTS FOR (p:Portfolio) REQUIRE p.name IS UNIQUE",
 ]
 
 _SCHEMA_INDEXES = [
@@ -484,6 +486,104 @@ def link_research_supersedes(research_type: str, target: str) -> bool:
         return True
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Portfolio sync (KIK-414)
+# ---------------------------------------------------------------------------
+
+
+def sync_portfolio(holdings: list[dict]) -> bool:
+    """Sync portfolio CSV holdings to Neo4j HOLDS relationships.
+
+    Creates a Portfolio anchor node and HOLDS relationships to each Stock.
+    Removes HOLDS for stocks no longer in the portfolio.
+    Cash positions (*.CASH) are excluded.
+    """
+    if _get_mode() == "off":
+        return False
+    driver = _get_driver()
+    if driver is None:
+        return False
+    try:
+        from src.core.common import is_cash
+
+        with driver.session() as session:
+            session.run("MERGE (p:Portfolio {name: 'default'})")
+
+            current_symbols = []
+            for h in holdings:
+                symbol = h.get("symbol", "")
+                if not symbol or is_cash(symbol):
+                    continue
+                current_symbols.append(symbol)
+                session.run(
+                    "MERGE (s:Stock {symbol: $symbol})",
+                    symbol=symbol,
+                )
+                session.run(
+                    "MATCH (p:Portfolio {name: 'default'}) "
+                    "MATCH (s:Stock {symbol: $symbol}) "
+                    "MERGE (p)-[r:HOLDS]->(s) "
+                    "SET r.shares = $shares, r.cost_price = $cost_price, "
+                    "r.cost_currency = $cost_currency, "
+                    "r.purchase_date = $purchase_date",
+                    symbol=symbol,
+                    shares=int(h.get("shares", 0)),
+                    cost_price=float(h.get("cost_price", 0)),
+                    cost_currency=h.get("cost_currency", "JPY"),
+                    purchase_date=h.get("purchase_date", ""),
+                )
+
+            if current_symbols:
+                session.run(
+                    "MATCH (p:Portfolio {name: 'default'})-[r:HOLDS]->(s:Stock) "
+                    "WHERE NOT s.symbol IN $symbols "
+                    "DELETE r",
+                    symbols=current_symbols,
+                )
+            else:
+                session.run(
+                    "MATCH (p:Portfolio {name: 'default'})-[r:HOLDS]->() "
+                    "DELETE r",
+                )
+        return True
+    except Exception:
+        return False
+
+
+def is_held(symbol: str) -> bool:
+    """Check if a symbol is currently held in the portfolio."""
+    driver = _get_driver()
+    if driver is None:
+        return False
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock {symbol: $symbol}) "
+                "RETURN count(*) AS cnt",
+                symbol=symbol,
+            )
+            record = result.single()
+            return record["cnt"] > 0 if record else False
+    except Exception:
+        return False
+
+
+def get_held_symbols() -> list[str]:
+    """Return symbols currently held in portfolio via HOLDS relationship."""
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock) "
+                "RETURN s.symbol AS symbol"
+            )
+            return [r["symbol"] for r in result]
+    except Exception:
+        return []
 
 
 # ---------------------------------------------------------------------------

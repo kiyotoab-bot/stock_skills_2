@@ -277,6 +277,22 @@ class TestRecommendSkill:
         assert skill == "report"
         assert rel == "未知"
 
+    def test_is_held_parameter(self):
+        """KIK-414: is_held=True → health (even with no trade history)"""
+        history = {}
+        skill, reason, rel = _recommend_skill(history, False, is_held=True)
+        assert skill == "health"
+        assert rel == "保有"
+
+    def test_is_held_with_old_thesis(self):
+        """KIK-414: is_held=True + old thesis → health + review"""
+        from datetime import date, timedelta
+        old_date = (date.today() - timedelta(days=100)).isoformat()
+        history = {"notes": [{"type": "thesis", "date": old_date}]}
+        skill, reason, rel = _recommend_skill(history, False, is_held=True)
+        assert skill == "health"
+        assert "レビュー" in reason
+
 
 # ===================================================================
 # Context formatting tests
@@ -471,6 +487,7 @@ class TestGetContext:
         """未知銘柄 → report 推奨"""
         mock_gs.is_available.return_value = True
         mock_gs.get_stock_history.return_value = {}
+        mock_gs.is_held.return_value = False
         mock_bookmark.return_value = False
 
         result = get_context("AAPLを調べて")
@@ -504,6 +521,7 @@ class TestGetContext:
         """ウォッチ中 → report + ウォッチ中"""
         mock_gs.is_available.return_value = True
         mock_gs.get_stock_history.return_value = {}
+        mock_gs.is_held.return_value = False
         mock_bookmark.return_value = True
 
         result = get_context("7203.Tってどう？")
@@ -517,6 +535,7 @@ class TestGetContext:
         """返り値に必要な全フィールドが含まれる"""
         mock_gs.is_available.return_value = True
         mock_gs.get_stock_history.return_value = {}
+        mock_gs.is_held.return_value = False
         mock_bookmark.return_value = False
 
         result = get_context("AAPLの状況")
