@@ -25,131 +25,80 @@ PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
 sys.path.insert(0, PROJECT_ROOT)
 
 from src.data import yahoo_client
+from src.core.ticker_utils import infer_country as _infer_country
 
-# Team 2 module: portfolio_manager (core logic for portfolio operations)
-try:
-    from src.core.portfolio.portfolio_manager import (
-        load_portfolio,
-        save_portfolio,
-        add_position,
-        sell_position,
-        get_snapshot as pm_get_snapshot,
-        get_structure_analysis as pm_get_structure_analysis,
-    )
-    HAS_PORTFOLIO_MANAGER = True
-except ImportError:
-    HAS_PORTFOLIO_MANAGER = False
+# ---------------------------------------------------------------------------
+# Optional module imports — registry-based bulk import (KIK-393)
+# Each entry: (module_path, HAS_flag_suffix, [(original_name, alias), ...])
+# Sets globals: HAS_{flag_suffix} = True/False, and each name/alias.
+# ---------------------------------------------------------------------------
+_IMPORT_REGISTRY = [
+    ("src.core.portfolio.portfolio_manager", "PORTFOLIO_MANAGER", [
+        ("load_portfolio", None), ("save_portfolio", None),
+        ("add_position", None), ("sell_position", None),
+        ("get_snapshot", "pm_get_snapshot"),
+        ("get_structure_analysis", "pm_get_structure_analysis"),
+    ]),
+    ("src.output.portfolio_formatter", "PORTFOLIO_FORMATTER", [
+        ("format_snapshot", None), ("format_position_list", None),
+        ("format_structure_analysis", None), ("format_trade_result", None),
+        ("format_health_check", None), ("format_return_estimate", None),
+    ]),
+    ("src.core.return_estimate", "RETURN_ESTIMATE", [
+        ("estimate_portfolio_return", None),
+    ]),
+    ("src.core.health_check", "HEALTH_CHECK", [
+        ("run_health_check", "hc_run_health_check"),
+    ]),
+    ("src.core.portfolio.concentration", "CONCENTRATION", [
+        ("analyze_concentration", None),
+    ]),
+    ("src.core.portfolio.rebalancer", "REBALANCER", [
+        ("generate_rebalance_proposal", None),
+    ]),
+    ("src.output.portfolio_formatter", "REBALANCE_FORMATTER", [
+        ("format_rebalance_report", None),
+    ]),
+    ("src.core.portfolio.simulator", "SIMULATOR", [
+        ("simulate_portfolio", None),
+    ]),
+    ("src.output.portfolio_formatter", "SIMULATION_FORMATTER", [
+        ("format_simulation", None),
+    ]),
+    ("src.data.history_store", "HISTORY", [
+        ("save_trade", None), ("save_health", None),
+    ]),
+    ("src.core.portfolio.backtest", "BACKTEST", [
+        ("run_backtest", None),
+    ]),
+    ("src.core.risk.correlation", "CORRELATION", [
+        ("compute_correlation_matrix", None), ("find_high_correlation_pairs", None),
+    ]),
+    ("src.core.screening.indicators", "SHAREHOLDER_RETURN", [
+        ("calculate_shareholder_return", None),
+    ]),
+    ("src.core.portfolio.portfolio_simulation", "WHAT_IF", [
+        ("parse_add_arg", None), ("run_what_if_simulation", None),
+    ]),
+    ("src.output.portfolio_formatter", "WHAT_IF_FORMATTER", [
+        ("format_what_if", None),
+    ]),
+    ("src.core.portfolio.portfolio_manager", "SHAREHOLDER_ANALYSIS", [
+        ("get_portfolio_shareholder_return", None),
+    ]),
+    ("src.output.portfolio_formatter", "SHAREHOLDER_ANALYSIS_FMT", [
+        ("format_shareholder_return_analysis", None),
+    ]),
+]
 
-# Team 3 module: portfolio_formatter (output formatting)
-try:
-    from src.output.portfolio_formatter import (
-        format_snapshot,
-        format_position_list,
-        format_structure_analysis,
-        format_trade_result,
-        format_health_check,
-        format_return_estimate,
-    )
-    HAS_PORTFOLIO_FORMATTER = True
-except ImportError:
-    HAS_PORTFOLIO_FORMATTER = False
-
-# KIK-359: Return estimation module
-try:
-    from src.core.return_estimate import estimate_portfolio_return
-    HAS_RETURN_ESTIMATE = True
-except ImportError:
-    HAS_RETURN_ESTIMATE = False
-
-# KIK-356: Health check module
-try:
-    from src.core.health_check import run_health_check as hc_run_health_check
-    HAS_HEALTH_CHECK = True
-except ImportError:
-    HAS_HEALTH_CHECK = False
-
-# Concentration analysis (already exists in the codebase)
-try:
-    from src.core.portfolio.concentration import analyze_concentration
-    HAS_CONCENTRATION = True
-except ImportError:
-    HAS_CONCENTRATION = False
-
-# KIK-363: Rebalancer module
-try:
-    from src.core.portfolio.rebalancer import generate_rebalance_proposal
-    HAS_REBALANCER = True
-except ImportError:
-    HAS_REBALANCER = False
-
-# KIK-363: Rebalance formatter
-try:
-    from src.output.portfolio_formatter import format_rebalance_report
-    HAS_REBALANCE_FORMATTER = True
-except ImportError:
-    HAS_REBALANCE_FORMATTER = False
-
-# KIK-366: Simulator module
-try:
-    from src.core.portfolio.simulator import simulate_portfolio
-    HAS_SIMULATOR = True
-except ImportError:
-    HAS_SIMULATOR = False
-
-# KIK-366: Simulation formatter
-try:
-    from src.output.portfolio_formatter import format_simulation
-    HAS_SIMULATION_FORMATTER = True
-except ImportError:
-    HAS_SIMULATION_FORMATTER = False
-
-# KIK-368: History store
-try:
-    from src.data.history_store import save_trade, save_health
-    HAS_HISTORY = True
-except ImportError:
-    HAS_HISTORY = False
-
-# KIK-368: Backtest module
-try:
-    from src.core.portfolio.backtest import run_backtest
-    HAS_BACKTEST = True
-except ImportError:
-    HAS_BACKTEST = False
-
-# Correlation module (for high-correlation pairs)
-try:
-    from src.core.risk.correlation import (
-        compute_correlation_matrix,
-        find_high_correlation_pairs,
-    )
-    HAS_CORRELATION = True
-except ImportError:
-    HAS_CORRELATION = False
-
-# KIK-375: Shareholder return module
-try:
-    from src.core.screening.indicators import calculate_shareholder_return
-    HAS_SHAREHOLDER_RETURN = True
-except ImportError:
-    HAS_SHAREHOLDER_RETURN = False
-
-# KIK-376: What-If simulation module
-try:
-    from src.core.portfolio.portfolio_simulation import (
-        parse_add_arg,
-        run_what_if_simulation,
-    )
-    HAS_WHAT_IF = True
-except ImportError:
-    HAS_WHAT_IF = False
-
-# KIK-376: What-If formatter
-try:
-    from src.output.portfolio_formatter import format_what_if
-    HAS_WHAT_IF_FORMATTER = True
-except ImportError:
-    HAS_WHAT_IF_FORMATTER = False
+for _mod_path, _flag_suffix, _names in _IMPORT_REGISTRY:
+    try:
+        _mod = __import__(_mod_path, fromlist=[n[0] for n in _names])
+        for _orig, _alias in _names:
+            globals()[_alias or _orig] = getattr(_mod, _orig)
+        globals()[f"HAS_{_flag_suffix}"] = True
+    except ImportError:
+        globals()[f"HAS_{_flag_suffix}"] = False
 
 
 # ---------------------------------------------------------------------------
@@ -159,43 +108,6 @@ DEFAULT_CSV = os.path.join(
     os.path.dirname(__file__), "..", "data", "portfolio.csv"
 )
 
-
-# ---------------------------------------------------------------------------
-# Country inference from ticker suffix (reused from stress-test)
-# ---------------------------------------------------------------------------
-_SUFFIX_TO_COUNTRY = {
-    ".T": "Japan",
-    ".SI": "Singapore",
-    ".BK": "Thailand",
-    ".KL": "Malaysia",
-    ".JK": "Indonesia",
-    ".PS": "Philippines",
-    ".HK": "Hong Kong",
-    ".KS": "South Korea",
-    ".KQ": "South Korea",
-    ".TW": "Taiwan",
-    ".TWO": "Taiwan",
-    ".SS": "China",
-    ".SZ": "China",
-    ".L": "United Kingdom",
-    ".DE": "Germany",
-    ".PA": "France",
-    ".TO": "Canada",
-    ".AX": "Australia",
-    ".SA": "Brazil",
-    ".NS": "India",
-    ".BO": "India",
-}
-
-
-def _infer_country(symbol: str) -> str:
-    """Infer country/region from ticker symbol suffix."""
-    for suffix, country in _SUFFIX_TO_COUNTRY.items():
-        if symbol.upper().endswith(suffix.upper()):
-            return country
-    if "." not in symbol:
-        return "United States"
-    return "Unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -481,49 +393,6 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_shareholder_return_section(csv_path: str) -> None:
-    """Print weighted-average shareholder return rate for portfolio (KIK-375)."""
-    holdings = _fallback_load_csv(csv_path)
-    if not holdings:
-        return
-
-    total_mv = 0.0
-    weighted_rate = 0.0
-    position_returns: list[dict] = []
-
-    for h in holdings:
-        symbol = h["symbol"]
-        if symbol.upper().endswith(".CASH"):
-            continue
-        detail = yahoo_client.get_stock_detail(symbol)
-        if detail is None:
-            continue
-        sr = calculate_shareholder_return(detail)
-        rate = sr.get("total_return_rate")
-        price = detail.get("price") or 0
-        mv = price * h["shares"]
-        if rate is not None and mv > 0:
-            position_returns.append({
-                "symbol": symbol,
-                "rate": rate,
-                "market_value": mv,
-            })
-            weighted_rate += rate * mv
-            total_mv += mv
-
-    if total_mv > 0 and position_returns:
-        avg_rate = weighted_rate / total_mv
-        print()
-        print("## 株主還元分析")
-        print()
-        print("| 銘柄 | 総株主還元率 |")
-        print("|:-----|-----:|")
-        for pr in sorted(position_returns, key=lambda x: -x["rate"]):
-            print(f"| {pr['symbol']} | {pr['rate'] * 100:.2f}% |")
-        print()
-        print(f"- **加重平均 総株主還元率**: {avg_rate * 100:.2f}%")
-        print()
-
 
 def cmd_analyze(csv_path: str) -> None:
     """Structural analysis -- sector/region/currency HHI."""
@@ -560,9 +429,17 @@ def cmd_analyze(csv_path: str) -> None:
                         print(f"  - {label}: {w * 100:.1f}%")
                     print()
 
-        # KIK-375: Shareholder return section
-        if HAS_SHAREHOLDER_RETURN:
-            _print_shareholder_return_section(csv_path)
+        # KIK-375/393: Shareholder return section (delegated to core)
+        if HAS_SHAREHOLDER_ANALYSIS:
+            sr_data = get_portfolio_shareholder_return(csv_path, yahoo_client)
+            if sr_data.get("positions"):
+                if HAS_SHAREHOLDER_ANALYSIS_FMT:
+                    print()
+                    print(format_shareholder_return_analysis(sr_data))
+                else:
+                    avg = sr_data.get("weighted_avg_rate")
+                    if avg is not None:
+                        print(f"\n加重平均 総株主還元率: {avg * 100:.2f}%")
 
         return
 
@@ -784,7 +661,6 @@ def cmd_rebalance(
                     if not pos.get("sector"):
                         pos["sector"] = snap_pos.get("sector")
                     if not pos.get("country"):
-                        from src.core.portfolio.portfolio_manager import _infer_country
                         pos["country"] = _infer_country(pos.get("symbol", ""))
                     if not pos.get("evaluation_jpy"):
                         pos["evaluation_jpy"] = snap_pos.get("evaluation_jpy", 0)
