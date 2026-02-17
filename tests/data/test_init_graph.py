@@ -15,6 +15,7 @@ from scripts.init_graph import (
     import_trades,
     import_health,
     import_research,
+    import_market_context,
     import_notes,
     import_portfolio,
     import_watchlists,
@@ -475,4 +476,54 @@ class TestImportWatchlists:
         tmp_path.mkdir(exist_ok=True)
         (tmp_path / "bad.json").write_text("not json")
         count = import_watchlists(str(tmp_path))
+        assert count == 0
+
+
+# ===================================================================
+# import_market_context tests (KIK-399)
+# ===================================================================
+
+class TestImportMarketContext:
+    @patch("scripts.init_graph.merge_market_context")
+    def test_import_market_context_basic(self, mock_mc, tmp_path):
+        d = tmp_path / "market_context"
+        _write_json(d / "2025-02-17_context.json", {
+            "date": "2025-02-17",
+            "indices": [
+                {"name": "S&P500", "price": 5800},
+                {"name": "日経平均", "price": 40000},
+            ],
+        })
+        count = import_market_context(str(tmp_path))
+        assert count == 1
+        mock_mc.assert_called_once_with(
+            context_date="2025-02-17",
+            indices=[
+                {"name": "S&P500", "price": 5800},
+                {"name": "日経平均", "price": 40000},
+            ],
+        )
+
+    @patch("scripts.init_graph.merge_market_context")
+    def test_import_market_context_empty_dir(self, mock_mc, tmp_path):
+        count = import_market_context(str(tmp_path))
+        assert count == 0
+        mock_mc.assert_not_called()
+
+    @patch("scripts.init_graph.merge_market_context")
+    def test_import_market_context_no_date_skipped(self, mock_mc, tmp_path):
+        d = tmp_path / "market_context"
+        _write_json(d / "2025-02-17_context.json", {
+            "indices": [{"name": "VIX", "price": 15}],
+        })
+        count = import_market_context(str(tmp_path))
+        assert count == 0
+        mock_mc.assert_not_called()
+
+    @patch("scripts.init_graph.merge_market_context")
+    def test_import_market_context_corrupted_file(self, mock_mc, tmp_path):
+        d = tmp_path / "market_context"
+        d.mkdir(parents=True)
+        (d / "bad.json").write_text("not json")
+        count = import_market_context(str(tmp_path))
         assert count == 0

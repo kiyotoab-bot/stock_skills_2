@@ -96,6 +96,19 @@ def save_screening(
     path = d / filename
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    # Neo4j dual-write (KIK-399) -- graceful degradation
+    try:
+        from src.data.graph_store import merge_screen, merge_stock
+        symbols = [r.get("symbol") for r in results if r.get("symbol")]
+        for r in results:
+            sym = r.get("symbol")
+            if sym:
+                merge_stock(symbol=sym, name=r.get("name", ""), sector=r.get("sector", ""))
+        merge_screen(today, preset, region, len(results), symbols)
+    except Exception:
+        pass
+
     return str(path.resolve())
 
 
@@ -140,6 +153,15 @@ def save_report(
     path = d / filename
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    # Neo4j dual-write (KIK-399) -- graceful degradation
+    try:
+        from src.data.graph_store import merge_report, merge_stock
+        merge_stock(symbol=symbol, name=data.get("name", ""), sector=data.get("sector", ""))
+        merge_report(report_date=today, symbol=symbol, score=score, verdict=verdict)
+    except Exception:
+        pass
+
     return str(path.resolve())
 
 
@@ -179,6 +201,18 @@ def save_trade(
     path = d / filename
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    # Neo4j dual-write (KIK-399) -- graceful degradation
+    try:
+        from src.data.graph_store import merge_trade, merge_stock
+        merge_stock(symbol=symbol)
+        merge_trade(
+            trade_date=date_str, trade_type=trade_type, symbol=symbol,
+            shares=shares, price=price, currency=currency, memo=memo,
+        )
+    except Exception:
+        pass
+
     return str(path.resolve())
 
 
@@ -226,6 +260,15 @@ def save_health(
     path = d / filename
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    # Neo4j dual-write (KIK-399) -- graceful degradation
+    try:
+        from src.data.graph_store import merge_health
+        symbols = [p.get("symbol") for p in health_data.get("positions", []) if p.get("symbol")]
+        merge_health(today, summary, symbols)
+    except Exception:
+        pass
+
     return str(path.resolve())
 
 
@@ -272,6 +315,20 @@ def save_research(
     path = d / filename
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    # Neo4j dual-write (KIK-399) -- graceful degradation
+    try:
+        from src.data.graph_store import merge_research, merge_stock, link_research_supersedes
+        if research_type in ("stock", "business"):
+            merge_stock(symbol=target, name=result.get("name", ""))
+        merge_research(
+            research_date=today, research_type=research_type,
+            target=target, summary=result.get("summary", ""),
+        )
+        link_research_supersedes(research_type, target)
+    except Exception:
+        pass
+
     return str(path.resolve())
 
 
@@ -310,6 +367,14 @@ def save_market_context(
     path = d / filename
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
+
+    # Neo4j dual-write (KIK-399) -- graceful degradation
+    try:
+        from src.data.graph_store import merge_market_context
+        merge_market_context(context_date=today, indices=context.get("indices", []))
+    except Exception:
+        pass
+
     return str(path.resolve())
 
 

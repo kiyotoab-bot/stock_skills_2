@@ -32,6 +32,12 @@ try:
 except ImportError:
     HAS_SR_FORMAT = False
 
+try:
+    from src.data.graph_query import get_screening_frequency
+    HAS_GRAPH_QUERY = True
+except ImportError:
+    HAS_GRAPH_QUERY = False
+
 
 # Legacy market classes
 MARKETS = {
@@ -97,6 +103,26 @@ VALID_SECTORS = [
 ]
 
 
+def _print_recurring_picks(results):
+    """Print recurring picks highlight if graph data available (KIK-406)."""
+    if not HAS_GRAPH_QUERY or not results:
+        return
+    try:
+        symbols = [r.get("symbol") for r in results if r.get("symbol")]
+        if not symbols:
+            return
+        freq = get_screening_frequency(symbols)
+        # Only show symbols that appeared 2+ times (current run counts as new)
+        recurring = {s: c for s, c in freq.items() if c >= 2}
+        if recurring:
+            print("**再出現銘柄** (過去のスクリーニングにも登場):")
+            for sym, cnt in sorted(recurring.items(), key=lambda x: -x[1]):
+                print(f"  - {sym}: 過去{cnt}回出現")
+            print()
+    except Exception:
+        pass
+
+
 def run_trending_mode(args):
     """Run trending stock screening using Grok X search."""
     try:
@@ -124,6 +150,8 @@ def run_trending_mode(args):
 
     print(f"Step 2: {len(results)}銘柄のファンダメンタルズを取得・スコアリング完了\n")
     print(format_trending_markdown(results, market_context))
+
+    _print_recurring_picks(results)
 
     if HAS_HISTORY and results:
         try:
@@ -156,6 +184,7 @@ def run_query_mode(args):
             results = screener.screen(region=region_code, top_n=args.top)
             print(f"Step 2-3 完了: {len(results)}銘柄が条件に合致\n")
             print(format_pullback_markdown(results))
+            _print_recurring_picks(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset="pullback", region=region_code, results=results)
@@ -174,6 +203,7 @@ def run_query_mode(args):
             results = screener.screen(region=region_code, top_n=args.top)
             print(f"Step 2-4 完了: {len(results)}銘柄がアルファ条件に合致\n")
             print(format_alpha_markdown(results))
+            _print_recurring_picks(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset="alpha", region=region_code, results=results)
@@ -199,6 +229,7 @@ def run_query_mode(args):
             pullback_label = " + 押し目フィルタ"
             print(f"\n## {region_name} - {args.preset}{sector_label}{pullback_label} スクリーニング結果 (EquityQuery)\n")
             print(format_pullback_markdown(results))
+            _print_recurring_picks(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
@@ -216,6 +247,7 @@ def run_query_mode(args):
                 print(format_shareholder_return_markdown(results))
             else:
                 print(format_query_markdown(results))
+            _print_recurring_picks(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)

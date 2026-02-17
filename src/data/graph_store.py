@@ -70,6 +70,7 @@ _SCHEMA_CONSTRAINTS = [
     "CREATE CONSTRAINT sector_name IF NOT EXISTS FOR (s:Sector) REQUIRE s.name IS UNIQUE",
     "CREATE CONSTRAINT research_id IF NOT EXISTS FOR (r:Research) REQUIRE r.id IS UNIQUE",
     "CREATE CONSTRAINT watchlist_name IF NOT EXISTS FOR (w:Watchlist) REQUIRE w.name IS UNIQUE",
+    "CREATE CONSTRAINT market_context_id IF NOT EXISTS FOR (m:MarketContext) REQUIRE m.id IS UNIQUE",
 ]
 
 _SCHEMA_INDEXES = [
@@ -80,6 +81,7 @@ _SCHEMA_INDEXES = [
     "CREATE INDEX note_type IF NOT EXISTS FOR (n:Note) ON (n.type)",
     "CREATE INDEX research_date IF NOT EXISTS FOR (r:Research) ON (r.date)",
     "CREATE INDEX research_type IF NOT EXISTS FOR (r:Research) ON (r.research_type)",
+    "CREATE INDEX market_context_date IF NOT EXISTS FOR (m:MarketContext) ON (m.date)",
 ]
 
 
@@ -406,6 +408,34 @@ def link_research_supersedes(research_type: str, target: str) -> bool:
                 "WITH nodes[i] AS a, nodes[i+1] AS b "
                 "MERGE (a)-[:SUPERSEDES]->(b)",
                 rtype=research_type, target=target,
+            )
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# MarketContext node (KIK-399)
+# ---------------------------------------------------------------------------
+
+def merge_market_context(context_date: str, indices: list[dict]) -> bool:
+    """Create/update a MarketContext node with index snapshots.
+
+    indices is stored as a JSON string (Neo4j can't store list-of-maps).
+    """
+    driver = _get_driver()
+    if driver is None:
+        return False
+    import json as _json
+    context_id = f"market_context_{context_date}"
+    try:
+        with driver.session() as session:
+            session.run(
+                "MERGE (m:MarketContext {id: $id}) "
+                "SET m.date = $date, m.indices = $indices",
+                id=context_id,
+                date=context_date,
+                indices=_json.dumps(indices, ensure_ascii=False),
             )
         return True
     except Exception:

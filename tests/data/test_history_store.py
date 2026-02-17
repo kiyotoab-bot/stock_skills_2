@@ -4,6 +4,7 @@ import json
 import math
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -596,6 +597,53 @@ class TestSaveMarketContext:
 # ===================================================================
 # base_dir parameter
 # ===================================================================
+
+
+# ===================================================================
+# Neo4j dual-write (KIK-399)
+# ===================================================================
+
+
+class TestGraphDualWrite:
+    """Verify that save_* functions call graph_store merge functions."""
+
+    @patch("src.data.history_store.merge_screen", create=True)
+    @patch("src.data.history_store.merge_stock", create=True)
+    def test_screening_calls_graph(self, mock_stock, mock_screen, tmp_path):
+        with patch.dict("sys.modules", {}):
+            save_screening("value", "japan", [{"symbol": "7203.T", "name": "Toyota", "sector": "Auto"}], base_dir=str(tmp_path))
+
+    def test_screening_graph_failure_still_saves(self, tmp_path):
+        with patch("src.data.graph_store.merge_stock", side_effect=Exception("Neo4j down")):
+            path = save_screening("value", "japan", [{"symbol": "7203.T"}], base_dir=str(tmp_path))
+            assert Path(path).exists()
+
+    def test_report_graph_failure_still_saves(self, tmp_path):
+        with patch("src.data.graph_store.merge_stock", side_effect=Exception("Neo4j down")):
+            path = save_report("7203.T", _sample_stock_data(), 72.5, "割安", base_dir=str(tmp_path))
+            assert Path(path).exists()
+
+    def test_trade_graph_failure_still_saves(self, tmp_path):
+        with patch("src.data.graph_store.merge_stock", side_effect=Exception("Neo4j down")):
+            path = save_trade("7203.T", "buy", 100, 2850, "JPY", "2026-02-17", base_dir=str(tmp_path))
+            assert Path(path).exists()
+
+    def test_health_graph_failure_still_saves(self, tmp_path):
+        with patch("src.data.graph_store.merge_health", side_effect=Exception("Neo4j down")):
+            path = save_health(_sample_health_data(), base_dir=str(tmp_path))
+            assert Path(path).exists()
+
+    def test_research_graph_failure_still_saves(self, tmp_path):
+        with patch("src.data.graph_store.merge_research", side_effect=Exception("Neo4j down")):
+            result = {"type": "stock", "symbol": "7203.T", "summary": "test"}
+            path = save_research("stock", "7203.T", result, base_dir=str(tmp_path))
+            assert Path(path).exists()
+
+    def test_market_context_graph_failure_still_saves(self, tmp_path):
+        with patch("src.data.graph_store.merge_market_context", side_effect=Exception("Neo4j down")):
+            context = {"indices": [{"name": "VIX", "price": 20.0}]}
+            path = save_market_context(context, base_dir=str(tmp_path))
+            assert Path(path).exists()
 
 
 class TestBaseDirParameter:

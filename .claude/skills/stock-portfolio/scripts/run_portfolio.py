@@ -89,6 +89,9 @@ _IMPORT_REGISTRY = [
     ("src.output.portfolio_formatter", "SHAREHOLDER_ANALYSIS_FMT", [
         ("format_shareholder_return_analysis", None),
     ]),
+    ("src.data.graph_query", "GRAPH_QUERY", [
+        ("get_recent_market_context", None),
+    ]),
 ]
 
 for _mod_path, _flag_suffix, _names in _IMPORT_REGISTRY:
@@ -550,6 +553,23 @@ def cmd_health(csv_path: str) -> None:
             alert_str = f"{emoji} {alert_label}".strip() if emoji else "なし"
             print(f"| {symbol} | {pnl_str} | {trend} | {quality} | {alert_str} |")
         print()
+
+    # KIK-406: Market context display
+    if HAS_GRAPH_QUERY:
+        try:
+            ctx = get_recent_market_context()
+            if ctx and ctx.get("indices"):
+                print(f"\n### 市況コンテキスト ({ctx['date']})")
+                for idx in ctx["indices"]:
+                    name = idx.get("name", "?")
+                    price = idx.get("price")
+                    change = idx.get("change_pct")
+                    if price is not None:
+                        change_str = f" ({change:+.2f}%)" if change is not None else ""
+                        print(f"  - {name}: {price:,.2f}{change_str}")
+                print()
+        except Exception:
+            pass
 
     if HAS_HISTORY:
         try:

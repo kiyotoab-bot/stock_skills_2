@@ -30,6 +30,7 @@ from src.data.graph_store import (
     is_available,
     link_research_supersedes,
     merge_health,
+    merge_market_context,
     merge_note,
     merge_report,
     merge_research,
@@ -194,6 +195,27 @@ def import_research(history_dir: str) -> int:
     return count
 
 
+def import_market_context(history_dir: str) -> int:
+    """Import market context history files."""
+    d = Path(history_dir) / "market_context"
+    if not d.exists():
+        return 0
+    count = 0
+    for fp in sorted(d.glob("*.json")):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                data = json.load(f)
+            context_date = data.get("date", "")
+            if not context_date:
+                continue
+            indices = data.get("indices", [])
+            merge_market_context(context_date=context_date, indices=indices)
+            count += 1
+        except (json.JSONDecodeError, OSError):
+            continue
+    return count
+
+
 def import_notes(notes_dir: str) -> int:
     """Import note files."""
     d = Path(notes_dir)
@@ -306,12 +328,14 @@ def main():
     trades = import_trades(args.history_dir)
     health = import_health(args.history_dir)
     research = import_research(args.history_dir)
+    market_ctx = import_market_context(args.history_dir)
 
-    print(f"  Screens:  {screens}")
-    print(f"  Reports:  {reports}")
-    print(f"  Trades:   {trades}")
-    print(f"  Health:   {health}")
-    print(f"  Research: {research}")
+    print(f"  Screens:        {screens}")
+    print(f"  Reports:        {reports}")
+    print(f"  Trades:         {trades}")
+    print(f"  Health:         {health}")
+    print(f"  Research:       {research}")
+    print(f"  MarketContext:  {market_ctx}")
 
     print(f"\nImporting portfolio from {args.portfolio_csv}...")
     portfolio = import_portfolio(args.portfolio_csv)
