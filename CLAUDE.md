@@ -139,14 +139,21 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                      (スキル実行時の自動蓄積,
                       data/history/ へ日付付きJSON,
                       screen/report/trade/health/
-                      research/market_context)
+                      research/market_context,
+                      Neo4j dual-write: JSON=master, Neo4j=view)
                      graph_store.py
                      (Neo4jナレッジグラフCRUD,
                       スキーマ初期化+MERGE操作,
                       Stock/Screen/Report/Trade/Health/
-                      Research/Watchlist/Note,
+                      Research/Watchlist/Note/MarketContext,
                       SUPERSEDES チェーン,
                       graceful degradation)
+                     graph_query.py
+                     (Neo4jナレッジグラフ照会,
+                      前回レポート比較/再出現銘柄/
+                      リサーチ履歴/市況コンテキスト/
+                      売買コンテキスト/常連銘柄,
+                      Neo4j不可時は空/None返却)
                      note_manager.py
                      (投資メモ管理,
                       JSON=master, Neo4j=view,
@@ -155,7 +162,8 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   Scripts: scripts/
            init_graph.py ─ Neo4jスキーマ初期化+既存履歴インポート
                            (screen/report/trade/health/research/
-                            portfolio/watchlist/notes, --rebuild)
+                            portfolio/watchlist/notes/market_context,
+                            --rebuild)
 
   Config: config/screening_presets.yaml (7プリセット)
           config/exchanges.yaml (60+地域の取引所・閾値)
