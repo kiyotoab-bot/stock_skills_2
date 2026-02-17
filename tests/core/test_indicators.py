@@ -437,11 +437,43 @@ class TestCalculateShareholderReturnHistory:
         assert result[2]["fiscal_year"] == 2022
         assert result[2]["total_return_amount"] == 900e9
 
-    def test_empty_history(self):
-        """No history data returns empty list."""
+    def test_empty_history_no_single_period(self):
+        """No history and no single-period data returns empty list."""
         stock = {"market_cap": 42e12}
         result = calculate_shareholder_return_history(stock)
         assert result == []
+
+    def test_fallback_to_single_period(self):
+        """No history but single-period data available -> 1-entry fallback."""
+        stock = {
+            "market_cap": 10e9,
+            "dividend_paid": -200e6,
+            "stock_repurchase": -300e6,
+        }
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 1
+        assert result[0]["dividend_paid"] == 200e6
+        assert result[0]["stock_repurchase"] == 300e6
+        assert result[0]["total_return_amount"] == 500e6
+        assert result[0]["total_return_rate"] == pytest.approx(0.05)
+        assert result[0]["fiscal_year"] is None
+
+    def test_fallback_dividend_only(self):
+        """Fallback with only dividend_paid (no repurchase)."""
+        stock = {"market_cap": 10e9, "dividend_paid": -100e6}
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 1
+        assert result[0]["dividend_paid"] == 100e6
+        assert result[0]["stock_repurchase"] is None
+        assert result[0]["total_return_amount"] == 100e6
+
+    def test_fallback_repurchase_only(self):
+        """Fallback with only stock_repurchase (no dividend)."""
+        stock = {"market_cap": 10e9, "stock_repurchase": -400e6}
+        result = calculate_shareholder_return_history(stock)
+        assert len(result) == 1
+        assert result[0]["dividend_paid"] is None
+        assert result[0]["stock_repurchase"] == 400e6
 
     def test_dividend_only_history(self):
         """Only dividend history available."""

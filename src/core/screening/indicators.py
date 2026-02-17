@@ -151,7 +151,24 @@ def calculate_shareholder_return_history(stock: dict) -> list[dict]:
     fiscal_years: list[int] = stock.get("cashflow_fiscal_years") or []
 
     if not div_hist and not rep_hist:
-        return []
+        # Fallback: use single-period dividend_paid / stock_repurchase
+        div_raw = stock.get("dividend_paid")
+        rep_raw = stock.get("stock_repurchase")
+        if div_raw is None and rep_raw is None:
+            return []
+        dividend_paid = abs(div_raw) if div_raw is not None else None
+        stock_repurchase = abs(rep_raw) if rep_raw is not None else None
+        total = (dividend_paid or 0.0) + (stock_repurchase or 0.0)
+        total_rate = None
+        if market_cap is not None and market_cap > 0:
+            total_rate = total / market_cap
+        return [{
+            "fiscal_year": None,
+            "dividend_paid": dividend_paid,
+            "stock_repurchase": stock_repurchase,
+            "total_return_amount": total,
+            "total_return_rate": total_rate,
+        }]
 
     n = max(len(div_hist), len(rep_hist))
     results: list[dict] = []
