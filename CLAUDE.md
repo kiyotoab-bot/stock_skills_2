@@ -91,7 +91,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │  models.py ─ dataclass定義(Position/ForecastResult/HealthResult等) │
   │  common.py ─ 共通ユーティリティ(is_cash/is_etf/safe_float)   │
   │  ticker_utils.py ─ ティッカー推論(通貨/地域マッピング)         │
-  │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート+クロス検出+トラップ検出) │
+  │  health_check.py ─ 保有銘柄ヘルスチェック(3段階アラート+クロス検出+トラップ検出+還元安定度) │
   │  return_estimate.py ─ 推定利回り(アナリスト+過去リターン+ニュース+Xセンチメント) │
   │  value_trap.py ─ バリュートラップ検出(health_checkから独立)     │
   │                                                           │

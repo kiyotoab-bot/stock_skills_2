@@ -357,9 +357,9 @@ def format_health_check(health_data: dict) -> str:
     lines.append(
         "| \u9298\u67c4 | \u640d\u76ca | \u30c8\u30ec\u30f3\u30c9 "
         "| \u5909\u5316\u306e\u8cea | \u30a2\u30e9\u30fc\u30c8 "
-        "| \u9577\u671f\u9069\u6027 |"
+        "| \u9577\u671f\u9069\u6027 | \u9084\u5143\u5b89\u5b9a\u5ea6 |"
     )
-    lines.append("|:-----|-----:|:-------|:--------|:------------|:--------|")
+    lines.append("|:-----|-----:|:-------|:--------|:------------|:--------|:--------|")
 
     for pos in positions:
         symbol = pos.get("symbol", "-")
@@ -386,8 +386,13 @@ def format_health_check(health_data: dict) -> str:
         lt = pos.get("long_term", {})
         lt_label = lt.get("label", "-")
 
+        # Return stability (KIK-403)
+        rs = pos.get("return_stability", {})
+        rs_label = rs.get("label", "-") if rs else "-"
+
         lines.append(
-            f"| {symbol} | {pnl_str} | {trend} | {quality} | {alert_str} | {lt_label} |"
+            f"| {symbol} | {pnl_str} | {trend} | {quality} "
+            f"| {alert_str} | {lt_label} | {rs_label} |"
         )
 
     lines.append("")
@@ -463,6 +468,30 @@ def format_health_check(health_data: dict) -> str:
                     f"- \U0001fa64 **\u30d0\u30ea\u30e5\u30fc\u30c8\u30e9\u30c3\u30d7\u5146\u5019**: "
                     f"{', '.join(vt['reasons'])}"
                 )
+
+            # Shareholder return stability context (KIK-403)
+            rs = pos.get("return_stability")
+            if rs:
+                stability = rs.get("stability")
+                latest_pct = (rs.get("latest_rate") or 0) * 100
+                avg_pct = (rs.get("avg_rate") or 0) * 100
+                if stability == "temporary":
+                    lines.append(
+                        f"- \u26a0\ufe0f **\u4e00\u6642\u7684\u9ad8\u9084\u5143**: "
+                        f"{rs.get('reason', '')}"
+                        f"\uff08\u76f4\u8fd1 {latest_pct:.1f}%\u3001"
+                        f"\u5e73\u5747 {avg_pct:.1f}%\uff09"
+                    )
+                elif stability == "decreasing":
+                    lines.append(
+                        f"- \U0001f4c9 **\u682a\u4e3b\u9084\u5143\u6e1b\u5c11\u50be\u5411**: "
+                        f"{rs.get('reason', '')}"
+                    )
+                elif stability in ("stable", "increasing"):
+                    lines.append(
+                        f"- {rs.get('label', '')} "
+                        f"\uff08\u76f4\u8fd1 {latest_pct:.1f}%\uff09"
+                    )
 
             # Action suggestion based on alert level
             level = alert.get("level", "none")
