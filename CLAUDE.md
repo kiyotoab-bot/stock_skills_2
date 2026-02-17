@@ -138,7 +138,8 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                      history_store.py
                      (スキル実行時の自動蓄積,
                       data/history/ へ日付付きJSON,
-                      screen/report/trade/health)
+                      screen/report/trade/health/
+                      research/market_context)
                      graph_store.py
                      (Neo4jナレッジグラフCRUD,
                       スキーマ初期化+MERGE操作,
