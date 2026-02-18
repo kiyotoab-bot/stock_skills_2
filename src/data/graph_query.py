@@ -1,7 +1,8 @@
-"""Graph query helpers for enriching skill output (KIK-406/413).
+"""Graph query helpers for enriching skill output (KIK-406/413/420).
 
 All functions return empty/None when Neo4j is unavailable (graceful degradation).
 KIK-413 additions: semantic sub-node queries (news, sentiment, catalysts, report trend, events).
+KIK-420 additions: vector_search() for semantic similarity across all node types.
 """
 
 import json
@@ -440,3 +441,72 @@ def get_current_holdings() -> list[dict]:
             return [dict(r) for r in result]
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# 14. Vector similarity search (KIK-420)
+# ---------------------------------------------------------------------------
+
+_VECTOR_LABELS = [
+    "Screen", "Report", "Trade", "Research",
+    "HealthCheck", "MarketContext", "Note",
+]
+
+
+def vector_search(
+    query_embedding: list[float],
+    top_k: int = 5,
+    node_labels: list[str] | None = None,
+) -> list[dict]:
+    """Cross-type vector similarity search across Neo4j nodes.
+
+    Queries each node type's vector index and merges results by score.
+
+    Parameters
+    ----------
+    query_embedding : list[float]
+        384-dim embedding vector from TEI.
+    top_k : int
+        Max results to return (default 5).
+    node_labels : list[str] | None
+        Node labels to search. None means all 7 embeddable types.
+
+    Returns
+    -------
+    list[dict]
+        [{label, summary, score, date, id, symbol?}] sorted by score desc.
+        Empty list if Neo4j unavailable.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+
+    labels = node_labels or _VECTOR_LABELS
+    results: list[dict] = []
+
+    for label in labels:
+        index_name = f"{label.lower()}_embedding"
+        try:
+            with driver.session() as session:
+                records = session.run(
+                    "CALL db.index.vector.queryNodes($index, $k, $emb) "
+                    "YIELD node, score "
+                    "RETURN node.semantic_summary AS summary, "
+                    "node.date AS date, node.id AS id, "
+                    "node.symbol AS symbol, score",
+                    index=index_name, k=top_k, emb=query_embedding,
+                )
+                for r in records:
+                    results.append({
+                        "label": label,
+                        "summary": r["summary"],
+                        "date": r["date"],
+                        "id": r["id"],
+                        "symbol": r.get("symbol"),
+                        "score": r["score"],
+                    })
+        except Exception:
+            continue  # index not yet created or label has no embeddings
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:top_k]

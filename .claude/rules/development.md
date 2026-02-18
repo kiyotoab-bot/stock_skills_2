@@ -6,6 +6,7 @@
 - 主要依存: yfinance, pyyaml, numpy, pandas, pytest
 - Grok API 利用時は `XAI_API_KEY` 環境変数を設定（未設定でも動作する）
 - Neo4j 書き込み深度は `NEO4J_MODE` 環境変数で制御: `off`/`summary`/`full`（デフォルト: 接続可能なら `full`）(KIK-413)
+- TEI ベクトル検索は `TEI_URL` 環境変数で制御（デフォルト: `http://localhost:8081`）。未起動時はベクトル検索スキップ (KIK-420)
 
 ## コーディング規約
 
@@ -19,7 +20,7 @@
 
 ## テスト
 
-- `python3 -m pytest tests/ -q` で全テスト実行（約1191テスト、~1秒）
+- `python3 -m pytest tests/ -q` で全テスト実行（約1706テスト、~5秒）
 - `tests/conftest.py` に共通フィクスチャ: `stock_info_data`, `stock_detail_data`, `price_history_df`, `mock_yahoo_client`
 - `tests/fixtures/` に JSON/CSV テストデータ（Toyota 7203.T ベース）
 - `mock_yahoo_client` は monkeypatch で yahoo_client モジュール関数をモック

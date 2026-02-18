@@ -167,6 +167,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       Indicator/UpcomingEvent/SectorRotation展開,
                       sync_portfolio()/is_held()/get_held_symbols()(KIK-414),
                       Portfolio→HOLDS→Stock(CSV=master, Neo4j=view),
+                      ベクトルインデックス7本+_set_embedding()(KIK-420),
                       graceful degradation)
                      graph_query.py
                      (Neo4jナレッジグラフ照会,
@@ -179,6 +180,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       現在保有銘柄一覧(KIK-414),
                       直近売却バッチ取得(KIK-418),
                       メモバッチ取得(KIK-419),
+                      vector_search()全7タイプ横断(KIK-420),
                       Neo4j不可時は空/None返却)
                      screen_annotator.py
                      (スクリーニング結果アノテーション(KIK-418/419),
@@ -199,12 +201,25 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       カタリスト/バリュエーション推移/
                       イベント/指標推移(KIK-413))
                      auto_context.py
-                     (自動コンテキスト注入エンジン(KIK-411),
+                     (自動コンテキスト注入エンジン(KIK-411/420),
+                      ハイブリッド検索: ベクトル+シンボルベース,
                       ティッカー検出+企業名逆引き,
                       グラフ状態判定→スキル推奨,
                       HOLDS関係による保有判定(KIK-414),
                       保有/ウォッチ/注目/未知の関係性判定,
                       graceful degradation)
+                     embedding_client.py
+                     (TEI REST APIクライアント(KIK-420),
+                      384次元ベクトル生成,
+                      is_available()/get_embedding(),
+                      30秒TTLキャッシュ,
+                      graceful degradation)
+                     summary_builder.py
+                     (semantic_summaryテンプレートビルダー(KIK-420),
+                      7ノードタイプ対応,
+                      build_screen/report/trade/health/
+                      research/market_context/note_summary(),
+                      max200文字, LLM不使用)
 
   Scripts: scripts/
            get_context.py ─ 自動コンテキスト注入CLI(KIK-411)

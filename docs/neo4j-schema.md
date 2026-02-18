@@ -300,6 +300,37 @@ CREATE INDEX catalyst_type IF NOT EXISTS FOR (c:Catalyst) ON (c.type)
 CREATE INDEX indicator_date IF NOT EXISTS FOR (i:Indicator) ON (i.date)
 ```
 
+## Vector Indexes (7) — KIK-420
+
+TEI (Text Embeddings Inference) で生成した384次元ベクトルによるコサイン類似検索用。
+各ノードに `semantic_summary` (テンプレート生成テキスト) と `embedding` (384次元ベクトル) プロパティを追加。
+
+```cypher
+CREATE VECTOR INDEX screen_embedding IF NOT EXISTS FOR (s:Screen) ON (s.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+CREATE VECTOR INDEX report_embedding IF NOT EXISTS FOR (r:Report) ON (r.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+CREATE VECTOR INDEX trade_embedding IF NOT EXISTS FOR (t:Trade) ON (t.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+CREATE VECTOR INDEX healthcheck_embedding IF NOT EXISTS FOR (h:HealthCheck) ON (h.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+CREATE VECTOR INDEX research_embedding IF NOT EXISTS FOR (r:Research) ON (r.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+CREATE VECTOR INDEX marketcontext_embedding IF NOT EXISTS FOR (m:MarketContext) ON (m.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+CREATE VECTOR INDEX note_embedding IF NOT EXISTS FOR (n:Note) ON (n.embedding)
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}
+```
+
+**使い方:**
+```cypher
+-- ベクトル類似検索（上位5件）
+CALL db.index.vector.queryNodes('report_embedding', 5, $embedding)
+YIELD node, score
+RETURN node.semantic_summary, node.date, score
+ORDER BY score DESC
+```
+
 ---
 
 ## Sample Cypher Queries
