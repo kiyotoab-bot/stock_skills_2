@@ -61,6 +61,56 @@ def _sanitize(obj):
 
 
 # ---------------------------------------------------------------------------
+# Embedding helper (KIK-420)
+# ---------------------------------------------------------------------------
+
+def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
+    """Build semantic summary and get embedding vector.
+
+    Returns (summary_text, embedding_vector). Both may be empty/None on failure.
+    """
+    try:
+        from src.data import summary_builder, embedding_client
+    except ImportError:
+        return ("", None)
+
+    builders = {
+        "screen": lambda: summary_builder.build_screen_summary(
+            kwargs.get("date", ""), kwargs.get("preset", ""),
+            kwargs.get("region", ""), kwargs.get("top_symbols")),
+        "report": lambda: summary_builder.build_report_summary(
+            kwargs.get("symbol", ""), kwargs.get("name", ""),
+            kwargs.get("score", 0), kwargs.get("verdict", ""),
+            kwargs.get("sector", "")),
+        "trade": lambda: summary_builder.build_trade_summary(
+            kwargs.get("date", ""), kwargs.get("trade_type", ""),
+            kwargs.get("symbol", ""), kwargs.get("shares", 0),
+            kwargs.get("memo", "")),
+        "health": lambda: summary_builder.build_health_summary(
+            kwargs.get("date", ""), kwargs.get("summary")),
+        "research": lambda: summary_builder.build_research_summary(
+            kwargs.get("research_type", ""), kwargs.get("target", ""),
+            kwargs.get("result", {})),
+        "market_context": lambda: summary_builder.build_market_context_summary(
+            kwargs.get("date", ""), kwargs.get("indices"),
+            kwargs.get("grok_research")),
+        "note": lambda: summary_builder.build_note_summary(
+            kwargs.get("symbol", ""), kwargs.get("note_type", ""),
+            kwargs.get("content", "")),
+    }
+    builder = builders.get(category)
+    if builder is None:
+        return ("", None)
+
+    try:
+        text = builder()
+        emb = embedding_client.get_embedding(text) if text else None
+        return (text, emb)
+    except Exception:
+        return ("", None)
+
+
+# ---------------------------------------------------------------------------
 # Save functions
 # ---------------------------------------------------------------------------
 
@@ -97,7 +147,7 @@ def save_screening(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399) -- graceful degradation
+    # Neo4j dual-write (KIK-399/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_screen, merge_stock
         symbols = [r.get("symbol") for r in results if r.get("symbol")]
@@ -105,7 +155,13 @@ def save_screening(
             sym = r.get("symbol")
             if sym:
                 merge_stock(symbol=sym, name=r.get("name", ""), sector=r.get("sector", ""))
-        merge_screen(today, preset, region, len(results), symbols)
+        # KIK-420: Generate semantic summary + embedding
+        sem_summary, emb = _build_embedding(
+            "screen", date=today, preset=preset, region=region,
+            top_symbols=symbols[:5],
+        )
+        merge_screen(today, preset, region, len(results), symbols,
+                     semantic_summary=sem_summary, embedding=emb)
     except Exception:
         pass
 
@@ -154,15 +210,20 @@ def save_report(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399/413) -- graceful degradation
+    # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_report_full, merge_stock, get_mode
         merge_stock(symbol=symbol, name=data.get("name", ""), sector=data.get("sector", ""))
+        sem_summary, emb = _build_embedding(
+            "report", symbol=symbol, name=data.get("name", ""),
+            score=score, verdict=verdict, sector=data.get("sector", ""),
+        )
         merge_report_full(
             report_date=today, symbol=symbol, score=score, verdict=verdict,
             price=data.get("price", 0), per=data.get("per", 0),
             pbr=data.get("pbr", 0), dividend_yield=data.get("dividend_yield", 0),
             roe=data.get("roe", 0), market_cap=data.get("market_cap", 0),
+            semantic_summary=sem_summary, embedding=emb,
         )
     except Exception:
         pass
@@ -207,13 +268,18 @@ def save_trade(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399) -- graceful degradation
+    # Neo4j dual-write (KIK-399/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_trade, merge_stock
         merge_stock(symbol=symbol)
+        sem_summary, emb = _build_embedding(
+            "trade", date=date_str, trade_type=trade_type,
+            symbol=symbol, shares=shares, memo=memo,
+        )
         merge_trade(
             trade_date=date_str, trade_type=trade_type, symbol=symbol,
             shares=shares, price=price, currency=currency, memo=memo,
+            semantic_summary=sem_summary, embedding=emb,
         )
     except Exception:
         pass
@@ -266,11 +332,15 @@ def save_health(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399) -- graceful degradation
+    # Neo4j dual-write (KIK-399/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_health
         symbols = [p.get("symbol") for p in health_data.get("positions", []) if p.get("symbol")]
-        merge_health(today, summary, symbols)
+        sem_summary, emb = _build_embedding(
+            "health", date=today, summary=summary,
+        )
+        merge_health(today, summary, symbols,
+                     semantic_summary=sem_summary, embedding=emb)
     except Exception:
         pass
 
@@ -384,18 +454,22 @@ def save_research(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399/413/416) -- graceful degradation
+    # Neo4j dual-write (KIK-399/413/416/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_research_full, merge_stock, link_research_supersedes
         if research_type in ("stock", "business"):
             merge_stock(symbol=target, name=result.get("name", ""))
         summary = result.get("summary", "") or _build_research_summary(research_type, result)
+        sem_summary, emb = _build_embedding(
+            "research", research_type=research_type, target=target, result=result,
+        )
         merge_research_full(
             research_date=today, research_type=research_type,
             target=target, summary=summary,
             grok_research=result.get("grok_research"),
             x_sentiment=result.get("x_sentiment"),
             news=result.get("news"),
+            semantic_summary=sem_summary, embedding=emb,
         )
         link_research_supersedes(research_type, target)
     except Exception:
@@ -440,12 +514,18 @@ def save_market_context(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399/413) -- graceful degradation
+    # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
     try:
         from src.data.graph_store import merge_market_context_full
+        sem_summary, emb = _build_embedding(
+            "market_context", date=today,
+            indices=context.get("indices", []),
+            grok_research=context.get("grok_research"),
+        )
         merge_market_context_full(
             context_date=today, indices=context.get("indices", []),
             grok_research=context.get("grok_research"),
+            semantic_summary=sem_summary, embedding=emb,
         )
     except Exception:
         pass

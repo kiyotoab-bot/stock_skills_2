@@ -4,7 +4,7 @@
 
 自然言語ファーストの投資分析システム。ユーザーは日本語で意図を伝えるだけで、スクリーニング・個別銘柄分析・ポートフォリオ管理・リスク評価・知識グラフ照会が自動実行される。
 
-Claude Code Skills として動作し、Yahoo Finance API (yfinance) + Grok API (X/Web検索) + Neo4j (知識グラフ) を統合。
+Claude Code Skills として動作し、Yahoo Finance API (yfinance) + Grok API (X/Web検索) + Neo4j (知識グラフ) + TEI (ベクトル検索, KIK-420) を統合。
 
 ---
 
@@ -174,11 +174,13 @@ except ImportError:
 | yahoo_client.py | yfinance ラッパー + 24h JSON cache + 異常値ガード |
 | grok_client.py | Grok API (X検索/Web検索) + XAI_API_KEY 環境変数 |
 | history_store.py | スキル実行結果の JSON 自動蓄積 (data/history/) |
-| graph_store.py | Neo4j CRUD (11ノードタイプ, MERGE ベース) |
-| graph_query.py | Neo4j 照会ヘルパー (6関数) |
+| graph_store.py | Neo4j CRUD (11ノードタイプ, MERGE ベース, ベクトルインデックス(KIK-420)) |
+| graph_query.py | Neo4j 照会ヘルパー (6関数 + vector_search(KIK-420)) |
 | graph_nl_query.py | 自然言語 → Cypher テンプレートマッチ |
 | note_manager.py | 投資メモ管理 (JSON + Neo4j dual-write) |
-| auto_context.py | 自動コンテキスト注入 (シンボル検出 + グラフ状態判定 + スキル推奨) |
+| auto_context.py | 自動コンテキスト注入 (ハイブリッド検索: シンボル+ベクトル(KIK-420)) |
+| embedding_client.py | TEI REST API クライアント (384次元ベクトル生成, KIK-420) |
+| summary_builder.py | ノードタイプ別 semantic_summary テンプレートビルダー (KIK-420) |
 
 ### Config
 

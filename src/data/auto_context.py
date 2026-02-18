@@ -1,8 +1,9 @@
-"""Auto graph context injection for user prompts (KIK-411).
+"""Auto graph context injection for user prompts (KIK-411/420).
 
 Detects ticker symbols in user input, queries Neo4j for past knowledge,
 and recommends the optimal skill based on graph state.
-Returns None when no symbol detected or Neo4j unavailable (graceful degradation).
+KIK-420: Hybrid search — vector similarity + symbol-based retrieval.
+Returns None when no context available or Neo4j unavailable (graceful degradation).
 """
 
 import re
@@ -276,11 +277,93 @@ def _check_bookmarked(symbol: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Vector search helpers (KIK-420)
+# ---------------------------------------------------------------------------
+
+def _vector_search(user_input: str) -> list[dict]:
+    """Embed user input via TEI and run vector similarity search on Neo4j.
+
+    Returns list of {label, summary, score, date, id, symbol?}.
+    Empty list when TEI or Neo4j unavailable (graceful degradation).
+    """
+    try:
+        from src.data.embedding_client import get_embedding, is_available
+        if not is_available():
+            return []
+        emb = get_embedding(user_input)
+        if emb is None:
+            return []
+        return graph_query.vector_search(emb, top_k=5)
+    except Exception:
+        return []
+
+
+def _format_vector_results(results: list[dict]) -> str:
+    """Format vector search results as markdown."""
+    lines = ["## 関連する過去の記録"]
+    for r in results[:5]:
+        score_pct = f"{r['score'] * 100:.0f}%"
+        summary = r.get("summary") or "(要約なし)"
+        lines.append(f"- [{r['label']}] {summary} (類似度{score_pct})")
+    return "\n".join(lines)
+
+
+def _infer_skill_from_vectors(results: list[dict]) -> str:
+    """Infer a recommended skill from vector search result labels."""
+    if not results:
+        return "report"
+    label_counts: dict[str, int] = {}
+    for r in results[:5]:
+        label = r.get("label", "")
+        label_counts[label] = label_counts.get(label, 0) + 1
+    top_label = max(label_counts, key=label_counts.get)  # type: ignore[arg-type]
+    mapping = {
+        "Screen": "screen-stocks",
+        "Report": "report",
+        "Trade": "health",
+        "Research": "market-research",
+        "HealthCheck": "health",
+        "MarketContext": "market-research",
+        "Note": "report",
+    }
+    return mapping.get(top_label, "report")
+
+
+def _merge_context(
+    symbol_context: Optional[dict],
+    vector_results: list[dict],
+) -> Optional[dict]:
+    """Merge symbol-based context with vector search results."""
+    if not symbol_context and not vector_results:
+        return None
+
+    if symbol_context and not vector_results:
+        return symbol_context
+
+    if not symbol_context and vector_results:
+        return {
+            "symbol": "",
+            "context_markdown": _format_vector_results(vector_results),
+            "recommended_skill": _infer_skill_from_vectors(vector_results),
+            "recommendation_reason": "ベクトル類似検索",
+            "relationship": "関連",
+        }
+
+    # Both available: append vector results to symbol context
+    merged = dict(symbol_context)  # type: ignore[arg-type]
+    merged["context_markdown"] += "\n\n" + _format_vector_results(vector_results)
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def get_context(user_input: str) -> Optional[dict]:
     """Auto-detect symbol in user input and retrieve graph context.
+
+    KIK-420: Hybrid search — always attempts vector search when TEI + Neo4j
+    are available, plus traditional symbol-based search when a symbol is detected.
 
     Returns:
         {
@@ -290,20 +373,24 @@ def get_context(user_input: str) -> Optional[dict]:
             "recommendation_reason": str,
             "relationship": str,
         }
-        or None if no symbol detected, Neo4j unavailable, or no context.
+        or None if no context available.
     """
+    # KIK-420: Always attempt vector search (TEI unavailable → empty list)
+    vector_results = _vector_search(user_input)
+
     # Market context query (no symbol needed)
     if _is_market_query(user_input):
         mc = graph_query.get_recent_market_context()
         if mc:
-            return {
+            market_ctx = {
                 "symbol": "",
                 "context_markdown": _format_market_context(mc),
                 "recommended_skill": "market-research",
                 "recommendation_reason": "市況照会",
                 "relationship": "市況",
             }
-        return None
+            return _merge_context(market_ctx, vector_results) or market_ctx
+        return _merge_context(None, vector_results)
 
     # Portfolio query (no specific symbol)
     if _is_portfolio_query(user_input):
@@ -312,34 +399,34 @@ def get_context(user_input: str) -> Optional[dict]:
         if mc:
             ctx_lines.append(f"- 直近市況: {mc.get('date', '?')}")
         ctx_lines.append("\n**推奨**: health (ポートフォリオ診断)")
-        return {
+        pf_ctx = {
             "symbol": "",
             "context_markdown": "\n".join(ctx_lines),
             "recommended_skill": "health",
             "recommendation_reason": "ポートフォリオ照会",
             "relationship": "PF",
         }
+        return _merge_context(pf_ctx, vector_results) or pf_ctx
 
     # Symbol-based query
     symbol = _resolve_symbol(user_input)
-    if not symbol:
-        return None
+    symbol_context = None
 
-    if not graph_store.is_available():
-        return None
+    if symbol and graph_store.is_available():
+        history = graph_store.get_stock_history(symbol)
+        is_bookmarked = _check_bookmarked(symbol)
+        # KIK-414: HOLDS relationship for authoritative held-stock detection
+        held = graph_store.is_held(symbol)
+        skill, reason, relationship = _recommend_skill(history, is_bookmarked,
+                                                       is_held=held)
+        context_md = _format_context(symbol, history, skill, reason, relationship)
+        symbol_context = {
+            "symbol": symbol,
+            "context_markdown": context_md,
+            "recommended_skill": skill,
+            "recommendation_reason": reason,
+            "relationship": relationship,
+        }
 
-    history = graph_store.get_stock_history(symbol)
-    is_bookmarked = _check_bookmarked(symbol)
-    # KIK-414: HOLDS relationship for authoritative held-stock detection
-    held = graph_store.is_held(symbol)
-    skill, reason, relationship = _recommend_skill(history, is_bookmarked,
-                                                   is_held=held)
-    context_md = _format_context(symbol, history, skill, reason, relationship)
-
-    return {
-        "symbol": symbol,
-        "context_markdown": context_md,
-        "recommended_skill": skill,
-        "recommendation_reason": reason,
-        "relationship": relationship,
-    }
+    # KIK-420: Merge symbol context + vector results
+    return _merge_context(symbol_context, vector_results)

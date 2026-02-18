@@ -138,6 +138,24 @@ _SCHEMA_INDEXES = [
     "CREATE INDEX indicator_date IF NOT EXISTS FOR (i:Indicator) ON (i.date)",
 ]
 
+# KIK-420: Vector indexes for semantic search
+_VECTOR_INDEXES = [
+    "CREATE VECTOR INDEX screen_embedding IF NOT EXISTS FOR (s:Screen) ON (s.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX report_embedding IF NOT EXISTS FOR (r:Report) ON (r.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX trade_embedding IF NOT EXISTS FOR (t:Trade) ON (t.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX healthcheck_embedding IF NOT EXISTS FOR (h:HealthCheck) ON (h.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX research_embedding IF NOT EXISTS FOR (r:Research) ON (r.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX marketcontext_embedding IF NOT EXISTS FOR (m:MarketContext) ON (m.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX note_embedding IF NOT EXISTS FOR (n:Note) ON (n.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+]
+
 
 def init_schema() -> bool:
     """Create constraints and indexes. Returns True on success."""
@@ -148,9 +166,38 @@ def init_schema() -> bool:
         with driver.session() as session:
             for stmt in _SCHEMA_CONSTRAINTS + _SCHEMA_INDEXES:
                 session.run(stmt)
+            # KIK-420: Vector indexes (separate try/except -- older Neo4j may not support)
+            for stmt in _VECTOR_INDEXES:
+                try:
+                    session.run(stmt)
+                except Exception:
+                    pass  # Skip if vector indexes not supported
         return True
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Embedding helper (KIK-420)
+# ---------------------------------------------------------------------------
+
+def _set_embedding(session, label: str, node_id: str,
+                   semantic_summary: str = "",
+                   embedding: list[float] | None = None) -> None:
+    """Set semantic_summary and embedding on a node if provided."""
+    if not semantic_summary and embedding is None:
+        return
+    sets = []
+    params: dict = {"id": node_id}
+    if semantic_summary:
+        sets.append("n.semantic_summary = $summary")
+        params["summary"] = semantic_summary
+    if embedding is not None:
+        sets.append("n.embedding = $embedding")
+        params["embedding"] = embedding
+    if sets:
+        query = f"MATCH (n:{label} {{id: $id}}) SET {', '.join(sets)}"
+        session.run(query, **params)
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +238,7 @@ def merge_stock(symbol: str, name: str = "", sector: str = "", country: str = ""
 def merge_screen(
     screen_date: str, preset: str, region: str, count: int,
     symbols: list[str],
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create a Screen node and SURFACED relationships to stocks."""
     if _get_mode() == "off":
@@ -208,6 +256,7 @@ def merge_screen(
                 id=screen_id, date=screen_date, preset=preset,
                 region=region, count=count,
             )
+            _set_embedding(session, "Screen", screen_id, semantic_summary, embedding)
             for sym in symbols:
                 session.run(
                     "MATCH (sc:Screen {id: $screen_id}) "
@@ -226,6 +275,7 @@ def merge_screen(
 
 def merge_report(
     report_date: str, symbol: str, score: float, verdict: str,
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create a Report node and ANALYZED relationship."""
     if _get_mode() == "off":
@@ -249,6 +299,7 @@ def merge_report(
                 "MERGE (r)-[:ANALYZED]->(s)",
                 report_id=report_id, symbol=symbol,
             )
+            _set_embedding(session, "Report", report_id, semantic_summary, embedding)
         return True
     except Exception:
         return False
@@ -261,6 +312,7 @@ def merge_report(
 def merge_trade(
     trade_date: str, trade_type: str, symbol: str,
     shares: int, price: float, currency: str, memo: str = "",
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create a Trade node and BOUGHT/SOLD relationship."""
     if _get_mode() == "off":
@@ -287,6 +339,7 @@ def merge_trade(
                 f"MERGE (t)-[:{rel_type}]->(s)",
                 trade_id=trade_id, symbol=symbol,
             )
+            _set_embedding(session, "Trade", trade_id, semantic_summary, embedding)
         return True
     except Exception:
         return False
@@ -296,7 +349,9 @@ def merge_trade(
 # HealthCheck node
 # ---------------------------------------------------------------------------
 
-def merge_health(health_date: str, summary: dict, symbols: list[str]) -> bool:
+def merge_health(health_date: str, summary: dict, symbols: list[str],
+                  semantic_summary: str = "", embedding: list[float] | None = None,
+                  ) -> bool:
     """Create a HealthCheck node and CHECKED relationships."""
     if _get_mode() == "off":
         return False
@@ -322,6 +377,7 @@ def merge_health(health_date: str, summary: dict, symbols: list[str]) -> bool:
                     "MERGE (h)-[:CHECKED]->(s)",
                     health_id=health_id, symbol=sym,
                 )
+            _set_embedding(session, "HealthCheck", health_id, semantic_summary, embedding)
         return True
     except Exception:
         return False
@@ -334,6 +390,7 @@ def merge_health(health_date: str, summary: dict, symbols: list[str]) -> bool:
 def merge_note(
     note_id: str, note_date: str, note_type: str, content: str,
     symbol: Optional[str] = None, source: str = "",
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create a Note node and ABOUT relationship to a stock."""
     if _get_mode() == "off":
@@ -357,6 +414,7 @@ def merge_note(
                     "MERGE (n)-[:ABOUT]->(s)",
                     note_id=note_id, symbol=symbol,
                 )
+            _set_embedding(session, "Note", note_id, semantic_summary, embedding)
         return True
     except Exception:
         return False
@@ -399,6 +457,7 @@ def _safe_id(text: str) -> str:
 def merge_research(
     research_date: str, research_type: str, target: str,
     summary: str = "",
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create a Research node and optionally RESEARCHED relationship to Stock.
 
@@ -427,6 +486,7 @@ def merge_research(
                     "MERGE (r)-[:RESEARCHED]->(s)",
                     research_id=research_id, symbol=target,
                 )
+            _set_embedding(session, "Research", research_id, semantic_summary, embedding)
         return True
     except Exception:
         return False
@@ -590,7 +650,10 @@ def get_held_symbols() -> list[str]:
 # MarketContext node (KIK-399)
 # ---------------------------------------------------------------------------
 
-def merge_market_context(context_date: str, indices: list[dict]) -> bool:
+def merge_market_context(context_date: str, indices: list[dict],
+                         semantic_summary: str = "",
+                         embedding: list[float] | None = None,
+                         ) -> bool:
     """Create/update a MarketContext node with index snapshots.
 
     indices is stored as a JSON string (Neo4j can't store list-of-maps).
@@ -611,6 +674,7 @@ def merge_market_context(context_date: str, indices: list[dict]) -> bool:
                 date=context_date,
                 indices=_json.dumps(indices, ensure_ascii=False),
             )
+            _set_embedding(session, "MarketContext", context_id, semantic_summary, embedding)
         return True
     except Exception:
         return False
@@ -648,6 +712,7 @@ def merge_report_full(
     report_date: str, symbol: str, score: float, verdict: str,
     price: float = 0, per: float = 0, pbr: float = 0,
     dividend_yield: float = 0, roe: float = 0, market_cap: float = 0,
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Extend an existing Report node with full valuation properties (KIK-413).
 
@@ -655,9 +720,11 @@ def merge_report_full(
     Only runs in 'full' mode.
     """
     if _get_mode() != "full":
-        return merge_report(report_date, symbol, score, verdict)
+        return merge_report(report_date, symbol, score, verdict,
+                            semantic_summary=semantic_summary, embedding=embedding)
     # Ensure base Report node exists
-    merge_report(report_date, symbol, score, verdict)
+    merge_report(report_date, symbol, score, verdict,
+                 semantic_summary=semantic_summary, embedding=embedding)
     driver = _get_driver()
     if driver is None:
         return False
@@ -684,6 +751,7 @@ def merge_research_full(
     grok_research: dict | None = None,
     x_sentiment: dict | None = None,
     news: list | None = None,
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create Research node with semantic sub-nodes (KIK-413).
 
@@ -692,9 +760,11 @@ def merge_research_full(
     Only creates sub-nodes in 'full' mode.
     """
     if _get_mode() != "full":
-        return merge_research(research_date, research_type, target, summary)
+        return merge_research(research_date, research_type, target, summary,
+                              semantic_summary=semantic_summary, embedding=embedding)
     # Ensure base Research + Stock nodes exist
-    merge_research(research_date, research_type, target, summary)
+    merge_research(research_date, research_type, target, summary,
+                   semantic_summary=semantic_summary, embedding=embedding)
     driver = _get_driver()
     if driver is None:
         return False
@@ -817,6 +887,7 @@ def merge_research_full(
 def merge_market_context_full(
     context_date: str, indices: list[dict],
     grok_research: dict | None = None,
+    semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
     """Create MarketContext with semantic sub-nodes (KIK-413).
 
@@ -825,9 +896,12 @@ def merge_market_context_full(
     Only creates sub-nodes in 'full' mode.
     """
     if _get_mode() != "full":
-        return merge_market_context(context_date, indices)
+        return merge_market_context(context_date, indices,
+                                     semantic_summary=semantic_summary,
+                                     embedding=embedding)
     # Ensure base MarketContext node exists
-    merge_market_context(context_date, indices)
+    merge_market_context(context_date, indices,
+                         semantic_summary=semantic_summary, embedding=embedding)
     driver = _get_driver()
     if driver is None:
         return False

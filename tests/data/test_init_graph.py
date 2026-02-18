@@ -123,15 +123,18 @@ class TestImportTrades:
         count = import_trades(str(tmp_path))
         assert count == 1
         mock_stock.assert_called_once_with(symbol="7203.T")
-        mock_trade.assert_called_once_with(
-            trade_date="2025-01-15",
-            trade_type="buy",
-            symbol="7203.T",
-            shares=100,
-            price=2850,
-            currency="JPY",
-            memo="test buy",
-        )
+        # KIK-420: Now includes semantic_summary and embedding kwargs
+        mock_trade.assert_called_once()
+        call_kwargs = mock_trade.call_args[1]
+        assert call_kwargs["trade_date"] == "2025-01-15"
+        assert call_kwargs["trade_type"] == "buy"
+        assert call_kwargs["symbol"] == "7203.T"
+        assert call_kwargs["shares"] == 100
+        assert call_kwargs["price"] == 2850
+        assert call_kwargs["currency"] == "JPY"
+        assert call_kwargs["memo"] == "test buy"
+        assert "semantic_summary" in call_kwargs
+        assert "embedding" in call_kwargs
 
     @patch("scripts.init_graph.merge_trade")
     @patch("scripts.init_graph.merge_stock")
@@ -160,11 +163,14 @@ class TestImportHealth:
         })
         count = import_health(str(tmp_path))
         assert count == 1
-        mock_health.assert_called_once_with(
-            "2025-01-15",
-            {"total": 5, "healthy": 3, "exit": 1},
-            ["7203.T", "AAPL"],
-        )
+        # KIK-420: Now includes semantic_summary and embedding kwargs
+        mock_health.assert_called_once()
+        call_args = mock_health.call_args
+        assert call_args[0][0] == "2025-01-15"
+        assert call_args[0][1] == {"total": 5, "healthy": 3, "exit": 1}
+        assert call_args[0][2] == ["7203.T", "AAPL"]
+        assert "semantic_summary" in call_args[1]
+        assert "embedding" in call_args[1]
 
     @patch("scripts.init_graph.merge_health")
     def test_import_health_empty_positions(self, mock_health, tmp_path):
@@ -258,15 +264,16 @@ class TestImportResearch:
         count = import_research(str(tmp_path))
         assert count == 1
         mock_stock.assert_called_once_with(symbol="7203.T", name="Toyota")
-        mock_research.assert_called_once_with(
-            research_date="2025-01-15",
-            research_type="stock",
-            target="7203.T",
-            summary="Strong fundamentals",
-            grok_research=None,
-            x_sentiment=None,
-            news=None,
-        )
+        # KIK-420: Now includes semantic_summary and embedding kwargs
+        mock_research.assert_called_once()
+        call_kwargs = mock_research.call_args[1]
+        assert call_kwargs["research_date"] == "2025-01-15"
+        assert call_kwargs["research_type"] == "stock"
+        assert call_kwargs["target"] == "7203.T"
+        assert call_kwargs["summary"] == "Strong fundamentals"
+        assert call_kwargs["grok_research"] is None
+        assert "semantic_summary" in call_kwargs
+        assert "embedding" in call_kwargs
         mock_link.assert_called_once_with("stock", "7203.T")
 
     @patch("scripts.init_graph.link_research_supersedes")
@@ -499,14 +506,17 @@ class TestImportMarketContext:
         })
         count = import_market_context(str(tmp_path))
         assert count == 1
-        mock_mc.assert_called_once_with(
-            context_date="2025-02-17",
-            indices=[
-                {"name": "S&P500", "price": 5800},
-                {"name": "日経平均", "price": 40000},
-            ],
-            grok_research=None,
-        )
+        # KIK-420: Now includes semantic_summary and embedding kwargs
+        mock_mc.assert_called_once()
+        call_kwargs = mock_mc.call_args[1]
+        assert call_kwargs["context_date"] == "2025-02-17"
+        assert call_kwargs["indices"] == [
+            {"name": "S&P500", "price": 5800},
+            {"name": "日経平均", "price": 40000},
+        ]
+        assert call_kwargs["grok_research"] is None
+        assert "semantic_summary" in call_kwargs
+        assert "embedding" in call_kwargs
 
     @patch("scripts.init_graph.merge_market_context_full")
     def test_import_market_context_empty_dir(self, mock_mc, tmp_path):

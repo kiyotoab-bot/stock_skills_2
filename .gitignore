@@ -9,3 +9,4 @@ __pycache__/
 .env
 .claude/skills/stock-portfolio/data/portfolio.csv
 .claude/worktrees/
+data/models/

@@ -1,6 +1,7 @@
-"""Tests for src.data.auto_context module (KIK-411).
+"""Tests for src.data.auto_context module (KIK-411/420).
 
 All graph_store/graph_query functions are mocked — no Neo4j dependency.
+KIK-420 additions: vector search integration tests.
 """
 
 from datetime import date, timedelta
@@ -14,16 +15,20 @@ from src.data.auto_context import (
     _extract_symbol,
     _format_context,
     _format_market_context,
+    _format_vector_results,
     _has_bought_not_sold,
     _has_concern_notes,
     _has_exit_alert,
     _has_recent_research,
+    _infer_skill_from_vectors,
     _is_market_query,
     _is_portfolio_query,
+    _merge_context,
     _recommend_skill,
     _resolve_symbol,
     _screening_count,
     _thesis_needs_review,
+    _vector_search,
     get_context,
 )
 
@@ -545,3 +550,202 @@ class TestGetContext:
         assert "recommended_skill" in result
         assert "recommendation_reason" in result
         assert "relationship" in result
+
+
+# ===================================================================
+# KIK-420: Vector search helper tests
+# ===================================================================
+
+
+class TestVectorSearch:
+    """Tests for _vector_search() function."""
+
+    def test_tei_unavailable_returns_empty(self):
+        """TEI 未起動 → 空リスト"""
+        with patch("src.data.embedding_client.is_available", return_value=False):
+            result = _vector_search("test query")
+        assert result == []
+
+    @patch("src.data.auto_context.graph_query")
+    def test_tei_available_returns_results(self, mock_gq):
+        """TEI + Neo4j 正常 → ベクトル検索結果"""
+        mock_gq.vector_search.return_value = [
+            {"label": "Report", "summary": "7203.T Toyota", "score": 0.92,
+             "date": "2026-02-18", "id": "r1", "symbol": "7203.T"},
+        ]
+        with patch("src.data.embedding_client.is_available", return_value=True), \
+             patch("src.data.embedding_client.get_embedding",
+                   return_value=[0.1] * 384):
+            result = _vector_search("Toyota report")
+        assert len(result) == 1
+        assert result[0]["label"] == "Report"
+
+    @patch("src.data.auto_context.graph_query")
+    def test_embedding_failure_returns_empty(self, mock_gq):
+        """TEI is available but embedding fails → 空リスト"""
+        with patch("src.data.embedding_client.is_available", return_value=True), \
+             patch("src.data.embedding_client.get_embedding", return_value=None):
+            result = _vector_search("test")
+        assert result == []
+
+
+class TestFormatVectorResults:
+    """Tests for _format_vector_results()."""
+
+    def test_formats_results(self):
+        results = [
+            {"label": "Screen", "summary": "japan alpha 2026-02-18",
+             "score": 0.95, "date": "2026-02-18", "id": "s1"},
+            {"label": "Report", "summary": "7203.T Toyota / 割安(72.5)",
+             "score": 0.88, "date": "2026-02-18", "id": "r1"},
+        ]
+        md = _format_vector_results(results)
+        assert "関連する過去の記録" in md
+        assert "[Screen]" in md
+        assert "[Report]" in md
+        assert "95%" in md
+        assert "88%" in md
+
+    def test_empty_results(self):
+        md = _format_vector_results([])
+        assert "関連する過去の記録" in md
+
+    def test_none_summary_handled(self):
+        results = [{"label": "Note", "summary": None, "score": 0.5,
+                     "date": "2026-01-01", "id": "n1"}]
+        md = _format_vector_results(results)
+        assert "(要約なし)" in md
+
+
+class TestInferSkillFromVectors:
+    """Tests for _infer_skill_from_vectors()."""
+
+    def test_report_majority(self):
+        results = [
+            {"label": "Report"}, {"label": "Report"}, {"label": "Screen"},
+        ]
+        assert _infer_skill_from_vectors(results) == "report"
+
+    def test_screen_majority(self):
+        results = [
+            {"label": "Screen"}, {"label": "Screen"}, {"label": "Report"},
+        ]
+        assert _infer_skill_from_vectors(results) == "screen-stocks"
+
+    def test_trade_majority(self):
+        results = [{"label": "Trade"}, {"label": "Trade"}]
+        assert _infer_skill_from_vectors(results) == "health"
+
+    def test_research_majority(self):
+        results = [{"label": "Research"}, {"label": "MarketContext"}]
+        assert _infer_skill_from_vectors(results) == "market-research"
+
+    def test_empty_returns_report(self):
+        assert _infer_skill_from_vectors([]) == "report"
+
+
+class TestMergeContext:
+    """Tests for _merge_context()."""
+
+    def test_both_none(self):
+        assert _merge_context(None, []) is None
+
+    def test_symbol_only(self):
+        ctx = {"symbol": "7203.T", "context_markdown": "## Report"}
+        result = _merge_context(ctx, [])
+        assert result == ctx
+
+    def test_vector_only(self):
+        vectors = [
+            {"label": "Screen", "summary": "japan alpha",
+             "score": 0.9, "date": "2026-02-18", "id": "s1"},
+        ]
+        result = _merge_context(None, vectors)
+        assert result is not None
+        assert result["symbol"] == ""
+        assert "関連する過去の記録" in result["context_markdown"]
+        assert result["recommendation_reason"] == "ベクトル類似検索"
+
+    def test_both_merged(self):
+        ctx = {
+            "symbol": "7203.T",
+            "context_markdown": "## 7203.T Context",
+            "recommended_skill": "health",
+            "recommendation_reason": "保有",
+            "relationship": "保有",
+        }
+        vectors = [
+            {"label": "Report", "summary": "prev report",
+             "score": 0.85, "date": "2026-02-10", "id": "r1"},
+        ]
+        result = _merge_context(ctx, vectors)
+        assert result is not None
+        assert result["symbol"] == "7203.T"
+        assert "## 7203.T Context" in result["context_markdown"]
+        assert "関連する過去の記録" in result["context_markdown"]
+        assert result["recommended_skill"] == "health"  # symbol context takes priority
+
+
+class TestGetContextWithVectors:
+    """Integration tests for get_context() with vector search (KIK-420)."""
+
+    @patch("src.data.auto_context._vector_search")
+    @patch("src.data.auto_context.graph_store")
+    def test_no_symbol_with_vectors(self, mock_gs, mock_vs):
+        """シンボルなし + ベクトル結果あり → ベクトルのみ返却"""
+        mock_gs._get_driver.return_value = None  # no Neo4j for name lookup
+        mock_vs.return_value = [
+            {"label": "Screen", "summary": "japan alpha 半導体",
+             "score": 0.88, "date": "2026-02-18", "id": "s1",
+             "symbol": None},
+        ]
+        result = get_context("前に調べた半導体関連の銘柄")
+        assert result is not None
+        assert result["symbol"] == ""
+        assert "関連する過去の記録" in result["context_markdown"]
+
+    @patch("src.data.auto_context._vector_search")
+    @patch("src.data.auto_context._check_bookmarked")
+    @patch("src.data.auto_context.graph_store")
+    def test_symbol_with_vectors(self, mock_gs, mock_bm, mock_vs):
+        """シンボルあり + ベクトル結果あり → 統合"""
+        mock_gs.is_available.return_value = True
+        mock_gs.get_stock_history.return_value = {}
+        mock_gs.is_held.return_value = False
+        mock_bm.return_value = False
+        mock_vs.return_value = [
+            {"label": "Report", "summary": "prev AAPL report",
+             "score": 0.91, "date": "2026-01-15", "id": "r1",
+             "symbol": "AAPL"},
+        ]
+        result = get_context("AAPLを調べて")
+        assert result is not None
+        assert result["symbol"] == "AAPL"
+        assert "関連する過去の記録" in result["context_markdown"]
+
+    @patch("src.data.auto_context._vector_search")
+    @patch("src.data.auto_context.graph_query")
+    def test_market_query_with_vectors(self, mock_gq, mock_vs):
+        """市況クエリ + ベクトル結果 → 統合"""
+        mock_gq.get_recent_market_context.return_value = {
+            "date": "2026-02-17",
+            "indices": [{"name": "日経225", "price": 38500}],
+        }
+        mock_vs.return_value = [
+            {"label": "MarketContext", "summary": "prev context",
+             "score": 0.87, "date": "2026-02-10", "id": "mc1",
+             "symbol": None},
+        ]
+        result = get_context("今日の相場は？")
+        assert result is not None
+        assert "日経225" in result["context_markdown"]
+        assert "関連する過去の記録" in result["context_markdown"]
+
+    @patch("src.data.auto_context._vector_search")
+    @patch("src.data.auto_context.graph_store")
+    def test_no_symbol_no_vectors(self, mock_gs, mock_vs):
+        """シンボルなし + ベクトルなし → None"""
+        mock_gs._get_driver.return_value = None
+        mock_vs.return_value = []
+        result = get_context("今日はいい天気だ")
+        assert result is None
