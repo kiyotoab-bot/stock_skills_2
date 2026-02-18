@@ -31,6 +31,20 @@ def fmt_float_sign(value: Optional[float], decimals: int = 2) -> str:
     return f"{value:+.{decimals}f}"
 
 
+def build_label(row: dict) -> str:
+    """Build stock label with annotation markers (KIK-418/419).
+
+    Combines symbol + name + any note markers from screen_annotator.
+    """
+    symbol = row.get("symbol", "-")
+    name = row.get("name") or ""
+    label = f"{symbol} {name}".strip() if name else symbol
+    markers = row.get("_note_markers", "")
+    if markers:
+        label = f"{label} {markers}"
+    return label
+
+
 def hhi_bar(hhi: float, width: int = 10) -> str:
     """Render a simple text bar for HHI value (0-1 scale)."""
     filled = int(round(hhi * width))

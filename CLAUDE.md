@@ -139,10 +139,12 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   Markets            Data                  Output
   src/markets/       src/data/             src/output/
   base.py (ABC)      yahoo_client.py       formatter.py
-  japan.py           (24h JSON cache,      stress_formatter.py
-  us.py               EquityQuery,         portfolio_formatter.py
-  asean.py            1秒ディレイ,         research_formatter.py
-                      異常値ガード)
+  japan.py           (24h JSON cache,      (アノテーションマーカー対応(KIK-418/419))
+  us.py               EquityQuery,         _format_helpers.py
+  asean.py            1秒ディレイ,         (build_label()でマーカー付与(KIK-418/419))
+                      異常値ガード)        stress_formatter.py
+                                           portfolio_formatter.py
+                                           research_formatter.py
                      grok_client.py
                      (Grok API X/Web Search,
                       XAI_API_KEY 環境変数,
@@ -175,7 +177,15 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       カタリスト/バリュエーション推移/
                       今後のイベント(KIK-413),
                       現在保有銘柄一覧(KIK-414),
+                      直近売却バッチ取得(KIK-418),
+                      メモバッチ取得(KIK-419),
                       Neo4j不可時は空/None返却)
+                     screen_annotator.py
+                     (スクリーニング結果アノテーション(KIK-418/419),
+                      直近売却銘柄の自動除外,
+                      投資メモマーカー付与(⚠️懸念/📝学び/👀様子見),
+                      Neo4j→JSON fallback,
+                      graceful degradation)
                      note_manager.py
                      (投資メモ管理,
                       JSON=master, Neo4j=view,

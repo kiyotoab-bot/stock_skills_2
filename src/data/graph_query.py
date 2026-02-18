@@ -333,6 +333,93 @@ def get_upcoming_events(limit: int = 10) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def get_recent_sells_batch(cutoff_date: str) -> dict[str, str]:
+    """Get symbols sold on or after cutoff_date (KIK-418).
+
+    Parameters
+    ----------
+    cutoff_date : str
+        ISO date string (e.g. "2025-01-01"). Only sells on or after this date are returned.
+
+    Returns
+    -------
+    dict[str, str]
+        {symbol: sell_date} for recently sold stocks. Empty dict if Neo4j unavailable.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return {}
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (t:Trade)-[:SOLD]->(s:Stock) "
+                "WHERE t.date >= $cutoff "
+                "RETURN s.symbol AS symbol, max(t.date) AS sell_date",
+                cutoff=cutoff_date,
+            )
+            return {r["symbol"]: r["sell_date"] for r in result}
+    except Exception:
+        return {}
+
+
+def get_notes_for_symbols_batch(
+    symbols: list[str],
+    note_types: list[str] | None = None,
+) -> dict[str, list[dict]]:
+    """Get notes for multiple symbols in one query (KIK-419).
+
+    Parameters
+    ----------
+    symbols : list[str]
+        Ticker symbols to look up.
+    note_types : list[str] | None
+        Filter to specific note types (e.g. ["concern", "lesson"]).
+        None means all types.
+
+    Returns
+    -------
+    dict[str, list[dict]]
+        {symbol: [{type, content, date}]}. Empty dict if Neo4j unavailable.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return {}
+    try:
+        with driver.session() as session:
+            if note_types:
+                result = session.run(
+                    "MATCH (n:Note)-[:ABOUT]->(s:Stock) "
+                    "WHERE s.symbol IN $symbols AND n.type IN $types "
+                    "RETURN s.symbol AS symbol, n.type AS type, "
+                    "n.content AS content, n.date AS date "
+                    "ORDER BY n.date DESC",
+                    symbols=symbols, types=note_types,
+                )
+            else:
+                result = session.run(
+                    "MATCH (n:Note)-[:ABOUT]->(s:Stock) "
+                    "WHERE s.symbol IN $symbols "
+                    "RETURN s.symbol AS symbol, n.type AS type, "
+                    "n.content AS content, n.date AS date "
+                    "ORDER BY n.date DESC",
+                    symbols=symbols,
+                )
+            out: dict[str, list[dict]] = {}
+            for r in result:
+                sym = r["symbol"]
+                if sym not in out:
+                    out[sym] = []
+                out[sym].append({"type": r["type"], "content": r["content"], "date": r["date"]})
+            return out
+    except Exception:
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# 13. Current portfolio holdings (KIK-414)
+# ---------------------------------------------------------------------------
+
+
 def get_current_holdings() -> list[dict]:
     """Get stocks currently held in portfolio via HOLDS relationship.
 

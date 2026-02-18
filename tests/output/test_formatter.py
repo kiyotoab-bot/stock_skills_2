@@ -16,6 +16,7 @@ from src.output.formatter import (
     format_query_markdown,
     format_shareholder_return_markdown,
     format_growth_markdown,
+    format_alpha_markdown,
 )
 
 
@@ -329,3 +330,85 @@ class TestFormatGrowthMarkdown:
         }]
         output = format_growth_markdown(results)
         assert "TEST" in output
+
+
+# ---------------------------------------------------------------------------
+# Annotation markers in formatters — KIK-418/419
+# ---------------------------------------------------------------------------
+
+class TestAnnotationMarkers:
+    """Tests for note markers in formatter output (KIK-418/419)."""
+
+    def test_markers_appear_in_label(self):
+        """Note markers appear in the stock label column."""
+        results = [{
+            "symbol": "7203.T",
+            "name": "Toyota",
+            "price": 2850.0,
+            "per": 10.5,
+            "pbr": 1.2,
+            "dividend_yield": 0.025,
+            "roe": 0.12,
+            "value_score": 72.5,
+            "_note_markers": "\u26a0\ufe0f",
+            "_note_summary": "[concern] 利益減少傾向",
+        }]
+        output = format_markdown(results)
+        assert "\u26a0\ufe0f" in output
+        assert "マーカー凡例" in output
+
+    def test_no_markers_no_legend(self):
+        """When no markers present, legend is not shown."""
+        results = [{
+            "symbol": "7203.T",
+            "name": "Toyota",
+            "price": 2850.0,
+            "_note_markers": "",
+        }]
+        output = format_markdown(results)
+        assert "マーカー凡例" not in output
+
+    def test_note_detail_section(self):
+        """Note summary details appear when present."""
+        results = [{
+            "symbol": "7203.T",
+            "name": "Toyota",
+            "price": 2850.0,
+            "per": 10.5,
+            "sector": "Auto",
+            "_note_markers": "\U0001f4dd",
+            "_note_summary": "[lesson] 損切りが遅かった",
+        }]
+        output = format_query_markdown(results)
+        assert "メモ詳細" in output
+        assert "7203.T" in output
+        assert "損切りが遅かった" in output
+
+    def test_markers_in_alpha_markdown(self):
+        """Markers show in alpha format too."""
+        results = [{
+            "symbol": "TEST",
+            "_note_markers": "\u26a0\ufe0f\U0001f4dd",
+        }]
+        output = format_alpha_markdown(results)
+        assert "\u26a0\ufe0f" in output
+        assert "\U0001f4dd" in output
+
+    def test_markers_in_shareholder_return(self):
+        """Markers show in shareholder-return format."""
+        results = [{
+            "symbol": "7267.T",
+            "name": "Honda",
+            "sector": "Auto",
+            "per": 10.0,
+            "roe": 0.08,
+            "dividend_yield_trailing": 0.03,
+            "buyback_yield": 0.05,
+            "total_shareholder_return": 0.17,
+            "return_stability_label": "✅ 安定",
+            "return_stability_reason": None,
+            "_note_markers": "\u26a0\ufe0f",
+            "_note_summary": "[concern] Test concern",
+        }]
+        output = format_shareholder_return_markdown(results)
+        assert "\u26a0\ufe0f" in output

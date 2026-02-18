@@ -197,3 +197,24 @@ python3 .../run_screen.py --region japan --preset shareholder-return
 # 米国の高還元株
 python3 .../run_screen.py --region us --preset shareholder-return
 ```
+
+## アノテーション機能 (KIK-418/419)
+
+スクリーニング結果には投資メモと売却履歴に基づくマーカーが自動付与されます。
+
+### マーカー凡例
+
+| マーカー | 意味 | トリガー |
+|:---:|:---|:---|
+| ⚠️ | 懸念メモあり | 投資メモ type=concern |
+| 📝 | 学びメモあり | 投資メモ type=lesson |
+| 👀 | 様子見 | 投資メモ type=observation + 「見送り」「待ち」等キーワード |
+
+### 売却済み銘柄の自動除外
+
+直近90日以内に売却した銘柄はスクリーニング結果から自動除外されます。除外数はメッセージで表示されます。
+
+### データソース
+
+1. Neo4j ナレッジグラフ（優先）
+2. JSON ファイル（Neo4j 未接続時のフォールバック）

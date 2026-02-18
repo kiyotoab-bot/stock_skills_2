@@ -41,9 +41,15 @@ python3 run_screen.py --region japan --preset growth --top 10
 python3 run_screen.py --region japan --preset long-term --top 10
 ```
 
-**Output**: Markdown テーブル (銘柄/名前/スコア/PER/PBR/配当利回り/ROE)
+**Output**: Markdown テーブル (銘柄/名前/スコア/PER/PBR/配当利回り/ROE)。直近売却済み銘柄は自動除外(KIK-418)、懸念/学びメモがある銘柄にはマーカー表示(KIK-419)。
 
-**Core Dependencies**: `src/core/screening/screener.py`, `indicators.py`, `filters.py`, `query_builder.py`, `alpha.py`, `technicals.py`
+**Annotation Markers** (KIK-418/419):
+- ⚠️ = 懸念メモあり (concern)
+- 📝 = 学びメモあり (lesson)
+- 👀 = 様子見 (observation に「見送り」「待ち」等キーワード)
+- 直近90日以内の売却銘柄は結果から自動除外
+
+**Core Dependencies**: `src/core/screening/screener.py`, `indicators.py`, `filters.py`, `query_builder.py`, `alpha.py`, `technicals.py`, `src/data/screen_annotator.py`
 
 ---
 
