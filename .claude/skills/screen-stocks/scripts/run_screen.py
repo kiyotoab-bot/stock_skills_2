@@ -38,6 +38,12 @@ try:
 except ImportError:
     HAS_GRAPH_QUERY = False
 
+try:
+    from src.data.screen_annotator import annotate_results
+    HAS_ANNOTATOR = True
+except ImportError:
+    HAS_ANNOTATOR = False
+
 
 # Legacy market classes
 MARKETS = {
@@ -103,6 +109,16 @@ VALID_SECTORS = [
 ]
 
 
+def _annotate(results):
+    """Apply screen annotations (KIK-418/419). Returns (results, excluded_count)."""
+    if not HAS_ANNOTATOR or not results:
+        return results, 0
+    try:
+        return annotate_results(results)
+    except Exception:
+        return results, 0
+
+
 def _print_recurring_picks(results):
     """Print recurring picks highlight if graph data available (KIK-406)."""
     if not HAS_GRAPH_QUERY or not results:
@@ -148,7 +164,10 @@ def run_trending_mode(args):
         region=region_key, theme=args.theme, top_n=args.top,
     )
 
+    results, excluded = _annotate(results)
     print(f"Step 2: {len(results)}銘柄のファンダメンタルズを取得・スコアリング完了\n")
+    if excluded:
+        print(f"※ 直近売却済み {excluded}銘柄を除外\n")
     print(format_trending_markdown(results, market_context))
 
     _print_recurring_picks(results)
@@ -182,7 +201,10 @@ def run_query_mode(args):
             print(f"\n## {region_name} - 押し目買い スクリーニング結果\n")
             print("Step 1: ファンダメンタルズ条件で絞り込み中...")
             results = screener.screen(region=region_code, top_n=args.top)
+            results, excluded = _annotate(results)
             print(f"Step 2-3 完了: {len(results)}銘柄が条件に合致\n")
+            if excluded:
+                print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_pullback_markdown(results))
             _print_recurring_picks(results)
             if HAS_HISTORY and results:
@@ -202,7 +224,10 @@ def run_query_mode(args):
             print(f"\n## {region_name} - 純成長株{sector_label} スクリーニング結果\n")
             print("Step 1: 成長条件で絞り込み中 (EquityQuery)...")
             results = screener.screen(region=region_code, top_n=args.top, sector=args.sector)
+            results, excluded = _annotate(results)
             print(f"Step 2: {len(results)}銘柄のEPS成長率を取得・ソート完了\n")
+            if excluded:
+                print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_growth_markdown(results))
             _print_recurring_picks(results)
             if HAS_HISTORY and results:
@@ -221,7 +246,10 @@ def run_query_mode(args):
             print(f"\n## {region_name} - アルファシグナル スクリーニング結果\n")
             print("Step 1: 割安足切り (EquityQuery)...")
             results = screener.screen(region=region_code, top_n=args.top)
+            results, excluded = _annotate(results)
             print(f"Step 2-4 完了: {len(results)}銘柄がアルファ条件に合致\n")
+            if excluded:
+                print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_alpha_markdown(results))
             _print_recurring_picks(results)
             if HAS_HISTORY and results:
@@ -246,8 +274,11 @@ def run_query_mode(args):
                 top_n=args.top,
                 with_pullback=True,
             )
+            results, excluded = _annotate(results)
             pullback_label = " + 押し目フィルタ"
             print(f"\n## {region_name} - {args.preset}{sector_label}{pullback_label} スクリーニング結果 (EquityQuery)\n")
+            if excluded:
+                print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_pullback_markdown(results))
             _print_recurring_picks(results)
             if HAS_HISTORY and results:
@@ -262,7 +293,10 @@ def run_query_mode(args):
                 sector=args.sector,
                 top_n=args.top,
             )
+            results, excluded = _annotate(results)
             print(f"\n## {region_name} - {args.preset}{sector_label} スクリーニング結果 (EquityQuery)\n")
+            if excluded:
+                print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             if args.preset == "shareholder-return" and HAS_SR_FORMAT:
                 print(format_shareholder_return_markdown(results))
             else:
@@ -307,7 +341,10 @@ def run_legacy_mode(args):
 
         screener = ValueScreener(client, market)
         results = screener.screen(preset=args.preset, top_n=args.top)
+        results, excluded = _annotate(results)
         print(f"\n## {market.name} - {args.preset} スクリーニング結果\n")
+        if excluded:
+            print(f"※ 直近売却済み {excluded}銘柄を除外\n")
         print(format_markdown(results))
         if HAS_HISTORY and results:
             try:
