@@ -15,6 +15,10 @@ $ARGUMENTS を解析してポートフォリオ銘柄リストとシナリオを
 python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/stress-test/scripts/run_stress_test.py --portfolio <symbols> [--scenario <scenario>] [--weights <weights>]
 ```
 
+## 自然言語ルーティング
+
+自然言語→スキル判定は [.claude/rules/intent-routing.md](../../rules/intent-routing.md) を参照。
+
 ## 引数の解釈ルール
 
 ### portfolio（銘柄リスト・必須）
@@ -25,21 +29,6 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/stress-test/scripts/r
 | `7203.T,AAPL,D05.SI` | `7203.T,AAPL,D05.SI` |
 | `7203.T AAPL D05.SI` | `7203.T,AAPL,D05.SI` |
 | `トヨタ アップル` | 対応するティッカーに変換してから指定 |
-
-### scenario（シナリオ名・省略可）
-ユーザーの自然言語入力を以下のように解釈する。省略時はClaudeがポートフォリオ構成から最も適切なシナリオを自動判定する。
-
-| ユーザー入力 | --scenario 値 |
-|:-----------|:-------------|
-| 「トリプル安」「株安・円安・債券安」 | トリプル安 |
-| 「ドル高円安」「円安」「為替ショック」 | ドル高円安 |
-| 「米国リセッション」「景気後退」「リセッション」 | 米国リセッション |
-| 「日銀利上げ」「利上げ」「金利上昇」 | 日銀利上げ |
-| 「米中対立」「地政学リスク」「貿易戦争」 | 米中対立 |
-| 「インフレ再燃」「インフレ」「物価上昇」 | インフレ再燃 |
-| 「テック暴落」「AI暴落」「ナスダック暴落」 | テック暴落 |
-| 「円高ドル安」「円高」「ドル安」 | 円高ドル安 |
-| その他の自然言語入力 | カスタム（そのまま渡す） |
 
 ### weights（保有比率・省略可）
 カンマ区切りの比率リスト。銘柄数と同じ数だけ指定する。省略時は等分（各銘柄 1/N）。

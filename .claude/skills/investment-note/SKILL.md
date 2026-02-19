@@ -66,24 +66,6 @@ python3 .../manage_note.py delete --id note_2025-02-17_7203_T_abc12345
 | market | 市況メモ | `--category market`（マクロ動向、金利等） |
 | general | 汎用メモ | `--category general`（未分類、デフォルト） |
 
-## 引数の解釈ルール（自然言語対応）
+## 自然言語ルーティング
 
-| ユーザー入力 | コマンド |
-|:-----------|:--------|
-| 「トヨタについてメモ: EV需要が...」 | save --symbol 7203.T --type observation --content "..." |
-| 「AAPLの懸念: 中国売上の減速」 | save --symbol AAPL --type concern --content "中国売上の減速" |
-| 「バリュートラップの学び」 | save --type lesson --content "..." |
-| 「PF全体のメモ」「ポートフォリオの振り返り」 | save --category portfolio --type review --content "..." |
-| 「市況メモ」「マクロの気づき」 | save --category market --type observation --content "..." |
-| 「メモ一覧」「ノート見せて」 | list |
-| 「トヨタのメモ」 | list --symbol 7203.T |
-| 「PFのメモ」 | list --category portfolio |
-| 「メモを削除」 | delete --id ... |
-
-タイプの自動判定:
-- 投資テーマ/買う理由/論拠 → thesis
-- 観察/気づき/メモ → observation
-- 懸念/リスク/心配 → concern
-- レビュー/振り返り/反省 → review
-- 目標価格/買い増し/利確 → target
-- 学び/教訓/失敗から → lesson
+自然言語→スキル判定は [.claude/rules/intent-routing.md](../../rules/intent-routing.md) を参照。

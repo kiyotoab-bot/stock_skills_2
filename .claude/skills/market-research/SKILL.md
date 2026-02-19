@@ -15,31 +15,9 @@ $ARGUMENTS を解析してリサーチタイプと対象を判定し、以下の
 python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/market-research/scripts/run_research.py <command> <target>
 ```
 
-## 引数の解釈ルール
+## 自然言語ルーティング
 
-### command（リサーチタイプ・必須）
-
-| ユーザー入力 | command |
-|:-----------|:--------|
-| 銘柄名、ティッカーシンボル（ニュース・センチメント） | stock |
-| 業界名、テーマ | industry |
-| マーケット名、指数名 | market |
-| 銘柄名、ティッカーシンボル（ビジネスモデル・事業構造） | business |
-
-### target（対象・必須）
-
-| ユーザー入力例 | command | target |
-|:-------------|:--------|:-------|
-| `7203.T` | stock | 7203.T |
-| `トヨタ` | stock | 7203.T（ティッカーに変換） |
-| `AAPL` | stock | AAPL |
-| `半導体` | industry | 半導体 |
-| `AI / Machine Learning` | industry | "AI / Machine Learning" |
-| `日経平均` | market | 日経平均 |
-| `S&P500` | market | S&P500 |
-| `米国株市場` | market | 米国株市場 |
-| `キヤノンのビジネスモデル` | business | 7751.T |
-| `AAPLの事業構造` | business | AAPL |
+自然言語→スキル判定は [.claude/rules/intent-routing.md](../../rules/intent-routing.md) を参照。
 
 ## リサーチタイプ別の出力
 

@@ -174,7 +174,7 @@ except ImportError:
 | yahoo_client.py | yfinance ラッパー + 24h JSON cache + 異常値ガード |
 | grok_client.py | Grok API (X検索/Web検索) + XAI_API_KEY 環境変数 |
 | history_store.py | スキル実行結果の JSON 自動蓄積 (data/history/) |
-| graph_store.py | Neo4j CRUD (11ノードタイプ, MERGE ベース, ベクトルインデックス(KIK-420)) |
+| graph_store.py | Neo4j CRUD (21ノードタイプ, MERGE ベース, ベクトルインデックス(KIK-420)) |
 | graph_query.py | Neo4j 照会ヘルパー (6関数 + vector_search(KIK-420)) |
 | graph_nl_query.py | 自然言語 → Cypher テンプレートマッチ |
 | note_manager.py | 投資メモ管理 (JSON + Neo4j dual-write) |
@@ -186,5 +186,5 @@ except ImportError:
 
 | ファイル | 内容 |
 |:---|:---|
-| config/screening_presets.yaml | 7プリセット定義 |
+| config/screening_presets.yaml | 11プリセット定義 |
 | config/exchanges.yaml | 60+ 地域の取引所・閾値定義 |

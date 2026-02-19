@@ -15,62 +15,9 @@ $ARGUMENTS を解析して region、preset、sector を判定し、以下のコ�
 python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts/run_screen.py --region <region> --preset <preset> [--sector <sector>] [--top <N>] [--mode <query|legacy>]
 ```
 
-## 引数の解釈ルール
+## 自然言語ルーティング
 
-### region（第1引数）
-ユーザーの自然言語入力を以下のように解釈する。デフォルト: japan
-
-| ユーザー入力 | --region 値 |
-|:-----------|:-----------|
-| 「日本株」「日本」「japan」「JP」 | japan |
-| 「米国株」「アメリカ」「US」 | us |
-| 「ASEAN」「アセアン」「東南アジア」 | asean |
-| 「シンガポール」「singapore」 | sg |
-| 「タイ」「thailand」 | th |
-| 「マレーシア」「malaysia」 | my |
-| 「インドネシア」「indonesia」 | id |
-| 「フィリピン」「philippines」 | ph |
-| 「香港」「hongkong」「HK」 | hk |
-| 「韓国」「korea」「KR」 | kr |
-| 「台湾」「taiwan」「TW」 | tw |
-| 「中国」「china」「CN」 | cn |
-| 「全部」「all」 | all |
-
-### preset（第2引数）
-CLIデフォルト: value。自然言語で「いい株ある？」等プリセット未指定の場合は intent-routing により alpha が選択される。
-
-| ユーザー入力 | --preset 値 |
-|:-----------|:-----------|
-| 「割安」「バリュー」 | value |
-| 「高配当」 | high-dividend |
-| 「純成長」「高成長」「成長率重視」「グロース株」 | growth |
-| 「成長バリュー」「成長＋割安」 | growth-value |
-| 「超割安」「ディープバリュー」 | deep-value |
-| 「クオリティ」「高品質」 | quality |
-| 「押し目」「pullback」 | pullback |
-| 「アルファ」「alpha」「割安＋変化」 | alpha |
-| 「トレンド」「trending」「話題」「Xで話題」「SNSで注目」 | trending [--theme "テーマ"] |
-| 「長期」「長期投資」「じっくり」「バイ＆ホールド」 | long-term |
-| 「還元」「株主還元」「自社株買い」「バイバック」「総還元」 | shareholder-return |
-| 「割安で押し目」「バリュー+押し目」 | value --with-pullback |
-| 「高配当で押し目」 | high-dividend --with-pullback |
-
-### sector（--sector オプション）
-指定なしの場合は全セクターが対象。ユーザーが特定セクターに言及した場合に使用する。
-
-| ユーザー入力 | --sector 値 |
-|:-----------|:-----------|
-| 「テクノロジー」「IT」「ハイテク」 | Technology |
-| 「金融」「銀行」 | Financial Services |
-| 「ヘルスケア」「医療」「製薬」 | Healthcare |
-| 「消費循環」「小売」「自動車」 | Consumer Cyclical |
-| 「産業」「工業」「製造」 | Industrials |
-| 「通信」「メディア」 | Communication Services |
-| 「生活必需品」「食品」「日用品」 | Consumer Defensive |
-| 「エネルギー」「石油」 | Energy |
-| 「素材」「化学」「鉄鋼」 | Basic Materials |
-| 「不動産」「REIT」 | Real Estate |
-| 「公益」「電力」「ガス」 | Utilities |
+自然言語→スキル判定は [.claude/rules/intent-routing.md](../../rules/intent-routing.md) を参照。
 
 ## 利用可能な地域コード（yfinance EquityQuery）
 
