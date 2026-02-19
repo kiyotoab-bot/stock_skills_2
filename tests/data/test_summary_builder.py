@@ -263,3 +263,14 @@ class TestBuildNoteSummary:
     def test_max_length(self):
         result = build_note_summary("SYM", "thesis", "x" * 300)
         assert len(result) <= 200
+
+    # KIK-429: category support
+    def test_category_portfolio_no_symbol(self):
+        result = build_note_summary("", "review", "PF check", category="portfolio")
+        assert "[portfolio]" in result
+        assert "review:" in result
+
+    def test_category_stock_with_symbol(self):
+        result = build_note_summary("7203.T", "thesis", "test", category="stock")
+        assert "7203.T" in result
+        assert "[stock]" not in result

@@ -204,14 +204,18 @@ def build_note_summary(
     symbol: str = "",
     note_type: str = "",
     content: str = "",
+    category: str = "",
 ) -> str:
     """Build summary for a Note node.
 
     Example: "7203.T thesis: EV普及で部品需要増"
+    Example (no symbol): "[portfolio] review: PF全体の振り返り"
     """
     parts = []
     if symbol:
         parts.append(symbol)
+    elif category and category != "stock":
+        parts.append(f"[{category}]")
     if note_type:
         parts.append(f"{note_type}:")
     if content:
