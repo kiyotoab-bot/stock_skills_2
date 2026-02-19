@@ -18,55 +18,40 @@ from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import try_import
 from src.data import yahoo_client
 from src.core.portfolio.concentration import analyze_concentration, compute_hhi
 from src.core.ticker_utils import infer_country as _infer_country
 
 # Team 2 module
-try:
-    from src.core.risk.shock_sensitivity import analyze_stock_sensitivity
-except ImportError:
-    analyze_stock_sensitivity = None
+_, _ss = try_import("src.core.risk.shock_sensitivity", "analyze_stock_sensitivity")
+analyze_stock_sensitivity = _ss["analyze_stock_sensitivity"]
 
 # Team 3 modules
-try:
-    from src.core.risk.scenario_analysis import resolve_scenario, analyze_portfolio_scenario
-except ImportError:
-    resolve_scenario = None
-    analyze_portfolio_scenario = None
+_, _sa = try_import("src.core.risk.scenario_analysis", "resolve_scenario", "analyze_portfolio_scenario")
+resolve_scenario = _sa["resolve_scenario"]
+analyze_portfolio_scenario = _sa["analyze_portfolio_scenario"]
 
-try:
-    from src.output.stress_formatter import format_full_stress_report
-except ImportError:
-    format_full_stress_report = None
+_, _sfmt = try_import("src.output.stress_formatter", "format_full_stress_report")
+format_full_stress_report = _sfmt["format_full_stress_report"]
 
 # KIK-352 modules
-try:
-    from src.core.risk.correlation import (
-        compute_correlation_matrix,
-        find_high_correlation_pairs,
-        decompose_factors,
-        compute_var,
-        MACRO_FACTORS,
-    )
-except ImportError:
-    compute_correlation_matrix = None
-    find_high_correlation_pairs = None
-    decompose_factors = None
-    compute_var = None
-    MACRO_FACTORS = []
+_has_corr, _corr = try_import(
+    "src.core.risk.correlation",
+    "compute_correlation_matrix", "find_high_correlation_pairs",
+    "decompose_factors", "compute_var", "MACRO_FACTORS")
+compute_correlation_matrix = _corr["compute_correlation_matrix"]
+find_high_correlation_pairs = _corr["find_high_correlation_pairs"]
+decompose_factors = _corr["decompose_factors"]
+compute_var = _corr["compute_var"]
+MACRO_FACTORS = _corr["MACRO_FACTORS"] if _has_corr else []
 
-try:
-    from src.core.risk.recommender import generate_recommendations
-except ImportError:
-    generate_recommendations = None
+_, _rec = try_import("src.core.risk.recommender", "generate_recommendations")
+generate_recommendations = _rec["generate_recommendations"]
 
 # KIK-428: History auto-save
-try:
-    from src.data.history_store import save_stress_test as _save_stress_test
-    HAS_HISTORY = True
-except ImportError:
-    HAS_HISTORY = False
+HAS_HISTORY, _hi = try_import("src.data.history_store", "save_stress_test")
+if HAS_HISTORY: _save_stress_test = _hi["save_stress_test"]
 
 
 

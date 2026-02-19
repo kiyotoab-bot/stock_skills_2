@@ -25,6 +25,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.common import try_import
 from src.data.graph_store import (
     clear_all,
     get_mode,
@@ -49,11 +50,10 @@ from src.data.graph_store import (
 )
 
 # KIK-420: Optional embedding support (graceful degradation if TEI unavailable)
-try:
-    from src.data import embedding_client, summary_builder
-    HAS_EMBEDDING = True
-except ImportError:
-    HAS_EMBEDDING = False
+HAS_EMBEDDING, _emb = try_import("src.data", "embedding_client", "summary_builder")
+if HAS_EMBEDDING:
+    embedding_client = _emb["embedding_client"]
+    summary_builder = _emb["summary_builder"]
 
 
 def _get_embedding(summary_text: str) -> "list[float] | None":
