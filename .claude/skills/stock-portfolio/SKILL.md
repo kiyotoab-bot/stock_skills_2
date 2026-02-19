@@ -161,61 +161,9 @@ portfolio.csv の内容をそのまま表示する。
 python3 .../run_portfolio.py list
 ```
 
-## 引数の解釈ルール（自然言語対応）
+## 自然言語ルーティング
 
-ユーザーの自然言語入力を以下のようにコマンドに変換する。
-
-| ユーザー入力 | コマンド |
-|:-----------|:--------|
-| 「PFを見せて」「ポートフォリオ」「スナップショット」「損益」 | snapshot |
-| 「〇〇を△株買った」「〇〇を△株 ¥XXXXで購入」 | buy |
-| 「〇〇を△株売った」「〇〇を売却」 | sell |
-| 「構造分析」「偏りを調べて」「集中度」「HHI」 | analyze |
-| 「ヘルスチェック」「健全性チェック」「利確判断」「損切り判断」 | health |
-| 「推定利回り」「予想リターン」「期待収益」「forecast」 | forecast |
-| 「リバランス」「偏りを直したい」「配分調整」「リスクを抑えたい」 | rebalance |
-| 「5年後にいくらになる？」「シミュレーション」「複利」 | simulate |
-| 「〇〇を追加したらどうなる？」「買ったらPFどう変わる？」 | what-if |
-| 「バックテスト」「検証」「過去の成績」 | backtest |
-| 「一覧」「リスト」「CSV」 | list |
-
-### buy コマンドの自然言語変換例
-
-| ユーザー入力 | 変換結果 |
-|:-----------|:--------|
-| 「トヨタを100株 2850円で買った」 | `buy --symbol 7203.T --shares 100 --price 2850 --currency JPY` |
-| 「AAPLを10株 $178.50で購入」 | `buy --symbol AAPL --shares 10 --price 178.50 --currency USD` |
-| 「DBSを100株 35.20SGDで買った」 | `buy --symbol D05.SI --shares 100 --price 35.20 --currency SGD` |
-
-企業名が指定された場合はティッカーシンボルに変換してから --symbol に指定すること。
-
-### sell コマンドの自然言語変換例
-
-| ユーザー入力 | 変換結果 |
-|:-----------|:--------|
-| 「トヨタを100株売った」 | `sell --symbol 7203.T --shares 100` |
-| 「AAPLを5株売却」 | `sell --symbol AAPL --shares 5` |
-
-### rebalance コマンドの自然言語変換例
-
-| ユーザー入力 | 変換結果 |
-|:-----------|:--------|
-| 「リスクを抑えたい」 | `rebalance --strategy defensive` |
-| 「もっと攻めたい」 | `rebalance --strategy aggressive` |
-| 「配当で安定させたい」 | `rebalance --min-dividend-yield 0.03` |
-| 「テック偏重を直したい」 | `rebalance --reduce-sector Technology` |
-| 「円安ヘッジしたい」 | `rebalance --reduce-currency USD` |
-| 「100万円追加投入したい」 | `rebalance --additional-cash 1000000` |
-
-### simulate コマンドの自然言語変換例
-
-| ユーザー入力 | 変換結果 |
-|:-----------|:--------|
-| 「5年後にいくらになる？」 | `simulate --years 5` |
-| 「月10万追加して3年後に2000万いける？」 | `simulate --years 3 --monthly-add 100000 --target 20000000` |
-| 「複利でシミュレーション」 | `simulate --years 10` |
-| 「配当再投資しなかったら？」 | `simulate --years 5 --no-reinvest-dividends` |
-| 「老後資金のシミュレーション」 | `simulate --years 20 --monthly-add 100000` |
+自然言語→スキル判定は [.claude/rules/intent-routing.md](../../rules/intent-routing.md) を参照。
 
 ## 制約事項
 

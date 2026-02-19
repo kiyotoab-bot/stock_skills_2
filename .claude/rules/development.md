@@ -30,9 +30,10 @@
 
 ## Git ワークフロー
 
-- Linear issue（KIK-NNN）ごとに `git worktree add` でワークツリーを作成: `~/stock-skills-kik{NNN}`
+開発フロー（Worktree作成→設計→実装→テスト→レビュー→結合試験→マージ）は [workflow.md](workflow.md) を参照。
+
 - ブランチ名: `feature/kik-{NNN}-{short-desc}`
-- 完了後: `git merge --no-ff` → `git push` → `git worktree remove` → `git branch -d` → Linear を Done に更新
+- ワークツリー: `~/stock-skills-kik{NNN}`
 
 ## ドキュメント更新リマインダー (KIK-407)
 
@@ -45,7 +46,7 @@
 ## ドキュメント構成 (KIK-412)
 
 - `docs/architecture.md` — システムアーキテクチャ（3層構成、Mermaid図、設計原則、モジュール一覧）
-- `docs/neo4j-schema.md` — Neo4j スキーマリファレンス（11ノードタイプ、リレーション、制約/インデックス、サンプルCypher）
+- `docs/neo4j-schema.md` — Neo4j スキーマリファレンス（21ノードタイプ、リレーション、制約/インデックス、サンプルCypher）
 - `docs/skill-catalog.md` — 8スキルのカタログ（概要、コマンド例、Core依存、出力形式）
 
 新しいスキルやノードタイプを追加した場合は対応するドキュメントも更新すること。
