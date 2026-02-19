@@ -145,14 +145,15 @@
 | positive | string | ポジティブ要因 (yahoo_x のみ) |
 | negative | string | ネガティブ要因 (yahoo_x のみ) |
 
-### Catalyst (KIK-413 full mode)
+### Catalyst (KIK-413 full mode, KIK-430 拡張)
 好材料・悪材料。Research から HAS_CATALYST で接続。
+stock/business: positive/negative。industry: trend/growth_driver/risk/regulatory。
 
 | Property | Type | Description |
 |:---|:---|:---|
-| id | string (UNIQUE) | `{research_id}_cat_{p/n}_{i}` |
+| id | string (UNIQUE) | `{research_id}_cat_{type}_{i}` |
 | date | string | 記録日 |
-| type | string | positive / negative |
+| type | string | positive / negative / trend / growth_driver / risk / regulatory |
 | text | string | 内容 (最大500文字) |
 
 ### AnalystView (KIK-413 full mode)
@@ -164,8 +165,8 @@
 | date | string | 記録日 |
 | text | string | 見解テキスト (最大500文字) |
 
-### Indicator (KIK-413 full mode)
-マクロ指標スナップショット。MarketContext から INCLUDES で接続。
+### Indicator (KIK-413 full mode, KIK-430 拡張)
+マクロ指標スナップショット。MarketContext/Research(market) から INCLUDES で接続。
 
 | Property | Type | Description |
 |:---|:---|:---|
@@ -254,6 +255,10 @@ graph LR
     MarketContext -- HAS_EVENT --> UpcomingEvent
     MarketContext -- HAS_ROTATION --> SectorRotation
     MarketContext -- HAS_SENTIMENT --> Sentiment
+    Research -- HAS_EVENT --> UpcomingEvent
+    Research -- HAS_ROTATION --> SectorRotation
+    Research -- INCLUDES --> Indicator
+    Research -- MENTIONS --> Stock
     Portfolio -- HOLDS --> Stock
     StressTest -- STRESSED --> Stock
     Forecast -- FORECASTED --> Stock
@@ -277,9 +282,10 @@ graph LR
 | HAS_SENTIMENT | Research/MarketContext | Sentiment | センチメント分析結果 (KIK-413) |
 | HAS_CATALYST | Research | Catalyst | 好材料・悪材料 (KIK-413) |
 | HAS_ANALYST_VIEW | Research | AnalystView | アナリスト見解 (KIK-413) |
-| INCLUDES | MarketContext | Indicator | マクロ指標値 (KIK-413) |
-| HAS_EVENT | MarketContext | UpcomingEvent | 今後のイベント (KIK-413) |
-| HAS_ROTATION | MarketContext | SectorRotation | セクターローテーション (KIK-413) |
+| INCLUDES | Research(market)/MarketContext | Indicator | マクロ指標値 (KIK-413/430) |
+| HAS_EVENT | Research(market)/MarketContext | UpcomingEvent | 今後のイベント (KIK-413/430) |
+| HAS_ROTATION | Research(market)/MarketContext | SectorRotation | セクターローテーション (KIK-413/430) |
+| MENTIONS | Research(industry) | Stock | 業界リサーチで言及された銘柄 (KIK-430) |
 | HOLDS | Portfolio | Stock | 現在保有中の銘柄 (KIK-414)。プロパティ: shares, cost_price, cost_currency, purchase_date |
 | STRESSED | StressTest | Stock | ストレステスト対象銘柄 (KIK-428)。プロパティ: impact (推定損失率) |
 | FORECASTED | Forecast | Stock | フォーキャスト対象銘柄 (KIK-428)。プロパティ: optimistic, base, pessimistic (各シナリオリターン) |

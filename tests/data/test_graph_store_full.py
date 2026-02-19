@@ -248,6 +248,77 @@ class TestMergeResearchFull:
         calls_str = str(session.run.call_args_list)
         assert "MENTIONS" not in calls_str
 
+    def test_market_research_creates_sub_nodes(self, gs_full):
+        """KIK-430: market research expands Sentiment/UpcomingEvent/SectorRotation/Indicator."""
+        gs, _, session = gs_full
+        grok = {
+            "sentiment": {"score": 0.6, "summary": "やや強気"},
+            "upcoming_events": ["FOMC 3/20", "日銀決定会合 3/14"],
+            "sector_rotation": ["ハイテク→バリュー"],
+            "macro_factors": ["米金利上昇", "円安進行"],
+        }
+        result = gs.merge_research_full(
+            "2025-03-01", "market", "日経平均", "Market overview",
+            grok_research=grok,
+        )
+        assert result is True
+        calls_str = str(session.run.call_args_list)
+        # Sentiment
+        assert "Sentiment" in calls_str
+        assert "market_research" in calls_str
+        # UpcomingEvent
+        assert "UpcomingEvent" in calls_str
+        assert "FOMC" in calls_str
+        # SectorRotation
+        assert "SectorRotation" in calls_str
+        # Indicator (macro_factors)
+        assert "Indicator" in calls_str
+        assert "INCLUDES" in calls_str
+
+    def test_industry_research_creates_sub_nodes(self, gs_full):
+        """KIK-430: industry research expands Catalyst nodes + key_player MENTIONS."""
+        gs, _, session = gs_full
+        grok = {
+            "trends": ["AI需要拡大", "微細化競争"],
+            "key_players": [
+                {"name": "NVIDIA", "symbol": "NVDA"},
+                {"name": "TSMC", "symbol": "TSM"},
+            ],
+            "growth_drivers": ["データセンター投資"],
+            "risks": ["米中対立"],
+            "regulatory": ["輸出規制強化"],
+        }
+        result = gs.merge_research_full(
+            "2025-03-01", "industry", "半導体", "Industry overview",
+            grok_research=grok,
+        )
+        assert result is True
+        calls_str = str(session.run.call_args_list)
+        # Catalyst nodes
+        assert "Catalyst" in calls_str
+        assert "trend" in calls_str
+        assert "growth_driver" in calls_str
+        assert "risk" in calls_str
+        assert "regulatory" in calls_str
+        # key_players MENTIONS
+        assert "MENTIONS" in calls_str
+        assert "NVDA" in calls_str
+
+    def test_industry_key_players_string(self, gs_full):
+        """KIK-430: key_players as list of strings."""
+        gs, _, session = gs_full
+        grok = {
+            "key_players": ["NVIDIA", "AMD"],
+        }
+        result = gs.merge_research_full(
+            "2025-03-01", "industry", "半導体", "",
+            grok_research=grok,
+        )
+        assert result is True
+        calls_str = str(session.run.call_args_list)
+        assert "MENTIONS" in calls_str
+        assert "NVIDIA" in calls_str
+
 
 # ===================================================================
 # merge_market_context_full tests

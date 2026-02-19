@@ -175,7 +175,8 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       SUPERSEDES チェーン,
                       NEO4J_MODE環境変数(off/summary/full)(KIK-413),
                       full: News/Sentiment/Catalyst/AnalystView/
-                      Indicator/UpcomingEvent/SectorRotation展開,
+                      Indicator/UpcomingEvent/SectorRotation展開
+                      (market/industry研究サブノード対応(KIK-430)),
                       sync_portfolio()/is_held()/get_held_symbols()(KIK-414),
                       Portfolio→HOLDS→Stock(CSV=master, Neo4j=view),
                       StressTest→STRESSED→Stock(KIK-428),
