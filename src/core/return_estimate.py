@@ -26,12 +26,11 @@ MIN_SPREAD = 0.05  # Minimum spread for optimistic/pessimistic scenarios
 
 
 
-def _is_etf(stock_detail: dict) -> bool:
-    """Check if a symbol is likely an ETF (no analyst coverage).
+def _use_historical_method(stock_detail: dict) -> bool:
+    """Decide whether to use historical (percentile) return estimation.
 
-    Extends the common is_etf() with an additional check: stocks that
-    have analyst target prices are never treated as ETFs for return
-    estimation purposes (they use the analyst method instead).
+    Returns True for ETFs and stocks without analyst coverage.
+    Stocks with analyst target prices use the analyst method instead.
     """
     if stock_detail.get("target_mean_price") is not None:
         return False
@@ -259,7 +258,7 @@ def estimate_stock_return(
             "x_sentiment": dict|None,
         }
     """
-    if _is_etf(stock_detail):
+    if _use_historical_method(stock_detail):
         estimate = _estimate_from_history(stock_detail)
     else:
         estimate = _estimate_from_analyst(stock_detail)

@@ -31,6 +31,17 @@ def is_etf(stock_detail: dict) -> bool:
     return False
 
 
+def finite_or_none(v):
+    """Return v if finite number, else None."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return None if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return None
+
+
 def safe_float(value, default: float = 0.0) -> float:
     """Convert value to float safely, returning default on failure.
 

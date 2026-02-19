@@ -27,21 +27,6 @@ class JapanMarket(Market):
         """
         return ["JPX"]
 
-    # -- Ticker formatting --------------------------------------------------
-
-    def format_ticker(self, code: str) -> str:
-        """Convert a stock code to a TSE ticker.
-
-        If the code is a 4-digit number (e.g. '7203'), '.T' is appended automatically.
-        If it already contains a suffix, it is returned as-is.
-        """
-        code = code.strip()
-        if "." in code:
-            return code
-        if code.isdigit() and len(code) == 4:
-            return f"{code}{self.SUFFIX}"
-        return f"{code}{self.SUFFIX}"
-
     # -- Default symbol list (fallback) ------------------------------------
 
     def get_default_symbols(self) -> list[str]:

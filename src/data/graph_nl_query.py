@@ -7,21 +7,11 @@ Returns None when no template matches or Neo4j is unavailable.
 import re
 from typing import Optional
 
+from src.core.ticker_utils import SYMBOL_PATTERN, extract_symbol
 from src.data import graph_query
 
-
-# ---------------------------------------------------------------------------
-# Symbol extraction helpers
-# ---------------------------------------------------------------------------
-
-_SYMBOL_PATTERN = re.compile(r"(\d{4}\.[A-Z]+|[A-Z][A-Z0-9]{0,4}(?:\.[A-Z]{1,2})?)")
-
-
-
-def _extract_symbol(text: str) -> Optional[str]:
-    """Extract a ticker symbol from text (e.g. 7203.T, AAPL, D05.SI)."""
-    m = _SYMBOL_PATTERN.search(text)
-    return m.group(1) if m else None
+# Backward-compatible alias (tests import _extract_symbol from this module)
+_extract_symbol = extract_symbol
 
 
 def _extract_symbol_and_type(text: str) -> dict:

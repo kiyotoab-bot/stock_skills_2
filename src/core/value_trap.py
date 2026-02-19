@@ -4,18 +4,7 @@ Detects stocks that appear cheap on valuation metrics but have
 deteriorating fundamentals — a classic 'value trap' pattern.
 """
 
-import math
-
-
-def _finite_or_none(v):
-    """Return v if finite number, else None."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if (math.isnan(f) or math.isinf(f)) else f
-    except (TypeError, ValueError):
-        return None
+from src.core.common import finite_or_none
 
 
 def detect_value_trap(stock_detail: dict) -> dict:
@@ -26,11 +15,11 @@ def detect_value_trap(stock_detail: dict) -> dict:
     if stock_detail is None:
         return {"is_trap": False, "reasons": []}
 
-    per = _finite_or_none(stock_detail.get("per"))
-    pbr = _finite_or_none(stock_detail.get("pbr"))
-    roe = _finite_or_none(stock_detail.get("roe"))
-    eps_growth = _finite_or_none(stock_detail.get("eps_growth"))
-    rev_growth = _finite_or_none(stock_detail.get("revenue_growth"))
+    per = finite_or_none(stock_detail.get("per"))
+    pbr = finite_or_none(stock_detail.get("pbr"))
+    roe = finite_or_none(stock_detail.get("roe"))
+    eps_growth = finite_or_none(stock_detail.get("eps_growth"))
+    rev_growth = finite_or_none(stock_detail.get("revenue_growth"))
 
     reasons = []
 
