@@ -27,12 +27,6 @@ class USMarket(Market):
         """
         return ["NMS", "NYQ"]
 
-    # -- Ticker formatting --------------------------------------------------
-
-    def format_ticker(self, code: str) -> str:
-        """Return the ticker as-is (no suffix needed for US stocks)."""
-        return code.strip().upper()
-
     # -- Default symbol list (fallback) ------------------------------------
 
     def get_default_symbols(self) -> list[str]:

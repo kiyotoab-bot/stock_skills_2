@@ -27,13 +27,6 @@ class Market(ABC):
     name: str = "Market"
 
     @abstractmethod
-    def format_ticker(self, code: str) -> str:
-        """Convert a user-supplied code into a yfinance-compatible ticker symbol.
-
-        Subclasses must implement this to add the appropriate exchange suffix.
-        """
-
-    @abstractmethod
     def get_default_symbols(self) -> list[str]:
         """Return a list of default ticker symbols (already formatted) for this market.
 

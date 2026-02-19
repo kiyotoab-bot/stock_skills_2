@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from typing import Optional
 
-from src.core.common import is_cash as _is_cash, is_etf as _is_etf
+from src.core.common import is_cash as _is_cash, is_etf as _is_etf, finite_or_none
 from src.core.screening.indicators import (
     calculate_shareholder_return,
     calculate_shareholder_return_history,
@@ -215,20 +215,6 @@ def check_change_quality(stock_detail: dict) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _finite_or_none(v):
-    """Return v if finite number, else None."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if (math.isnan(f) or math.isinf(f)) else f
-    except (TypeError, ValueError):
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +276,10 @@ def check_long_term_suitability(
             "summary": "ETF",
         }
 
-    roe = _finite_or_none(stock_detail.get("roe"))
-    eps_growth = _finite_or_none(stock_detail.get("eps_growth"))
-    dividend_yield = _finite_or_none(stock_detail.get("dividend_yield"))
-    per = _finite_or_none(stock_detail.get("per"))
+    roe = finite_or_none(stock_detail.get("roe"))
+    eps_growth = finite_or_none(stock_detail.get("eps_growth"))
+    dividend_yield = finite_or_none(stock_detail.get("dividend_yield"))
+    per = finite_or_none(stock_detail.get("per"))
 
     # --- ROE classification ---
     if roe is None:
@@ -327,7 +313,7 @@ def check_long_term_suitability(
     # Prefer total return rate (dividend + buyback) if available
     total_return_rate = None
     if shareholder_return_data is not None:
-        total_return_rate = _finite_or_none(
+        total_return_rate = finite_or_none(
             shareholder_return_data.get("total_return_rate")
         )
     return_metric = total_return_rate if total_return_rate is not None else dividend_yield

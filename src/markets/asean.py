@@ -3,7 +3,7 @@
 from .base import Market
 
 
-# Exchange suffix mapping (kept for format_ticker backward compatibility)
+# Exchange suffix mapping
 EXCHANGE_SUFFIXES = {
     "SGX": ".SI",   # Singapore Exchange
     "SET": ".BK",   # Stock Exchange of Thailand
@@ -72,31 +72,6 @@ class ASEANMarket(Market):
             "region": self.get_region(),
             "exchanges": self.get_exchanges(),
         }
-
-    # -- Ticker formatting --------------------------------------------------
-
-    def format_ticker(self, code: str) -> str:
-        """Format a ticker, adding exchange suffix if not already present.
-
-        Accepts formats like:
-          - 'D05.SI'       -> returned as-is
-          - 'D05:SGX'      -> converted to 'D05.SI'
-          - 'D05'          -> returned as-is (caller must include suffix)
-        """
-        code = code.strip()
-
-        # Already has a recognised suffix
-        if any(code.endswith(suffix) for suffix in EXCHANGE_SUFFIXES.values()):
-            return code
-
-        # Exchange specified via colon notation, e.g. 'D05:SGX'
-        if ":" in code:
-            ticker_part, exchange = code.split(":", 1)
-            suffix = EXCHANGE_SUFFIXES.get(exchange.upper(), "")
-            return f"{ticker_part}{suffix}"
-
-        # No suffix and no exchange hint -- return as-is
-        return code
 
     # ------------------------------------------------------------------
     # Default symbols per country (fallback)

@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.core.return_estimate import (
-    _is_etf,
+    _use_historical_method,
     _compute_buyback_yield,
     _estimate_from_analyst,
     _estimate_from_history,
@@ -19,29 +19,29 @@ from src.core.return_estimate import (
 
 
 # ---------------------------------------------------------------------------
-# _is_etf
+# _use_historical_method
 # ---------------------------------------------------------------------------
 
 class TestIsEtf:
     def test_stock_with_analyst_target(self):
         """Stocks with analyst target prices are not ETFs."""
         detail = {"target_mean_price": 250.0, "sector": "Technology"}
-        assert _is_etf(detail) is False
+        assert _use_historical_method(detail) is False
 
     def test_etf_no_target_no_sector(self):
         """ETFs have no target price and no sector."""
         detail = {"target_mean_price": None, "sector": None}
-        assert _is_etf(detail) is True
+        assert _use_historical_method(detail) is True
 
     def test_etf_by_quote_type(self):
         """ETFs identified by quoteType."""
         detail = {"target_mean_price": None, "quoteType": "ETF", "sector": "Financial Services"}
-        assert _is_etf(detail) is True
+        assert _use_historical_method(detail) is True
 
     def test_stock_with_target_but_no_sector(self):
         """Stock with analyst target but no sector is not an ETF."""
         detail = {"target_mean_price": 100.0, "sector": None}
-        assert _is_etf(detail) is False
+        assert _use_historical_method(detail) is False
 
 
 # ---------------------------------------------------------------------------

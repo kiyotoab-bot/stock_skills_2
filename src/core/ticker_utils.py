@@ -4,7 +4,25 @@ Merged from portfolio_manager.py and scenario_analysis.py to provide
 a single source of truth for suffix-based lookups.
 """
 
+import re
+from typing import Optional
+
 from src.core.common import is_cash
+
+
+# ---------------------------------------------------------------------------
+# Symbol detection pattern (single source of truth)
+# ---------------------------------------------------------------------------
+
+SYMBOL_PATTERN = re.compile(
+    r"(\d{4}\.[A-Z]+|[A-Z][A-Z0-9]{0,4}(?:\.[A-Z]{1,2})?)"
+)
+
+
+def extract_symbol(text: str) -> Optional[str]:
+    """Extract a ticker symbol from text (e.g. 7203.T, AAPL, D05.SI)."""
+    m = SYMBOL_PATTERN.search(text)
+    return m.group(1) if m else None
 
 
 # Comprehensive suffix -> region mapping (from portfolio_manager.py)
