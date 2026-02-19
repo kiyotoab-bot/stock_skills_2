@@ -428,7 +428,17 @@ def import_watchlists(watchlists_dir: str) -> int:
             name = fp.stem  # filename without extension
             for sym in symbols:
                 merge_stock(symbol=sym)
-            merge_watchlist(name, symbols)
+            summary_text = ""
+            emb = None
+            if HAS_EMBEDDING:
+                try:
+                    summary_text = summary_builder.build_watchlist_summary(
+                        name, symbols)
+                    emb = _get_embedding(summary_text)
+                except Exception:
+                    pass
+            merge_watchlist(name, symbols,
+                            semantic_summary=summary_text, embedding=emb)
             count += 1
         except (json.JSONDecodeError, OSError):
             continue

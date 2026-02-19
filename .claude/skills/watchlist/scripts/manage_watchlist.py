@@ -26,8 +26,22 @@ def _load(name):
 
 def _save(name, symbols):
     _ensure_dir()
+    symbols = sorted(set(symbols))
     with open(_path(name), "w") as f:
-        json.dump(sorted(set(symbols)), f, indent=2, ensure_ascii=False)
+        json.dump(symbols, f, indent=2, ensure_ascii=False)
+    # Sync to Neo4j (view) -- graceful degradation
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+        from src.data.graph_store import merge_watchlist, merge_stock
+        from src.data.history_store import _build_embedding
+        for sym in symbols:
+            merge_stock(symbol=sym)
+        sem_summary, emb = _build_embedding(
+            "watchlist", name=name, symbols=symbols)
+        merge_watchlist(name, symbols,
+                        semantic_summary=sem_summary, embedding=emb)
+    except Exception:
+        pass
 
 
 def cmd_list():

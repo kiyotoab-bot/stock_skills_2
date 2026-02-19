@@ -80,8 +80,8 @@ class TestSchema:
     def test_init_schema_success(self, gs_with_driver):
         gs, _, session = gs_with_driver
         assert gs.init_schema() is True
-        # 19 constraints + 12 indexes + 7 vector indexes = 38 (KIK-414/420)
-        assert session.run.call_count == 38
+        # 19 constraints + 12 indexes + 8 vector indexes = 39 (KIK-414/420)
+        assert session.run.call_count == 39
 
     def test_init_schema_no_driver(self):
         import src.data.graph_store as gs

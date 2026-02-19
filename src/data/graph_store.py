@@ -154,6 +154,8 @@ _VECTOR_INDEXES = [
     "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
     "CREATE VECTOR INDEX note_embedding IF NOT EXISTS FOR (n:Note) ON (n.embedding) "
     "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
+    "CREATE VECTOR INDEX watchlist_embedding IF NOT EXISTS FOR (w:Watchlist) ON (w.embedding) "
+    "OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}}",
 ]
 
 
@@ -496,7 +498,9 @@ def merge_research(
 # Watchlist node (KIK-398)
 # ---------------------------------------------------------------------------
 
-def merge_watchlist(name: str, symbols: list[str]) -> bool:
+def merge_watchlist(name: str, symbols: list[str],
+                    semantic_summary: str = "",
+                    embedding: list[float] | None = None) -> bool:
     """Create a Watchlist node and BOOKMARKED relationships to stocks."""
     if _get_mode() == "off":
         return False
@@ -509,6 +513,21 @@ def merge_watchlist(name: str, symbols: list[str]) -> bool:
                 "MERGE (w:Watchlist {name: $name})",
                 name=name,
             )
+            # Watchlist uses 'name' as key, not 'id'; set embedding directly
+            if semantic_summary or embedding is not None:
+                _sets = []
+                _params: dict = {"name": name}
+                if semantic_summary:
+                    _sets.append("w.semantic_summary = $summary")
+                    _params["summary"] = semantic_summary
+                if embedding is not None:
+                    _sets.append("w.embedding = $embedding")
+                    _params["embedding"] = embedding
+                if _sets:
+                    session.run(
+                        f"MATCH (w:Watchlist {{name: $name}}) SET {', '.join(_sets)}",
+                        **_params,
+                    )
             for sym in symbols:
                 session.run(
                     "MATCH (w:Watchlist {name: $name}) "

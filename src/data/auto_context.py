@@ -316,6 +316,8 @@ def _infer_skill_from_vectors(results: list[dict]) -> str:
     for r in results[:5]:
         label = r.get("label", "")
         label_counts[label] = label_counts.get(label, 0) + 1
+    if not label_counts:
+        return "report"
     top_label = max(label_counts, key=label_counts.get)  # type: ignore[arg-type]
     mapping = {
         "Screen": "screen-stocks",

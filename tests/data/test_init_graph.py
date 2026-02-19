@@ -441,14 +441,19 @@ class TestImportPortfolio:
 # ===================================================================
 
 class TestImportWatchlists:
+    @patch("scripts.init_graph._get_embedding", return_value=None)
     @patch("scripts.init_graph.merge_watchlist")
     @patch("scripts.init_graph.merge_stock")
-    def test_import_watchlists_basic(self, mock_stock, mock_wl, tmp_path):
+    def test_import_watchlists_basic(self, mock_stock, mock_wl, mock_emb, tmp_path):
         _write_json(tmp_path / "favorites.json", ["7203.T", "AAPL", "D05.SI"])
         count = import_watchlists(str(tmp_path))
         assert count == 1
         assert mock_stock.call_count == 3
-        mock_wl.assert_called_once_with("favorites", ["7203.T", "AAPL", "D05.SI"])
+        mock_wl.assert_called_once_with(
+            "favorites", ["7203.T", "AAPL", "D05.SI"],
+            semantic_summary="favorites watchlist: 7203.T, AAPL, D05.SI",
+            embedding=None,
+        )
 
     @patch("scripts.init_graph.merge_watchlist")
     @patch("scripts.init_graph.merge_stock")

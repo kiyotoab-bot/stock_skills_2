@@ -10,10 +10,24 @@ pip install -r requirements.txt
 
 Python 3.10+ が必要。依存: yfinance, pyyaml, numpy, pytest
 
-Grok API（Xセンチメント分析）を利用する場合:
+### 環境変数
+
 ```bash
+# Grok API（Xセンチメント分析、任意）
 export XAI_API_KEY=xai-xxxxxxxxxxxxx
+
+# Neo4j 書き込み深度（off/summary/full、デフォルト: full）
+export NEO4J_MODE=full
+
+# TEI ベクトル検索エンドポイント（デフォルト: http://localhost:8081）
+export TEI_URL=http://localhost:8081
+
+# コンテキスト鮮度閾値（時間単位、予定: KIK-427）
+export CONTEXT_FRESH_HOURS=24    # これ以内 → キャッシュで回答
+export CONTEXT_RECENT_HOURS=168  # これ以内 → 差分更新 / これ超 → フル再取得
 ```
+
+すべて任意。未設定でもデフォルト値で動作する。
 
 ## スキル一覧
 

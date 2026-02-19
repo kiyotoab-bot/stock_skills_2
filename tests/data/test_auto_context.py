@@ -452,8 +452,9 @@ class TestGetContext:
         assert result["relationship"] == "市況"
         assert "日経225" in result["context_markdown"]
 
+    @patch("src.data.auto_context._vector_search", return_value=[])
     @patch("src.data.auto_context.graph_query")
-    def test_market_query_no_data(self, mock_gq):
+    def test_market_query_no_data(self, mock_gq, mock_vs):
         """市況クエリ + データなし → None"""
         mock_gq.get_recent_market_context.return_value = None
         result = get_context("相場どう？")
@@ -501,7 +502,8 @@ class TestGetContext:
         assert result["recommended_skill"] == "report"
         assert result["relationship"] == "未知"
 
-    def test_no_symbol_detected(self):
+    @patch("src.data.auto_context._vector_search", return_value=[])
+    def test_no_symbol_detected(self, mock_vs):
         """シンボル検出できない → None (Neo4j 照会もスキップ)"""
         # _lookup_symbol_by_name will try Neo4j but it's not available
         with patch("src.data.auto_context.graph_store") as mock_gs:
@@ -509,9 +511,10 @@ class TestGetContext:
             result = get_context("今日はいい天気だ")
         assert result is None
 
+    @patch("src.data.auto_context._vector_search", return_value=[])
     @patch("src.data.auto_context._check_bookmarked")
     @patch("src.data.auto_context.graph_store")
-    def test_neo4j_unavailable(self, mock_gs, mock_bookmark):
+    def test_neo4j_unavailable(self, mock_gs, mock_bookmark, mock_vs):
         """Neo4j 未接続 → None"""
         mock_gs._get_driver.return_value = None  # for _resolve_symbol
         mock_gs.is_available.return_value = False

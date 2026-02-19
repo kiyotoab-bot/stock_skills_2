@@ -178,7 +178,7 @@ except ImportError:
 | graph_query.py | Neo4j 照会ヘルパー (6関数 + vector_search(KIK-420)) |
 | graph_nl_query.py | 自然言語 → Cypher テンプレートマッチ |
 | note_manager.py | 投資メモ管理 (JSON + Neo4j dual-write) |
-| auto_context.py | 自動コンテキスト注入 (ハイブリッド検索: シンボル+ベクトル(KIK-420)) |
+| auto_context.py | 自動コンテキスト注入 (ハイブリッド検索: シンボル+ベクトル(KIK-420), 鮮度判定(KIK-427)) |
 | embedding_client.py | TEI REST API クライアント (384次元ベクトル生成, KIK-420) |
 | summary_builder.py | ノードタイプ別 semantic_summary テンプレートビルダー (KIK-420) |
 

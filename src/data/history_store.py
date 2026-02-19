@@ -97,6 +97,8 @@ def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
         "note": lambda: summary_builder.build_note_summary(
             kwargs.get("symbol", ""), kwargs.get("note_type", ""),
             kwargs.get("content", "")),
+        "watchlist": lambda: summary_builder.build_watchlist_summary(
+            kwargs.get("name", ""), kwargs.get("symbols")),
     }
     builder = builders.get(category)
     if builder is None:

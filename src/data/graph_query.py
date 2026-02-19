@@ -449,7 +449,7 @@ def get_current_holdings() -> list[dict]:
 
 _VECTOR_LABELS = [
     "Screen", "Report", "Trade", "Research",
-    "HealthCheck", "MarketContext", "Note",
+    "HealthCheck", "MarketContext", "Note", "Watchlist",
 ]
 
 

@@ -58,8 +58,32 @@ python3 scripts/get_context.py "<ユーザー入力>"
 
 1. 出力された「過去の経緯」をスキル実行の判断材料にする
 2. 「推奨スキル」を参考にスキルを選択する（intent-routing.md と合わせて判断）
-3. 前回の値がある場合は差分を意識した出力にする
-4. Neo4j 未接続時は出力が「コンテキストなし」→ 従来通り intent-routing のみで判断
+3. **鮮度ラベル**に基づいてアクションを決定する（下記参照）
+4. 前回の値がある場合は差分を意識した出力にする
+5. Neo4j 未接続時は出力が「コンテキストなし」→ 従来通り intent-routing のみで判断
+
+## コンテキスト鮮度判定（予定: KIK-427）
+
+`get_context.py` の出力に鮮度ラベル（FRESH/RECENT/STALE）を付与し、LLM がデータの再取得要否を判断する。
+
+### 鮮度ラベル
+
+| ラベル | 基準 | LLMの行動 |
+|:---|:---|:---|
+| **FRESH** | `CONTEXT_FRESH_HOURS` 以内（デフォルト24h） | コンテキストのみで回答。API再取得しない |
+| **RECENT** | `CONTEXT_RECENT_HOURS` 以内（デフォルト168h=7日） | 差分モードで軽量に更新 |
+| **STALE** | `CONTEXT_RECENT_HOURS` 超 | フル再取得（レポート/リサーチを再実行） |
+| **NONE** | データなし | ゼロから実行 |
+
+### 環境変数
+
+```bash
+# グローバル閾値（時間単位）
+CONTEXT_FRESH_HOURS=24      # これ以内 → FRESH
+CONTEXT_RECENT_HOURS=168    # これ以内 → RECENT / これ超 → STALE
+```
+
+未設定時はデフォルト値（24h / 168h）で動作。
 
 ## スキル推奨の優先度
 
@@ -70,7 +94,7 @@ python3 scripts/get_context.py "<ユーザー入力>"
 | EXIT 判定あり | `/screen-stocks`（同セクター代替） | 乗り換え提案 |
 | ウォッチ中（BOOKMARKED） | `/stock-report` + 前回差分 | 買い時かの判断材料 |
 | 3回以上スクリーニング出現 | `/stock-report` + 注目フラグ | 繰り返し上位で注目度高 |
-| 直近リサーチ済み（7日以内） | 差分のみ取得 | API コスト削減 |
+| 直近リサーチ済み（RECENT） | 差分のみ取得 | API コスト削減（鮮度判定で自動判断） |
 | 懸念メモあり | `/stock-report` + 懸念再検証 | 心配事項の確認 |
 | 過去データあり | `/stock-report` | 過去の文脈を踏まえた分析 |
 | 未知の銘柄 | `/stock-report` | ゼロから調査 |

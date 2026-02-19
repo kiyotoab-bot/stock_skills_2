@@ -217,3 +217,19 @@ def build_note_summary(
     if content:
         parts.append(content)
     return _trunc(" ".join(parts))
+
+
+def build_watchlist_summary(
+    name: str = "",
+    symbols: list[str] | None = None,
+) -> str:
+    """Build summary for a Watchlist node.
+
+    Example: "main watchlist: 7203.T, AAPL, D05.SI"
+    """
+    parts = []
+    if name:
+        parts.append(f"{name} watchlist:")
+    if symbols:
+        parts.append(", ".join(symbols[:10]))
+    return _trunc(" ".join(parts))

@@ -88,6 +88,10 @@ def save_note(
     # 2. Write to Neo4j (view) -- graceful degradation
     try:
         from src.data.graph_store import merge_note
+        from src.data.history_store import _build_embedding
+        sem_summary, emb = _build_embedding(
+            "note", symbol=symbol, note_type=note_type, content=content,
+        )
         merge_note(
             note_id=note_id,
             note_date=today,
@@ -95,6 +99,8 @@ def save_note(
             content=content,
             symbol=symbol,
             source=source,
+            semantic_summary=sem_summary,
+            embedding=emb,
         )
     except Exception:
         pass  # Neo4j unavailable, JSON is the master
@@ -160,6 +166,7 @@ def delete_note(
     if not d.exists():
         return False
 
+    found = False
     for fp in d.glob("*.json"):
         try:
             with open(fp, encoding="utf-8") as f:
@@ -172,8 +179,22 @@ def delete_note(
                         json.dump(filtered, f, ensure_ascii=False, indent=2)
                 else:
                     fp.unlink()
-                return True
+                found = True
+                break
         except (json.JSONDecodeError, OSError):
             continue
 
-    return False
+    # Delete from Neo4j (view) -- graceful degradation
+    try:
+        from src.data.graph_store import _get_mode, _get_driver
+        if _get_mode() != "off":
+            driver = _get_driver()
+            if driver is not None:
+                driver.execute_query(
+                    "MATCH (n:Note {id: $nid}) DETACH DELETE n",
+                    nid=note_id, database_="neo4j",
+                )
+    except Exception:
+        pass
+
+    return found
