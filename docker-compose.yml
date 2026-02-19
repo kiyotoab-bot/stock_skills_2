@@ -12,6 +12,7 @@ services:
   # KIK-420: Text Embeddings Inference for vector search
   embedding:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    platform: linux/amd64
     ports:
       - "8081:80"
     volumes:
