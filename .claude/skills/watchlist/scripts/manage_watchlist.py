@@ -5,6 +5,8 @@ import json
 import sys
 import os
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+
 WATCHLIST_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "data", "watchlists")
 
 
@@ -31,7 +33,6 @@ def _save(name, symbols):
         json.dump(symbols, f, indent=2, ensure_ascii=False)
     # Sync to Neo4j (view) -- graceful degradation
     try:
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
         from src.data.graph_store import merge_watchlist, merge_stock
         from src.data.history_store import _build_embedding
         for sym in symbols:

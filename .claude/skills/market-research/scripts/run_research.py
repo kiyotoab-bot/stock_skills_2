@@ -7,48 +7,36 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import try_import
 from src.data import yahoo_client
 
-# HAS_MODULE パターン
-try:
-    from src.core.research.researcher import research_stock, research_industry, research_market
-    HAS_RESEARCHER = True
-except ImportError:
-    HAS_RESEARCHER = False
+HAS_RESEARCHER, _res = try_import(
+    "src.core.research.researcher", "research_stock", "research_industry", "research_market")
+if HAS_RESEARCHER:
+    research_stock = _res["research_stock"]
+    research_industry = _res["research_industry"]
+    research_market = _res["research_market"]
 
-try:
-    from src.core.research.researcher import research_business
-    HAS_BUSINESS = True
-except ImportError:
-    HAS_BUSINESS = False
+HAS_BUSINESS, _biz = try_import("src.core.research.researcher", "research_business")
+if HAS_BUSINESS: research_business = _biz["research_business"]
 
-try:
-    from src.output.research_formatter import (
-        format_stock_research,
-        format_industry_research,
-        format_market_research,
-    )
-    HAS_FORMATTER = True
-except ImportError:
-    HAS_FORMATTER = False
+HAS_FORMATTER, _fmt = try_import(
+    "src.output.research_formatter", "format_stock_research", "format_industry_research", "format_market_research")
+if HAS_FORMATTER:
+    format_stock_research = _fmt["format_stock_research"]
+    format_industry_research = _fmt["format_industry_research"]
+    format_market_research = _fmt["format_market_research"]
 
-try:
-    from src.output.research_formatter import format_business_research
-    HAS_BUSINESS_FORMATTER = True
-except ImportError:
-    HAS_BUSINESS_FORMATTER = False
+HAS_BUSINESS_FORMATTER, _bf = try_import("src.output.research_formatter", "format_business_research")
+if HAS_BUSINESS_FORMATTER: format_business_research = _bf["format_business_research"]
 
-try:
-    from src.data.history_store import save_research, save_market_context
-    HAS_HISTORY = True
-except ImportError:
-    HAS_HISTORY = False
+HAS_HISTORY, _hi = try_import("src.data.history_store", "save_research", "save_market_context")
+if HAS_HISTORY:
+    save_research = _hi["save_research"]
+    save_market_context = _hi["save_market_context"]
 
-try:
-    from src.data.graph_query import get_research_chain
-    HAS_GRAPH_QUERY = True
-except ImportError:
-    HAS_GRAPH_QUERY = False
+HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_research_chain")
+if HAS_GRAPH_QUERY: get_research_chain = _gq["get_research_chain"]
 
 
 def _print_research_history(research_type: str, target: str):

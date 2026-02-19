@@ -120,6 +120,26 @@ def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
 
 
 # ---------------------------------------------------------------------------
+# Dual-write helper
+# ---------------------------------------------------------------------------
+
+def _dual_write_graph(graph_callable, embed_category: str, embed_kwargs: dict):
+    """Execute Neo4j dual-write with graceful degradation.
+
+    Args:
+        graph_callable: Function that performs graph operations.
+                       Called with (sem_summary, embedding) as arguments.
+        embed_category: Category for _build_embedding()
+        embed_kwargs: Keyword args for _build_embedding()
+    """
+    try:
+        sem_summary, emb = _build_embedding(embed_category, **embed_kwargs)
+        graph_callable(sem_summary, emb)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # Save functions
 # ---------------------------------------------------------------------------
 
@@ -157,22 +177,21 @@ def save_screening(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
-    try:
+    symbols = [r.get("symbol") for r in results if r.get("symbol")]
+
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_screen, merge_stock
-        symbols = [r.get("symbol") for r in results if r.get("symbol")]
         for r in results:
             sym = r.get("symbol")
             if sym:
                 merge_stock(symbol=sym, name=r.get("name", ""), sector=r.get("sector", ""))
-        # KIK-420: Generate semantic summary + embedding
-        sem_summary, emb = _build_embedding(
-            "screen", date=today, preset=preset, region=region,
-            top_symbols=symbols[:5],
-        )
         merge_screen(today, preset, region, len(results), symbols,
                      semantic_summary=sem_summary, embedding=emb)
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "screen",
+        dict(date=today, preset=preset, region=region, top_symbols=symbols[:5]),
+    )
 
     return str(path.resolve())
 
@@ -220,13 +239,9 @@ def save_report(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
-    try:
-        from src.data.graph_store import merge_report_full, merge_stock, get_mode
+    def _graph_write(sem_summary, emb):
+        from src.data.graph_store import merge_report_full, merge_stock
         merge_stock(symbol=symbol, name=data.get("name", ""), sector=data.get("sector", ""))
-        sem_summary, emb = _build_embedding(
-            "report", symbol=symbol, name=data.get("name", ""),
-            score=score, verdict=verdict, sector=data.get("sector", ""),
-        )
         merge_report_full(
             report_date=today, symbol=symbol, score=score, verdict=verdict,
             price=data.get("price", 0), per=data.get("per", 0),
@@ -234,8 +249,12 @@ def save_report(
             roe=data.get("roe", 0), market_cap=data.get("market_cap", 0),
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "report",
+        dict(symbol=symbol, name=data.get("name", ""),
+             score=score, verdict=verdict, sector=data.get("sector", "")),
+    )
 
     return str(path.resolve())
 
@@ -278,20 +297,20 @@ def save_trade(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
-    try:
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_trade, merge_stock
         merge_stock(symbol=symbol)
-        sem_summary, emb = _build_embedding(
-            "trade", date=date_str, trade_type=trade_type,
-            symbol=symbol, shares=shares, memo=memo,
-        )
         merge_trade(
             trade_date=date_str, trade_type=trade_type, symbol=symbol,
             shares=shares, price=price, currency=currency, memo=memo,
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "trade",
+        dict(date=date_str, trade_type=trade_type,
+             symbol=symbol, shares=shares, memo=memo),
+    )
 
     return str(path.resolve())
 
@@ -342,16 +361,17 @@ def save_health(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
-    try:
+    symbols = [p.get("symbol") for p in health_data.get("positions", []) if p.get("symbol")]
+
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_health
-        symbols = [p.get("symbol") for p in health_data.get("positions", []) if p.get("symbol")]
-        sem_summary, emb = _build_embedding(
-            "health", date=today, summary=summary,
-        )
         merge_health(today, summary, symbols,
                      semantic_summary=sem_summary, embedding=emb)
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "health",
+        dict(date=today, summary=summary),
+    )
 
     return str(path.resolve())
 
@@ -464,14 +484,12 @@ def save_research(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/413/416/420) -- graceful degradation
-    try:
+    summary = result.get("summary", "") or _build_research_summary(research_type, result)
+
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_research_full, merge_stock, link_research_supersedes
         if research_type in ("stock", "business"):
             merge_stock(symbol=target, name=result.get("name", ""))
-        summary = result.get("summary", "") or _build_research_summary(research_type, result)
-        sem_summary, emb = _build_embedding(
-            "research", research_type=research_type, target=target, result=result,
-        )
         merge_research_full(
             research_date=today, research_type=research_type,
             target=target, summary=summary,
@@ -481,8 +499,11 @@ def save_research(
             semantic_summary=sem_summary, embedding=emb,
         )
         link_research_supersedes(research_type, target)
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "research",
+        dict(research_type=research_type, target=target, result=result),
+    )
 
     return str(path.resolve())
 
@@ -524,20 +545,19 @@ def save_market_context(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
-    try:
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_market_context_full
-        sem_summary, emb = _build_embedding(
-            "market_context", date=today,
-            indices=context.get("indices", []),
-            grok_research=context.get("grok_research"),
-        )
         merge_market_context_full(
             context_date=today, indices=context.get("indices", []),
             grok_research=context.get("grok_research"),
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "market_context",
+        dict(date=today, indices=context.get("indices", []),
+             grok_research=context.get("grok_research")),
+    )
 
     return str(path.resolve())
 
@@ -583,23 +603,24 @@ def save_stress_test(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-428) -- graceful degradation
-    try:
+    var = var_result or {}
+
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_stress_test, merge_stock
         for sym in symbols:
             merge_stock(symbol=sym)
-        var = var_result or {}
-        sem_summary, emb = _build_embedding(
-            "stress_test", date=today, scenario=scenario,
-            portfolio_impact=portfolio_impact, symbol_count=len(symbols),
-        )
         merge_stress_test(
             test_date=today, scenario=scenario,
             portfolio_impact=portfolio_impact, symbols=symbols,
             var_95=var.get("var_95_daily", 0), var_99=var.get("var_99_daily", 0),
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "stress_test",
+        dict(date=today, scenario=scenario,
+             portfolio_impact=portfolio_impact, symbol_count=len(symbols)),
+    )
 
     return str(path.resolve())
 
@@ -655,23 +676,22 @@ def save_forecast(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-428) -- graceful degradation
-    try:
+    def _graph_write(sem_summary, emb):
         from src.data.graph_store import merge_forecast, merge_stock
         for sym in symbols:
             merge_stock(symbol=sym)
-        sem_summary, emb = _build_embedding(
-            "forecast", date=today, optimistic=avg_opt,
-            base=avg_base, pessimistic=avg_pess,
-            symbol_count=len(symbols),
-        )
         merge_forecast(
             forecast_date=today, optimistic=avg_opt, base=avg_base,
             pessimistic=avg_pess, symbols=symbols,
             total_value_jpy=total_value_jpy,
             semantic_summary=sem_summary, embedding=emb,
         )
-    except Exception:
-        pass
+
+    _dual_write_graph(
+        _graph_write, "forecast",
+        dict(date=today, optimistic=avg_opt, base=avg_base,
+             pessimistic=avg_pess, symbol_count=len(symbols)),
+    )
 
     return str(path.resolve())
 

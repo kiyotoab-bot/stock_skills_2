@@ -6,44 +6,27 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import try_import
 from src.data.yahoo_client import get_stock_info, get_stock_detail
 from src.core.screening.indicators import calculate_value_score
 
-try:
-    from src.core.screening.indicators import calculate_shareholder_return
-    HAS_SHAREHOLDER_RETURN = True
-except ImportError:
-    HAS_SHAREHOLDER_RETURN = False
+HAS_SHAREHOLDER_RETURN, _sr = try_import("src.core.screening.indicators", "calculate_shareholder_return")
+if HAS_SHAREHOLDER_RETURN: calculate_shareholder_return = _sr["calculate_shareholder_return"]
 
-try:
-    from src.core.screening.indicators import calculate_shareholder_return_history
-    HAS_SHAREHOLDER_HISTORY = True
-except ImportError:
-    HAS_SHAREHOLDER_HISTORY = False
+HAS_SHAREHOLDER_HISTORY, _sh = try_import("src.core.screening.indicators", "calculate_shareholder_return_history")
+if HAS_SHAREHOLDER_HISTORY: calculate_shareholder_return_history = _sh["calculate_shareholder_return_history"]
 
-try:
-    from src.core.screening.indicators import assess_return_stability
-    HAS_RETURN_STABILITY = True
-except ImportError:
-    HAS_RETURN_STABILITY = False
+HAS_RETURN_STABILITY, _rs = try_import("src.core.screening.indicators", "assess_return_stability")
+if HAS_RETURN_STABILITY: assess_return_stability = _rs["assess_return_stability"]
 
-try:
-    from src.data.history_store import save_report as history_save_report
-    HAS_HISTORY = True
-except ImportError:
-    HAS_HISTORY = False
+HAS_HISTORY, _hi = try_import("src.data.history_store", "save_report")
+if HAS_HISTORY: history_save_report = _hi["save_report"]
 
-try:
-    from src.core.health_check import _detect_value_trap
-    HAS_VALUE_TRAP = True
-except ImportError:
-    HAS_VALUE_TRAP = False
+HAS_VALUE_TRAP, _vt = try_import("src.core.health_check", "_detect_value_trap")
+if HAS_VALUE_TRAP: _detect_value_trap = _vt["_detect_value_trap"]
 
-try:
-    from src.data.graph_query import get_prior_report
-    HAS_GRAPH_QUERY = True
-except ImportError:
-    HAS_GRAPH_QUERY = False
+HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_prior_report")
+if HAS_GRAPH_QUERY: get_prior_report = _gq["get_prior_report"]
 
 
 def main():

@@ -13,6 +13,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import try_import
 from src.data import yahoo_client
 from src.core.screening.screener import ValueScreener, QueryScreener, PullbackScreener, AlphaScreener, TrendingScreener, GrowthScreener
 from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown, format_alpha_markdown, format_trending_markdown, format_growth_markdown
@@ -20,29 +21,17 @@ from src.markets.japan import JapanMarket
 from src.markets.us import USMarket
 from src.markets.asean import ASEANMarket
 
-try:
-    from src.data.history_store import save_screening
-    HAS_HISTORY = True
-except ImportError:
-    HAS_HISTORY = False
+HAS_HISTORY, _hi = try_import("src.data.history_store", "save_screening")
+if HAS_HISTORY: save_screening = _hi["save_screening"]
 
-try:
-    from src.output.formatter import format_shareholder_return_markdown
-    HAS_SR_FORMAT = True
-except ImportError:
-    HAS_SR_FORMAT = False
+HAS_SR_FORMAT, _sf = try_import("src.output.formatter", "format_shareholder_return_markdown")
+if HAS_SR_FORMAT: format_shareholder_return_markdown = _sf["format_shareholder_return_markdown"]
 
-try:
-    from src.data.graph_query import get_screening_frequency
-    HAS_GRAPH_QUERY = True
-except ImportError:
-    HAS_GRAPH_QUERY = False
+HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_screening_frequency")
+if HAS_GRAPH_QUERY: get_screening_frequency = _gq["get_screening_frequency"]
 
-try:
-    from src.data.screen_annotator import annotate_results
-    HAS_ANNOTATOR = True
-except ImportError:
-    HAS_ANNOTATOR = False
+HAS_ANNOTATOR, _an = try_import("src.data.screen_annotator", "annotate_results")
+if HAS_ANNOTATOR: annotate_results = _an["annotate_results"]
 
 
 # Legacy market classes
