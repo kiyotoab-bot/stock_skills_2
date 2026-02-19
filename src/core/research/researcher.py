@@ -1,7 +1,8 @@
-"""Deep research orchestration for stocks, industries, and markets (KIK-367).
+"""Deep research orchestration for stocks, industries, and markets (KIK-367/426).
 
 Integrates yfinance quantitative data with Grok API qualitative data
-(X posts, web search) to produce multi-faceted research reports.
+(X posts, web search) and Perplexity API (Sonar Pro / Deep Research)
+to produce multi-faceted research reports.
 """
 
 import sys
@@ -16,12 +17,26 @@ try:
 except ImportError:
     HAS_GROK = False
 
+# Perplexity API: graceful degradation when module is unavailable (KIK-426)
+try:
+    from src.data import perplexity_client
+
+    HAS_PERPLEXITY = True
+except ImportError:
+    HAS_PERPLEXITY = False
+
 _grok_warned = [False]
+_perplexity_warned = [False]
 
 
 def _grok_available() -> bool:
     """Return True if grok_client is importable and API key is set."""
     return HAS_GROK and grok_client.is_available()
+
+
+def _perplexity_available() -> bool:
+    """Return True if perplexity_client is importable and API key is set."""
+    return HAS_PERPLEXITY and perplexity_client.is_available()
 
 
 def _safe_grok_call(func, *args, **kwargs):
@@ -39,6 +54,24 @@ def _safe_grok_call(func, *args, **kwargs):
                 file=sys.stderr,
             )
             _grok_warned[0] = True
+        return None
+
+
+def _safe_perplexity_call(func, *args, **kwargs):
+    """Call a perplexity_client function with error handling.
+
+    Returns the function result on success, or None on any exception.
+    Prints a warning to stderr on the first failure (subsequent suppressed).
+    """
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        if not _perplexity_warned[0]:
+            print(
+                f"[researcher] Perplexity API error (subsequent errors suppressed): {e}",
+                file=sys.stderr,
+            )
+            _perplexity_warned[0] = True
         return None
 
 
@@ -121,6 +154,59 @@ def _empty_business() -> dict:
     }
 
 
+def _empty_perplexity_stock() -> dict:
+    """Return an empty Perplexity stock research result."""
+    return {
+        "summary": "",
+        "recent_developments": [],
+        "analyst_consensus": "",
+        "risks_and_concerns": [],
+        "catalysts": [],
+        "raw_response": "",
+        "citations": [],
+    }
+
+
+def _empty_perplexity_industry() -> dict:
+    """Return an empty Perplexity industry research result."""
+    return {
+        "overview": "",
+        "trends": [],
+        "key_players": [],
+        "growth_outlook": "",
+        "risks": [],
+        "raw_response": "",
+        "citations": [],
+    }
+
+
+def _empty_perplexity_market() -> dict:
+    """Return an empty Perplexity market research result."""
+    return {
+        "summary": "",
+        "key_drivers": [],
+        "sentiment": "",
+        "outlook": "",
+        "risks": [],
+        "raw_response": "",
+        "citations": [],
+    }
+
+
+def _empty_perplexity_business() -> dict:
+    """Return an empty Perplexity business research result."""
+    return {
+        "overview": "",
+        "segments": [],
+        "revenue_model": "",
+        "competitive_position": "",
+        "growth_strategy": [],
+        "risks": [],
+        "raw_response": "",
+        "citations": [],
+    }
+
+
 def research_stock(symbol: str, yahoo_client_module) -> dict:
     """Run comprehensive stock research combining yfinance and Grok API.
 
@@ -165,7 +251,16 @@ def research_stock(symbol: str, yahoo_client_module) -> dict:
         if sent is not None:
             x_sentiment = sent
 
-    # 4. News from yahoo_client (if the function exists)
+    # 4. Perplexity API: web research with citations (KIK-426)
+    pplx_research = _empty_perplexity_stock()
+    if _perplexity_available():
+        pplx = _safe_perplexity_call(
+            perplexity_client.search_stock, symbol, company_name
+        )
+        if pplx is not None:
+            pplx_research = pplx
+
+    # 5. News from yahoo_client (if the function exists)
     news = []
     if hasattr(yahoo_client_module, "get_stock_news"):
         try:
@@ -181,12 +276,14 @@ def research_stock(symbol: str, yahoo_client_module) -> dict:
         "value_score": value_score,
         "grok_research": grok_research,
         "x_sentiment": x_sentiment,
+        "perplexity_research": pplx_research,
+        "citations": pplx_research.get("citations", []),
         "news": news,
     }
 
 
 def research_industry(theme: str) -> dict:
-    """Run industry/theme research via Grok API.
+    """Run industry/theme research via Grok API + Perplexity API.
 
     Parameters
     ----------
@@ -196,31 +293,38 @@ def research_industry(theme: str) -> dict:
     Returns
     -------
     dict
-        Industry research data. When Grok API is unavailable,
-        returns empty result with ``api_unavailable=True``.
+        Industry research data. ``api_unavailable`` is True only when
+        both Grok and Perplexity are unavailable.
     """
-    if not _grok_available():
-        return {
-            "theme": theme,
-            "type": "industry",
-            "grok_research": _empty_industry(),
-            "api_unavailable": True,
-        }
+    grok_result = _empty_industry()
+    grok_available = False
+    if _grok_available():
+        grok_available = True
+        result = _safe_grok_call(grok_client.search_industry, theme)
+        if result is not None:
+            grok_result = result
 
-    result = _safe_grok_call(grok_client.search_industry, theme)
-    if result is None:
-        result = _empty_industry()
+    # Perplexity layer (KIK-426)
+    pplx_research = _empty_perplexity_industry()
+    pplx_available = False
+    if _perplexity_available():
+        pplx_available = True
+        pplx = _safe_perplexity_call(perplexity_client.search_industry, theme)
+        if pplx is not None:
+            pplx_research = pplx
 
     return {
         "theme": theme,
         "type": "industry",
-        "grok_research": result,
-        "api_unavailable": False,
+        "grok_research": grok_result,
+        "perplexity_research": pplx_research,
+        "citations": pplx_research.get("citations", []),
+        "api_unavailable": not grok_available and not pplx_available,
     }
 
 
 def research_market(market: str, yahoo_client_module=None) -> dict:
-    """Run market overview research via yfinance quantitative + Grok qualitative.
+    """Run market overview research via yfinance + Grok + Perplexity.
 
     Parameters
     ----------
@@ -233,8 +337,8 @@ def research_market(market: str, yahoo_client_module=None) -> dict:
     Returns
     -------
     dict
-        Market research data with ``macro_indicators`` (Layer 1, always)
-        and ``grok_research`` (Layer 2, when Grok API is available).
+        Market research data with ``macro_indicators`` (Layer 1, always),
+        ``grok_research`` (Layer 2), and ``perplexity_research`` (Layer 3).
     """
     # Layer 1: yfinance quantitative (always available)
     macro_indicators: list[dict] = []
@@ -246,24 +350,35 @@ def research_market(market: str, yahoo_client_module=None) -> dict:
 
     # Layer 2: Grok qualitative (when API key is set)
     grok_research = _empty_market()
-    api_unavailable = True
+    grok_available = False
     if _grok_available():
+        grok_available = True
         result = _safe_grok_call(grok_client.search_market, market)
         if result is not None:
             grok_research = result
-        api_unavailable = False
+
+    # Layer 3: Perplexity web research (KIK-426)
+    pplx_research = _empty_perplexity_market()
+    pplx_available = False
+    if _perplexity_available():
+        pplx_available = True
+        pplx = _safe_perplexity_call(perplexity_client.search_market, market)
+        if pplx is not None:
+            pplx_research = pplx
 
     return {
         "market": market,
         "type": "market",
         "macro_indicators": macro_indicators,
         "grok_research": grok_research,
-        "api_unavailable": api_unavailable,
+        "perplexity_research": pplx_research,
+        "citations": pplx_research.get("citations", []),
+        "api_unavailable": not grok_available and not pplx_available,
     }
 
 
 def research_business(symbol: str, yahoo_client_module) -> dict:
-    """Run business model research combining yfinance and Grok API.
+    """Run business model research combining yfinance, Grok, and Perplexity.
 
     Parameters
     ----------
@@ -275,8 +390,8 @@ def research_business(symbol: str, yahoo_client_module) -> dict:
     Returns
     -------
     dict
-        Business model research data. When Grok API is unavailable,
-        returns empty result with ``api_unavailable=True``.
+        Business model research data. ``api_unavailable`` is True only when
+        both Grok and Perplexity are unavailable.
     """
     # Fetch company name from yfinance for prompt enrichment
     info = yahoo_client_module.get_stock_info(symbol)
@@ -284,23 +399,31 @@ def research_business(symbol: str, yahoo_client_module) -> dict:
         info = {}
     company_name = info.get("name") or ""
 
-    if not _grok_available():
-        return {
-            "symbol": symbol,
-            "name": company_name,
-            "type": "business",
-            "grok_research": _empty_business(),
-            "api_unavailable": True,
-        }
+    grok_result = _empty_business()
+    grok_available = False
+    if _grok_available():
+        grok_available = True
+        result = _safe_grok_call(grok_client.search_business, symbol, company_name)
+        if result is not None:
+            grok_result = result
 
-    result = _safe_grok_call(grok_client.search_business, symbol, company_name)
-    if result is None:
-        result = _empty_business()
+    # Perplexity Deep Research for business model (KIK-426)
+    pplx_research = _empty_perplexity_business()
+    pplx_available = False
+    if _perplexity_available():
+        pplx_available = True
+        pplx = _safe_perplexity_call(
+            perplexity_client.search_business, symbol, company_name
+        )
+        if pplx is not None:
+            pplx_research = pplx
 
     return {
         "symbol": symbol,
         "name": company_name,
         "type": "business",
-        "grok_research": result,
-        "api_unavailable": False,
+        "grok_research": grok_result,
+        "perplexity_research": pplx_research,
+        "citations": pplx_research.get("citations", []),
+        "api_unavailable": not grok_available and not pplx_available,
     }

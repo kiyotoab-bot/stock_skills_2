@@ -133,7 +133,7 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
   │    recommender.py ─ ルールベース推奨アクション                  │
   │                                                           │
   │  research/ ─ 深掘りリサーチ                                  │
-  │    researcher.py ─ yfinance+Grok API統合リサーチ              │
+  │    researcher.py ─ yfinance+Grok API+Perplexity API 3層統合リサーチ(KIK-426) │
   └─────────────────────────────────────────────────────────┘
       │                    │                    │
   Markets            Data                  Output
@@ -150,6 +150,13 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                       XAI_API_KEY 環境変数,
                       未設定時スキップ,
                       銘柄/業界/市場リサーチ)
+                     perplexity_client.py
+                     (Perplexity Sonar Pro/Deep Research(KIK-426),
+                      PERPLEXITY_API_KEY 環境変数,
+                      未設定時スキップ,
+                      sonar-pro: stock/industry/market,
+                      sonar-deep-research: business,
+                      citations付きレスポンス)
                      history_store.py
                      (スキル実行時の自動蓄積,
                       data/history/ へ日付付きJSON,
