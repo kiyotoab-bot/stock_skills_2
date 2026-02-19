@@ -1,7 +1,7 @@
-"""Tests for src/output/research_formatter.py (KIK-367).
+"""Tests for src/output/research_formatter.py (KIK-367/426).
 
 Tests for format_stock_research, format_industry_research,
-format_market_research, and _sentiment_label.
+format_market_research, format_business_research, and helpers.
 """
 
 import sys
@@ -18,6 +18,8 @@ from src.output.research_formatter import (
     format_business_research,
     _sentiment_label,
     _vix_label,
+    _format_citations,
+    _has_perplexity_content,
 )
 
 
@@ -195,6 +197,35 @@ class TestFormatStockResearch:
         output = format_stock_research(data)
         assert "最新ニュースはありません" in output
 
+    def test_with_perplexity(self):
+        """Perplexity section is rendered when data is present."""
+        data = _full_stock_data()
+        data["perplexity_research"] = {
+            "summary": "AAPL is strong",
+            "recent_developments": ["New iPhone", "AI push"],
+            "analyst_consensus": "Buy consensus",
+            "risks_and_concerns": ["China tariffs"],
+            "catalysts": ["WWDC 2025"],
+            "raw_response": "...",
+            "citations": ["https://example.com/1", "https://example.com/2"],
+        }
+
+        output = format_stock_research(data)
+        assert "Perplexity リサーチ" in output
+        assert "AAPL is strong" in output
+        assert "New iPhone" in output
+        assert "Buy consensus" in output
+        assert "China tariffs" in output
+        assert "WWDC 2025" in output
+        assert "引用元" in output
+        assert "https://example.com/1" in output
+
+    def test_no_perplexity(self):
+        """No Perplexity section when data is absent."""
+        data = _full_stock_data()
+        output = format_stock_research(data)
+        assert "Perplexity" not in output
+
 
 # ===================================================================
 # format_industry_research
@@ -241,6 +272,27 @@ class TestFormatIndustryResearch:
         output = format_industry_research(data)
         assert "EV - 業界リサーチ" in output
         assert "XAI_API_KEY" in output
+        assert "PERPLEXITY_API_KEY" in output
+
+    def test_with_perplexity(self):
+        """Perplexity section is rendered in industry report."""
+        data = _full_industry_data()
+        data["perplexity_research"] = {
+            "overview": "Semi overview from Perplexity",
+            "trends": ["AI growth"],
+            "key_players": ["TSMC"],
+            "growth_outlook": "Very strong",
+            "risks": ["Tariffs"],
+            "raw_response": "...",
+            "citations": ["https://example.com/semi"],
+        }
+
+        output = format_industry_research(data)
+        assert "Perplexity リサーチ" in output
+        assert "Semi overview from Perplexity" in output
+        assert "AI growth" in output
+        assert "Very strong" in output
+        assert "引用元" in output
 
     def test_empty_data(self):
         """Empty/None data returns a message."""
@@ -362,6 +414,27 @@ class TestFormatMarketResearch:
         assert "主要指標" not in output
         # Grok sections still present
         assert "直近の値動き" in output
+
+    def test_with_perplexity(self):
+        """Perplexity section is rendered in market report."""
+        data = _full_market_data()
+        data["perplexity_research"] = {
+            "summary": "Market summary from Perplexity",
+            "key_drivers": ["BOJ decision"],
+            "sentiment": "Cautiously optimistic",
+            "outlook": "Moderate growth",
+            "risks": ["Inflation risk"],
+            "raw_response": "...",
+            "citations": ["https://example.com/market"],
+        }
+
+        output = format_market_research(data)
+        assert "Perplexity リサーチ" in output
+        assert "Market summary from Perplexity" in output
+        assert "BOJ decision" in output
+        assert "Cautiously optimistic" in output
+        assert "Moderate growth" in output
+        assert "引用元" in output
 
 
 # ===================================================================
@@ -501,6 +574,7 @@ class TestFormatBusinessResearch:
         assert "Apple Inc. (AAPL)" in output
         assert "ビジネスモデル分析" in output
         assert "XAI_API_KEY" in output
+        assert "PERPLEXITY_API_KEY" in output
 
     def test_empty_data(self):
         """Empty/None data returns a message."""
@@ -543,3 +617,97 @@ class TestFormatBusinessResearch:
         output = format_business_research(data)
         assert "| Division A | - | - |" in output
         assert "| Division B | 60% | Main |" in output
+
+    def test_with_perplexity(self):
+        """Perplexity Deep Research section is rendered for business."""
+        data = _full_business_data()
+        data["perplexity_research"] = {
+            "overview": "Canon deep overview from Perplexity",
+            "segments": [
+                {"name": "Printing", "revenue_share": "50%", "description": "Printers"},
+            ],
+            "revenue_model": "Razor-and-blade model",
+            "competitive_position": "Top 3 in imaging",
+            "growth_strategy": ["Medical expansion"],
+            "risks": ["Print market decline"],
+            "raw_response": "...",
+            "citations": ["https://example.com/canon1", "https://example.com/canon2"],
+        }
+
+        output = format_business_research(data)
+        assert "Perplexity Deep Research" in output
+        assert "Canon deep overview from Perplexity" in output
+        assert "Razor-and-blade model" in output
+        assert "Top 3 in imaging" in output
+        assert "Medical expansion" in output
+        assert "Print market decline" in output
+        assert "引用元" in output
+        assert "https://example.com/canon1" in output
+
+
+# ===================================================================
+# _format_citations
+# ===================================================================
+
+class TestFormatCitations:
+
+    def test_empty_list(self):
+        """Empty list returns no lines."""
+        assert _format_citations([]) == []
+
+    def test_none(self):
+        """None returns no lines."""
+        assert _format_citations(None) == []
+
+    def test_normal_urls(self):
+        """Normal URLs are numbered."""
+        urls = ["https://a.com", "https://b.com"]
+        lines = _format_citations(urls)
+        assert lines[0] == "**引用元:**"
+        assert lines[1] == "1. https://a.com"
+        assert lines[2] == "2. https://b.com"
+
+    def test_max_10(self):
+        """Only first 10 citations are included."""
+        urls = [f"https://example.com/{i}" for i in range(15)]
+        lines = _format_citations(urls)
+        # header + 10 items = 11
+        assert len(lines) == 11
+
+    def test_skip_empty_strings(self):
+        """Empty strings and whitespace-only strings are skipped."""
+        urls = ["https://a.com", "", "  ", "https://b.com"]
+        lines = _format_citations(urls)
+        assert len(lines) == 3  # header + 2 valid
+
+
+# ===================================================================
+# _has_perplexity_content
+# ===================================================================
+
+class TestHasPerplexityContent:
+
+    def test_none(self):
+        assert _has_perplexity_content(None) is False
+
+    def test_empty_dict(self):
+        assert _has_perplexity_content({}) is False
+
+    def test_only_raw_and_citations(self):
+        """raw_response and citations alone do not count as content."""
+        assert _has_perplexity_content({
+            "raw_response": "...",
+            "citations": ["https://a.com"],
+        }) is False
+
+    def test_with_string_content(self):
+        assert _has_perplexity_content({"summary": "Hello"}) is True
+
+    def test_with_list_content(self):
+        assert _has_perplexity_content({"trends": ["AI"]}) is True
+
+    def test_empty_string(self):
+        assert _has_perplexity_content({"summary": ""}) is False
+
+    def test_empty_list(self):
+        assert _has_perplexity_content({"trends": []}) is False
