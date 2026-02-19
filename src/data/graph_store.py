@@ -994,6 +994,129 @@ def merge_research_full(
                         text=_truncate(str(view_text), 500),
                         rid=research_id,
                     )
+
+            # --- Market research sub-nodes (KIK-430) ---
+            if research_type == "market" and grok_research:
+                # Sentiment (market-level)
+                mkt_sent = grok_research.get("sentiment")
+                if isinstance(mkt_sent, dict):
+                    sid = f"{research_id}_sent_market"
+                    session.run(
+                        "MERGE (s:Sentiment {id: $id}) "
+                        "SET s.date = $date, s.source = 'market_research', "
+                        "s.score = $score, s.summary = $summary "
+                        "WITH s "
+                        "MATCH (r:Research {id: $rid}) "
+                        "MERGE (r)-[:HAS_SENTIMENT]->(s)",
+                        id=sid, date=research_date,
+                        score=float(mkt_sent.get("score", 0)),
+                        summary=_truncate(mkt_sent.get("summary", ""), 500),
+                        rid=research_id,
+                    )
+                # UpcomingEvent
+                events = grok_research.get("upcoming_events", [])
+                if isinstance(events, list):
+                    for j, ev in enumerate(events[:5]):
+                        eid = f"{research_id}_event_{j}"
+                        session.run(
+                            "MERGE (e:UpcomingEvent {id: $id}) "
+                            "SET e.date = $date, e.text = $text "
+                            "WITH e "
+                            "MATCH (r:Research {id: $rid}) "
+                            "MERGE (r)-[:HAS_EVENT]->(e)",
+                            id=eid, date=research_date,
+                            text=_truncate(str(ev), 500), rid=research_id,
+                        )
+                # SectorRotation
+                rotations = grok_research.get("sector_rotation", [])
+                if isinstance(rotations, list):
+                    for k, rot in enumerate(rotations[:3]):
+                        srid = f"{research_id}_rot_{k}"
+                        session.run(
+                            "MERGE (sr:SectorRotation {id: $id}) "
+                            "SET sr.date = $date, sr.text = $text "
+                            "WITH sr "
+                            "MATCH (r:Research {id: $rid}) "
+                            "MERGE (r)-[:HAS_ROTATION]->(sr)",
+                            id=srid, date=research_date,
+                            text=_truncate(str(rot), 500), rid=research_id,
+                        )
+                # Indicator (macro_factors)
+                macros = grok_research.get("macro_factors", [])
+                if isinstance(macros, list):
+                    for m, factor in enumerate(macros[:10]):
+                        iid = f"{research_id}_macro_{m}"
+                        session.run(
+                            "MERGE (ind:Indicator {id: $id}) "
+                            "SET ind.date = $date, ind.name = $name "
+                            "WITH ind "
+                            "MATCH (r:Research {id: $rid}) "
+                            "MERGE (r)-[:INCLUDES]->(ind)",
+                            id=iid, date=research_date,
+                            name=_truncate(str(factor), 200),
+                            rid=research_id,
+                        )
+
+            # --- Industry research sub-nodes (KIK-430) ---
+            if research_type == "industry" and grok_research:
+                # Catalyst nodes (trends, growth_drivers, risks, regulatory)
+                _catalyst_keys = [
+                    ("trends", "trend"),
+                    ("growth_drivers", "growth_driver"),
+                    ("risks", "risk"),
+                    ("regulatory", "regulatory"),
+                ]
+                cat_idx = 0
+                for grok_key, cat_type in _catalyst_keys:
+                    items = grok_research.get(grok_key, [])
+                    if isinstance(items, list):
+                        for txt in items[:5]:
+                            cid = f"{research_id}_cat_{cat_type}_{cat_idx}"
+                            session.run(
+                                "MERGE (c:Catalyst {id: $id}) "
+                                "SET c.date = $date, c.type = $ctype, "
+                                "c.text = $text "
+                                "WITH c "
+                                "MATCH (r:Research {id: $rid}) "
+                                "MERGE (r)-[:HAS_CATALYST]->(c)",
+                                id=cid, date=research_date,
+                                ctype=cat_type,
+                                text=_truncate(str(txt), 500),
+                                rid=research_id,
+                            )
+                            cat_idx += 1
+                # key_players → Stock MENTIONS
+                players = grok_research.get("key_players", [])
+                if isinstance(players, list):
+                    for player in players[:10]:
+                        name = ""
+                        symbol = ""
+                        if isinstance(player, dict):
+                            name = player.get("name", "")
+                            symbol = player.get("symbol", player.get("ticker", ""))
+                        elif isinstance(player, str):
+                            name = player
+                        if not name and not symbol:
+                            continue
+                        if symbol:
+                            session.run(
+                                "MERGE (s:Stock {symbol: $symbol}) "
+                                "ON CREATE SET s.name = $name "
+                                "WITH s "
+                                "MATCH (r:Research {id: $rid}) "
+                                "MERGE (r)-[:MENTIONS]->(s)",
+                                symbol=symbol, name=name[:100],
+                                rid=research_id,
+                            )
+                        elif name:
+                            session.run(
+                                "MERGE (s:Stock {name: $name}) "
+                                "WITH s "
+                                "MATCH (r:Research {id: $rid}) "
+                                "MERGE (r)-[:MENTIONS]->(s)",
+                                name=name[:100], rid=research_id,
+                            )
+
         return True
     except Exception:
         return False
