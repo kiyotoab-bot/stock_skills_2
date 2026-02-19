@@ -164,12 +164,15 @@
 ### 記録ドメイン → `/investment-note`
 
 ```
-「トヨタについてメモしておいて」  → /investment-note save --symbol 7203.T
-「投資テーゼを記録」            → /investment-note save --type thesis
-「学びを残す」                 → /investment-note save --type lesson
-「メモ一覧」                   → /investment-note list
-「AAPLのメモ」                → /investment-note list --symbol AAPL
-「メモ削除」                   → /investment-note delete --id NOTE_ID
+「トヨタについてメモしておいて」      → /investment-note save --symbol 7203.T
+「投資テーゼを記録」                → /investment-note save --type thesis
+「学びを残す」                     → /investment-note save --type lesson
+「PF全体のメモ」「ポートフォリオの振り返り」 → /investment-note save --category portfolio --type review
+「市況メモ」「マクロの気づき」       → /investment-note save --category market --type observation
+「メモ一覧」                       → /investment-note list
+「AAPLのメモ」                    → /investment-note list --symbol AAPL
+「PFのメモ」                      → /investment-note list --category portfolio
+「メモ削除」                       → /investment-note delete --id NOTE_ID
 ```
 
 **タイプ推定**:

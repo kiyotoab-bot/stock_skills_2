@@ -1,4 +1,4 @@
-"""Tests for the investment-note CLI (manage_note.py) (KIK-408).
+"""Tests for the investment-note CLI (manage_note.py) (KIK-408, KIK-429).
 
 Uses subprocess for arg validation tests + direct import for function tests.
 """
@@ -47,7 +47,8 @@ def _run(args: list[str]) -> subprocess.CompletedProcess:
 # ===================================================================
 
 class TestManageNoteCLIArgs:
-    def test_save_requires_symbol(self):
+    def test_save_requires_symbol_or_category(self):
+        """symbol も category も未指定だとエラーになること."""
         result = _run(["save", "--content", "test"])
         assert result.returncode != 0
 
@@ -85,15 +86,16 @@ class TestManageNoteFunctions:
             "content": "EV growth",
             "date": "2026-02-17",
             "source": "manual",
+            "category": "stock",
         }
         with patch.object(mod, "save_note", return_value=mock_return) as mock_save:
             args = types.SimpleNamespace(
-                symbol="7203.T", type="thesis", content="EV growth", source="manual"
+                symbol="7203.T", type="thesis", content="EV growth", source="manual", category=None,
             )
             mod.cmd_save(args)
 
         mock_save.assert_called_once_with(
-            symbol="7203.T", note_type="thesis", content="EV growth", source="manual"
+            symbol="7203.T", note_type="thesis", content="EV growth", source="manual", category=None,
         )
         captured = capsys.readouterr()
         assert "保存しました" in captured.out
@@ -103,7 +105,7 @@ class TestManageNoteFunctions:
         mod = _load_module()
 
         with patch.object(mod, "load_notes", return_value=[]):
-            args = types.SimpleNamespace(symbol=None, type=None)
+            args = types.SimpleNamespace(symbol=None, type=None, category=None)
             mod.cmd_list(args)
 
         captured = capsys.readouterr()
@@ -118,7 +120,7 @@ class TestManageNoteFunctions:
             {"date": "2026-02-16", "symbol": "AAPL", "type": "concern", "content": "Valuation stretched"},
         ]
         with patch.object(mod, "load_notes", return_value=mock_notes):
-            args = types.SimpleNamespace(symbol=None, type=None)
+            args = types.SimpleNamespace(symbol=None, type=None, category=None)
             mod.cmd_list(args)
 
         captured = capsys.readouterr()
@@ -157,7 +159,7 @@ class TestManageNoteFunctions:
             {"date": "2026-02-17", "symbol": "7203.T", "type": "thesis", "content": "EV growth"},
         ]
         with patch.object(mod, "load_notes", return_value=mock_notes):
-            args = types.SimpleNamespace(symbol="7203.T", type=None)
+            args = types.SimpleNamespace(symbol="7203.T", type=None, category=None)
             mod.cmd_list(args)
 
         captured = capsys.readouterr()
@@ -173,8 +175,78 @@ class TestManageNoteFunctions:
              "content": "A" * 80},
         ]
         with patch.object(mod, "load_notes", return_value=mock_notes):
-            args = types.SimpleNamespace(symbol=None, type=None)
+            args = types.SimpleNamespace(symbol=None, type=None, category=None)
             mod.cmd_list(args)
 
         captured = capsys.readouterr()
         assert "..." in captured.out
+
+    # KIK-429: category support tests
+
+    def test_cmd_save_with_category(self, capsys):
+        """--category portfolio でメモ保存できること."""
+        mod = _load_module()
+
+        mock_return = {
+            "id": "note_20260219_portfolio_review_001",
+            "symbol": "",
+            "type": "review",
+            "content": "PF rebalance needed",
+            "date": "2026-02-19",
+            "source": "manual",
+            "category": "portfolio",
+        }
+        with patch.object(mod, "save_note", return_value=mock_return) as mock_save:
+            args = types.SimpleNamespace(
+                symbol=None, type="review", content="PF rebalance needed", source="manual", category="portfolio",
+            )
+            mod.cmd_save(args)
+
+        mock_save.assert_called_once_with(
+            symbol=None, note_type="review", content="PF rebalance needed", source="manual", category="portfolio",
+        )
+        captured = capsys.readouterr()
+        assert "保存しました" in captured.out
+        assert "portfolio" in captured.out
+
+    def test_cmd_save_no_symbol_no_category_exits(self, capsys):
+        """symbol も category も未指定のとき sys.exit(1) すること."""
+        mod = _load_module()
+
+        args = types.SimpleNamespace(
+            symbol=None, type="observation", content="test", source="manual", category=None,
+        )
+        with pytest.raises(SystemExit, match="1"):
+            mod.cmd_save(args)
+
+        captured = capsys.readouterr()
+        assert "Error" in captured.out
+
+    def test_cmd_list_with_category_filter(self, capsys):
+        """--category フィルタ付きで一覧表示できること."""
+        mod = _load_module()
+
+        mock_notes = [
+            {"date": "2026-02-19", "symbol": "", "type": "review", "content": "PF check", "category": "portfolio"},
+        ]
+        with patch.object(mod, "load_notes", return_value=mock_notes) as mock_load:
+            args = types.SimpleNamespace(symbol=None, type=None, category="portfolio")
+            mod.cmd_list(args)
+
+        mock_load.assert_called_once_with(symbol=None, note_type=None, category="portfolio")
+        captured = capsys.readouterr()
+        assert "投資メモ一覧" in captured.out
+        assert "1 件" in captured.out
+        assert "portfolio" in captured.out
+
+    def test_cmd_list_empty_with_category(self, capsys):
+        """category フィルタでメモなしのメッセージが適切であること."""
+        mod = _load_module()
+
+        with patch.object(mod, "load_notes", return_value=[]):
+            args = types.SimpleNamespace(symbol=None, type=None, category="market")
+            mod.cmd_list(args)
+
+        captured = capsys.readouterr()
+        assert "market" in captured.out
+        assert "メモはありません" in captured.out

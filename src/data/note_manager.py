@@ -1,7 +1,8 @@
-"""Note manager -- dual-write to JSON files and Neo4j (KIK-397).
+"""Note manager -- dual-write to JSON files and Neo4j (KIK-397, KIK-429).
 
 Notes are investment memos (thesis, observation, concern, review, target)
-attached to specific stocks. The JSON file is the master; Neo4j is a view.
+attached to specific stocks or to categories (portfolio, market, general).
+The JSON file is the master; Neo4j is a view.
 """
 
 import json
@@ -13,6 +14,7 @@ from typing import Optional
 
 _NOTES_DIR = "data/notes"
 _VALID_TYPES = {"thesis", "observation", "concern", "review", "target", "lesson"}
+_VALID_CATEGORIES = {"stock", "portfolio", "market", "general"}
 
 
 def _notes_dir(base_dir: str = _NOTES_DIR) -> Path:
@@ -22,24 +24,29 @@ def _notes_dir(base_dir: str = _NOTES_DIR) -> Path:
 
 
 def save_note(
-    symbol: str,
-    note_type: str,
-    content: str,
+    symbol: Optional[str] = None,
+    note_type: str = "observation",
+    content: str = "",
     source: str = "",
+    category: Optional[str] = None,
     base_dir: str = _NOTES_DIR,
 ) -> dict:
     """Save a note to JSON file and Neo4j.
 
     Parameters
     ----------
-    symbol : str
-        Stock ticker (e.g., "7203.T").
+    symbol : str, optional
+        Stock ticker (e.g., "7203.T"). If provided, category is set to "stock".
     note_type : str
-        One of: thesis, observation, concern, review, target.
+        One of: thesis, observation, concern, review, target, lesson.
     content : str
         The note text.
     source : str
         Where this note came from (e.g., "manual", "health-check", "report").
+    category : str, optional
+        Note category: "stock", "portfolio", "market", "general".
+        Auto-set to "stock" when symbol is provided.
+        Defaults to "general" when neither symbol nor category is given.
     base_dir : str
         Notes directory.
 
@@ -51,15 +58,35 @@ def save_note(
     if note_type not in _VALID_TYPES:
         raise ValueError(f"Invalid note type: {note_type}. Must be one of {_VALID_TYPES}")
 
+    # Resolve category
+    if symbol:
+        resolved_category = "stock"
+    elif category and category in _VALID_CATEGORIES:
+        resolved_category = category
+    else:
+        resolved_category = "general"
+
+    if resolved_category != "stock" and category and category not in _VALID_CATEGORIES:
+        raise ValueError(f"Invalid category: {category}. Must be one of {_VALID_CATEGORIES}")
+
     today = date.today().isoformat()
     now = datetime.now().isoformat(timespec="seconds")
-    note_id = f"note_{today}_{symbol}_{uuid.uuid4().hex[:8]}"
+
+    # Build ID and filename based on symbol or category
+    if symbol:
+        note_id = f"note_{today}_{symbol}_{uuid.uuid4().hex[:8]}"
+        safe_symbol = symbol.replace(".", "_").replace("/", "_")
+        filename = f"{today}_{safe_symbol}_{note_type}.json"
+    else:
+        note_id = f"note_{today}_{resolved_category}_{uuid.uuid4().hex[:8]}"
+        filename = f"{today}_{resolved_category}_{note_type}.json"
 
     note = {
         "id": note_id,
         "date": today,
         "timestamp": now,
-        "symbol": symbol,
+        "symbol": symbol or "",
+        "category": resolved_category,
         "type": note_type,
         "content": content,
         "source": source,
@@ -67,11 +94,9 @@ def save_note(
 
     # 1. Write to JSON file (master)
     d = _notes_dir(base_dir)
-    safe_symbol = symbol.replace(".", "_").replace("/", "_")
-    filename = f"{today}_{safe_symbol}_{note_type}.json"
     path = d / filename
 
-    # Append to existing file if same date/symbol/type, else create new
+    # Append to existing file if same date/symbol-or-category/type, else create new
     existing = []
     if path.exists():
         try:
@@ -90,14 +115,14 @@ def save_note(
         from src.data.graph_store import merge_note
         from src.data.history_store import _build_embedding
         sem_summary, emb = _build_embedding(
-            "note", symbol=symbol, note_type=note_type, content=content,
+            "note", symbol=symbol or "", note_type=note_type, content=content,
         )
         merge_note(
             note_id=note_id,
             note_date=today,
             note_type=note_type,
             content=content,
-            symbol=symbol,
+            symbol=symbol or None,
             source=source,
             semantic_summary=sem_summary,
             embedding=emb,
@@ -111,6 +136,7 @@ def save_note(
 def load_notes(
     symbol: Optional[str] = None,
     note_type: Optional[str] = None,
+    category: Optional[str] = None,
     base_dir: str = _NOTES_DIR,
 ) -> list[dict]:
     """Load notes from JSON files.
@@ -121,6 +147,8 @@ def load_notes(
         Filter by stock symbol.
     note_type : str, optional
         Filter by note type.
+    category : str, optional
+        Filter by category ("stock", "portfolio", "market", "general").
     base_dir : str
         Notes directory.
 
@@ -148,6 +176,8 @@ def load_notes(
         all_notes = [n for n in all_notes if n.get("symbol") == symbol]
     if note_type:
         all_notes = [n for n in all_notes if n.get("type") == note_type]
+    if category:
+        all_notes = [n for n in all_notes if n.get("category") == category]
 
     # Sort by date descending
     all_notes.sort(key=lambda n: n.get("date", ""), reverse=True)

@@ -67,7 +67,9 @@ python3 .claude/skills/stock-portfolio/scripts/run_portfolio.py list
 
 # 投資メモ管理
 python3 .claude/skills/investment-note/scripts/manage_note.py save --symbol 7203.T --type thesis --content "EV普及で部品需要増"
+python3 .claude/skills/investment-note/scripts/manage_note.py save --category portfolio --type review --content "セクター偏重を改善"
 python3 .claude/skills/investment-note/scripts/manage_note.py list
+python3 .claude/skills/investment-note/scripts/manage_note.py list --category portfolio
 python3 .claude/skills/investment-note/scripts/manage_note.py delete --id NOTE_ID
 
 # 知識グラフ照会（自然言語）
@@ -203,7 +205,8 @@ Skills (.claude/skills/*/SKILL.md → scripts/*.py)
                      note_manager.py
                      (投資メモ管理,
                       JSON=master, Neo4j=view,
-                      thesis/observation/concern/review/target/lesson)
+                      thesis/observation/concern/review/target/lesson,
+                      symbol任意+category(stock/portfolio/market/general)(KIK-429))
                      graph_nl_query.py
                      (自然言語→グラフ照会ディスパッチ,
                       テンプレートマッチ→graph_query関数,

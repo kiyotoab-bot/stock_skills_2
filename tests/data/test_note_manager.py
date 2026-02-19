@@ -1,4 +1,4 @@
-"""Tests for src.data.note_manager module (KIK-397).
+"""Tests for src.data.note_manager module (KIK-397, KIK-429).
 
 Uses tmp_path for JSON file operations, Neo4j is mocked.
 """
@@ -14,6 +14,7 @@ from src.data.note_manager import (
     load_notes,
     delete_note,
     _VALID_TYPES,
+    _VALID_CATEGORIES,
 )
 
 
@@ -104,6 +105,52 @@ class TestSaveNote:
         assert len(files) == 1
         assert "D05_SI" in files[0].name
 
+    # KIK-429: category support
+    def test_save_note_without_symbol(self, tmp_path):
+        """symbol なしでカテゴリ指定で保存できること."""
+        with patch("src.data.graph_store.merge_note"):
+            note = save_note(note_type="review", content="PF analysis", category="portfolio", base_dir=str(tmp_path))
+        assert note["symbol"] == ""
+        assert note["category"] == "portfolio"
+        assert "portfolio" in note["id"]
+        files = list(tmp_path.glob("*.json"))
+        assert len(files) == 1
+        assert "portfolio" in files[0].name
+
+    def test_save_note_with_symbol_category_is_stock(self, tmp_path):
+        """symbol 指定時は category が自動で stock になること."""
+        with patch("src.data.graph_store.merge_note"):
+            note = save_note("7203.T", "thesis", "test", base_dir=str(tmp_path))
+        assert note["category"] == "stock"
+
+    def test_save_note_category_defaults_to_general(self, tmp_path):
+        """symbol も category も未指定なら general になること."""
+        with patch("src.data.graph_store.merge_note"):
+            note = save_note(note_type="observation", content="test", base_dir=str(tmp_path))
+        assert note["category"] == "general"
+
+    def test_save_note_market_category(self, tmp_path):
+        """market カテゴリで保存できること."""
+        with patch("src.data.graph_store.merge_note"):
+            note = save_note(note_type="observation", content="Market memo", category="market", base_dir=str(tmp_path))
+        assert note["category"] == "market"
+        assert note["symbol"] == ""
+        assert "market" in note["id"]
+
+    def test_save_note_invalid_category(self, tmp_path):
+        """無効なカテゴリでエラーになること."""
+        with pytest.raises(ValueError, match="Invalid category"):
+            save_note(note_type="observation", content="test", category="invalid", base_dir=str(tmp_path))
+
+    def test_valid_categories(self):
+        assert _VALID_CATEGORIES == {"stock", "portfolio", "market", "general"}
+
+    def test_save_note_symbol_with_invalid_category_ignored(self, tmp_path):
+        """symbol 指定時は無効 category が無視されて stock になること."""
+        with patch("src.data.graph_store.merge_note"):
+            note = save_note("7203.T", "thesis", "test", category="invalid", base_dir=str(tmp_path))
+        assert note["category"] == "stock"
+
 
 # ===================================================================
 # load_notes tests
@@ -163,6 +210,44 @@ class TestLoadNotes:
         notes = load_notes(base_dir=str(tmp_path))
         assert len(notes) == 1
         assert notes[0]["content"] == "Good note"
+
+    # KIK-429: category filter
+    def test_load_notes_filter_by_category(self, tmp_path):
+        """category フィルタで絞り込みできること."""
+        with patch("src.data.graph_store.merge_note"):
+            save_note("7203.T", "thesis", "Stock note", base_dir=str(tmp_path))
+            save_note(note_type="review", content="PF note", category="portfolio", base_dir=str(tmp_path))
+            save_note(note_type="observation", content="Market note", category="market", base_dir=str(tmp_path))
+
+        stock_notes = load_notes(category="stock", base_dir=str(tmp_path))
+        assert len(stock_notes) == 1
+        assert stock_notes[0]["symbol"] == "7203.T"
+
+        pf_notes = load_notes(category="portfolio", base_dir=str(tmp_path))
+        assert len(pf_notes) == 1
+        assert pf_notes[0]["content"] == "PF note"
+
+        market_notes = load_notes(category="market", base_dir=str(tmp_path))
+        assert len(market_notes) == 1
+        assert market_notes[0]["content"] == "Market note"
+
+    def test_load_notes_all_includes_categorized(self, tmp_path):
+        """全件取得でカテゴリ付きメモも含まれること."""
+        with patch("src.data.graph_store.merge_note"):
+            save_note("AAPL", "thesis", "Stock", base_dir=str(tmp_path))
+            save_note(note_type="review", content="PF", category="portfolio", base_dir=str(tmp_path))
+        notes = load_notes(base_dir=str(tmp_path))
+        assert len(notes) == 2
+
+    def test_load_notes_category_and_type_combined(self, tmp_path):
+        """category + type の複合フィルタが正しく動くこと."""
+        with patch("src.data.graph_store.merge_note"):
+            save_note(note_type="review", content="PF review", category="portfolio", base_dir=str(tmp_path))
+            save_note(note_type="observation", content="PF obs", category="portfolio", base_dir=str(tmp_path))
+            save_note(note_type="review", content="Market review", category="market", base_dir=str(tmp_path))
+        notes = load_notes(category="portfolio", note_type="review", base_dir=str(tmp_path))
+        assert len(notes) == 1
+        assert notes[0]["content"] == "PF review"
 
 
 # ===================================================================
