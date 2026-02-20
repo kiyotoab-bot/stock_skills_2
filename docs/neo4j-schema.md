@@ -631,3 +631,49 @@ RETURN type(r) AS rel_type, r.confidence AS confidence,
        r.reason AS reason, r.created_at AS created_at
 ORDER BY r.created_at DESC LIMIT 10
 ```
+
+---
+
+## スキーマ進化の方針
+
+### 設計思想
+
+**人間がスキーマ型（語彙）を定義し、AIがリレーション（意味の繋がり）を自律的に構築する。**
+
+```
+人間が定義・管理するもの（安定・一貫性）
+  ノード型:      Stock, Research, Catalyst, Sentiment...
+  リレーション型: SUPERSEDES, HAS_CATALYST, INFLUENCES...
+
+AIが自律的に行うもの（動的・成長）
+  インスタンスの生成: 新しいResearch/Catalyst ノードを作成
+  リレーションの付与: 「このResearchはあのCatalystが原因」→ リレーションを張る
+  意味の連鎖:   Stock → Sector → Research → Sentiment → Catalyst をホップして文脈を構築
+```
+
+スキーマ型は **AIが思考するための語彙** であり、型が豊富なほどAIの表現力が上がる。
+
+### 進化サイクル
+
+```
+初期: 最小限のスキーマで使い始める
+  ↓
+使い込む: データが蓄積され、新しいパターンが見えてくる
+  「このリレーション型があれば表現できるのに」という場面が出てくる
+  ↓
+スキーマ拡充: 人間が新しい型を追加する
+  ↓
+AIの表現力が向上: より豊かな知識グラフが自律的に構築される
+```
+
+→ **使いながら発見していく empirical なアプローチ**。最初から完璧な設計を目指さない。
+
+### スキーマ進化ログ
+
+使用中に「この型・リレーションがあると便利」と気づいたらここに記録する。
+
+| 発見日 | 種別 | 候補 | 観察したパターン | 状態 |
+|:---|:---|:---|:---|:---|
+| （使いながら追記） | Relationship | `TRIGGERED_BY` | CatalystがMarketContextを引き起こすケース | 候補 |
+| （使いながら追記） | Relationship | `BASED_ON` | SentimentがNewsを根拠にするケース | 候補 |
+| （使いながら追記） | Relationship | `CONFLICTS_WITH` | 2つのResearchが矛盾するケース | 候補（KIK-434の`CONTRADICTS`で代替可能かも） |
