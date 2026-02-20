@@ -43,6 +43,8 @@
 「テクノロジーの割安株」   → /screen-stocks japan value --sector Technology
 ```
 
+**KIK-452 GraphRAG コンテキスト**: スクリーニング結果の末尾に、Neo4j ナレッジグラフから取得したセクタートレンド・投資メモ・テーマ情報が自動表示される（Neo4j 接続時のみ）。Grok API 接続時は AI 統合サマリーも付加。Neo4j 未接続の場合はこのセクションは非表示となり、スクリーニング本体の動作には影響しない。
+
 **region 推定**: 日本/JP → japan, 米国/US → us, ASEAN → asean, シンガポール → sg, 香港 → hk, 韓国 → kr, 台湾 → tw, 中国 → cn, 指定なし → japan
 
 **preset 推定**:

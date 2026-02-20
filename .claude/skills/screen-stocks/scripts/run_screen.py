@@ -36,6 +36,18 @@ if HAS_GRAPH_QUERY:
 HAS_ANNOTATOR, _an = try_import("src.data.screen_annotator", "annotate_results")
 if HAS_ANNOTATOR: annotate_results = _an["annotate_results"]
 
+HAS_SCREENING_CTX, _sctx = try_import(
+    "src.data.screening_context", "get_screening_graph_context"
+)
+if HAS_SCREENING_CTX:
+    get_screening_graph_context = _sctx["get_screening_graph_context"]
+
+HAS_SCREENING_SUMMARY, _ssum = try_import(
+    "src.output.screening_summary_formatter", "format_screening_summary"
+)
+if HAS_SCREENING_SUMMARY:
+    format_screening_summary = _ssum["format_screening_summary"]
+
 
 # Legacy market classes
 MARKETS = {
@@ -131,6 +143,52 @@ def _print_recurring_picks(results):
         pass
 
 
+def _build_graphrag_prompt(context: dict, symbols: list) -> str:
+    """Build LLM prompt from graph context for screening summary (KIK-452)."""
+    lines = [
+        "以下のナレッジグラフコンテキストをもとに、スクリーニング結果の"
+        "投資判断に役立つ簡潔なサマリーを1〜3文で日本語で生成してください。\n"
+    ]
+    for sector, data in context.get("sector_research", {}).items():
+        pos = "、".join(data.get("catalysts_pos", [])[:2])
+        neg = "、".join(data.get("catalysts_neg", [])[:2])
+        lines.append(
+            f"セクター {sector}: ポジ材料={pos or 'なし'}, ネガ材料={neg or 'なし'}"
+        )
+    for sym, notes in context.get("symbol_notes", {}).items():
+        for n in notes[:1]:
+            lines.append(
+                f"{sym}: {n.get('type', '')} - {n.get('content', '')[:60]}"
+            )
+    lines.append("\nサマリー（1〜3文）:")
+    return "\n".join(lines)
+
+
+def _print_graphrag_context(results):
+    """Print GraphRAG context from knowledge graph (KIK-452)."""
+    if not HAS_SCREENING_CTX or not HAS_SCREENING_SUMMARY or not results:
+        return
+    try:
+        symbols = [r.get("symbol") for r in results if r.get("symbol")]
+        sectors = list({r.get("sector") for r in results if r.get("sector")})
+        context = get_screening_graph_context(symbols, sectors)
+        if not context.get("has_data"):
+            return
+        llm_text = ""
+        try:
+            from src.data import grok_client as gc
+            if gc.is_available():
+                prompt = _build_graphrag_prompt(context, symbols)
+                llm_text = gc.synthesize_text(prompt)
+        except Exception:
+            pass
+        summary = format_screening_summary(context, llm_text)
+        if summary:
+            print(summary)
+    except Exception:
+        pass
+
+
 def run_trending_mode(args):
     """Run trending stock screening using Grok X search."""
     try:
@@ -163,6 +221,7 @@ def run_trending_mode(args):
     print(format_trending_markdown(results, market_context))
 
     _print_recurring_picks(results)
+    _print_graphrag_context(results)
 
     if HAS_HISTORY and results:
         try:
@@ -199,6 +258,7 @@ def run_query_mode(args):
                 print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_pullback_markdown(results))
             _print_recurring_picks(results)
+            _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset="pullback", region=region_code, results=results)
@@ -222,6 +282,7 @@ def run_query_mode(args):
                 print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_growth_markdown(results))
             _print_recurring_picks(results)
+            _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset="growth", region=region_code, results=results, sector=args.sector)
@@ -244,6 +305,7 @@ def run_query_mode(args):
                 print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_alpha_markdown(results))
             _print_recurring_picks(results)
+            _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset="alpha", region=region_code, results=results)
@@ -273,6 +335,7 @@ def run_query_mode(args):
                 print(f"※ 直近売却済み {excluded}銘柄を除外\n")
             print(format_pullback_markdown(results))
             _print_recurring_picks(results)
+            _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
@@ -294,6 +357,7 @@ def run_query_mode(args):
             else:
                 print(format_query_markdown(results))
             _print_recurring_picks(results)
+            _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
                     save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)

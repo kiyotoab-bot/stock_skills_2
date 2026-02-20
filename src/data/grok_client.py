@@ -126,7 +126,7 @@ def _contains_japanese(text: str) -> bool:
     return any(0x3000 <= ord(c) <= 0x9FFF for c in text)
 
 
-def _call_grok_api(prompt: str, timeout: int = 30) -> str:
+def _call_grok_api(prompt: str, timeout: int = 30, use_tools: bool = True) -> str:
     """Common request helper for the Grok API.
 
     Parameters
@@ -135,6 +135,9 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
         Prompt to send to the API.
     timeout : int
         Request timeout in seconds.
+    use_tools : bool
+        If True (default), attaches x_search and web_search tools.
+        Set to False for pure text synthesis without live search (KIK-452).
 
     Returns
     -------
@@ -165,9 +168,10 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
 
         payload = {
             "model": _DEFAULT_MODEL,
-            "tools": [{"type": "x_search"}, {"type": "web_search"}],
             "input": prompt,
         }
+        if use_tools:
+            payload["tools"] = [{"type": "x_search"}, {"type": "web_search"}]
 
         response = requests.post(
             _API_URL,
@@ -795,6 +799,38 @@ def search_trending_stocks(
         result["market_context"] = parsed["market_context"]
 
     return result
+
+
+def synthesize_text(prompt: str, timeout: int = 20) -> str:
+    """Pure text synthesis via Grok API (no search tools). KIK-452.
+
+    Used for summarizing graph context data from the knowledge graph.
+    Delegates to _call_grok_api with use_tools=False.
+    Does NOT update _error_state — this is an auxiliary call; resets
+    any state change made by _call_grok_api before returning.
+
+    Parameters
+    ----------
+    prompt : str
+        Synthesis prompt (in Japanese or English).
+    timeout : int
+        Request timeout in seconds.
+
+    Returns
+    -------
+    str
+        Generated text, or "" if unavailable/error.
+    """
+    if not _get_api_key():
+        return ""
+    try:
+        result = _call_grok_api(prompt, timeout=timeout, use_tools=False)
+        # Reset error state: this call is auxiliary and should not affect
+        # the main error state used by other callers.
+        reset_error_state()
+        return result
+    except Exception:
+        return ""
 
 
 def search_business(

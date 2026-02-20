@@ -927,3 +927,31 @@ def get_concern_notes(limit: int = 1) -> list[dict]:
         return out
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# Theme query (KIK-452)
+# ---------------------------------------------------------------------------
+
+def get_themes_for_symbols_batch(symbols: list[str]) -> dict[str, list[str]]:
+    """Multi-hop query: Stock -[:HAS_THEME]-> Theme for multiple symbols.
+
+    Returns {symbol: [theme_name, ...]} for symbols that have associated themes.
+    Returns {} when Neo4j is unavailable or on error.
+    """
+    if not symbols:
+        return {}
+    driver = _get_driver()
+    if driver is None:
+        return {}
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "UNWIND $symbols AS sym "
+                "MATCH (s:Stock {symbol: sym})-[:HAS_THEME]->(t:Theme) "
+                "RETURN sym AS symbol, collect(t.name) AS themes",
+                symbols=symbols,
+            )
+            return {record["symbol"]: record["themes"] for record in result}
+    except Exception:
+        return {}
