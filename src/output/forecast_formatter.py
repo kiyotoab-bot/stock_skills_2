@@ -35,6 +35,50 @@ def format_return_estimate(estimate: dict) -> str:
         lines.append("\u4fdd\u6709\u9298\u67c4\u304c\u3042\u308a\u307e\u305b\u3093\u3002")
         return "\n".join(lines)
 
+    # --- Compact summary (KIK-442) ---
+    ranked_all = [
+        p for p in positions
+        if p.get("base") is not None and p.get("method") != "no_data"
+    ]
+    ranked_all.sort(key=lambda p: p["base"], reverse=True)
+
+    opt_ret = portfolio.get("optimistic")
+    base_ret_pf = portfolio.get("base")
+    pess_ret = portfolio.get("pessimistic")
+
+    opt_str = _fmt_pct_sign(opt_ret) if opt_ret is not None else "-"
+    base_str_pf = _fmt_pct_sign(base_ret_pf) if base_ret_pf is not None else "-"
+    pess_str = _fmt_pct_sign(pess_ret) if pess_ret is not None else "-"
+
+    lines.append("## \U0001f4c8 \u30d5\u30a9\u30fc\u30ad\u30e3\u30b9\u30c8 \u30b5\u30de\u30ea\u30fc\uff0812\u30f6\u6708\uff09")
+    lines.append("")
+    lines.append(
+        f"  \u697d\u89b3: {opt_str}  "
+        f"\u30d9\u30fc\u30b9: {base_str_pf}  "
+        f"\u60b2\u89b3: {pess_str}"
+    )
+    lines.append(f"  \u7dcf\u8a55\u4fa1\u984d: {_fmt_jpy(total_value)}")
+    lines.append("")
+
+    if len(ranked_all) >= 2:
+        top3 = ranked_all[:3]
+        top3_str = " / ".join(
+            f"{p['symbol']} {_fmt_pct_sign(p['base'])}" for p in top3
+        )
+        lines.append(f"  \u671f\u5f85\u30ea\u30bf\u30fc\u30f3 TOP3:  {top3_str}")
+
+        top_symbols_set = {p["symbol"] for p in top3}
+        btm_candidates = [p for p in ranked_all[-3:] if p["symbol"] not in top_symbols_set]
+        if btm_candidates:
+            btm_str = " / ".join(
+                f"{p['symbol']} {_fmt_pct_sign(p['base'])}" for p in btm_candidates
+            )
+            lines.append(f"  \u671f\u5f85\u30ea\u30bf\u30fc\u30f3 BTM3:  {btm_str}")
+
+    lines.append("")
+    lines.append("\u2500\u2500\u2500 \u9298\u67c4\u5225\u8a73\u7d30 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    lines.append("")
+
     # --- Portfolio summary ---
     lines.append("## \u63a8\u5b9a\u5229\u56de\u308a\uff0812\u30f6\u6708\uff09")
     lines.append("")
