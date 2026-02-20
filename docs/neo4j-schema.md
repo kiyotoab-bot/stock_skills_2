@@ -581,13 +581,53 @@ RETURN r.date AS date, r.target AS target, r.summary AS summary,
 ORDER BY r.date DESC LIMIT 5
 ```
 
-### Phase 2（計画中）
+---
 
-以下のリレーションを追加予定:
+## KIK-434: AI駆動セマンティックリレーション
 
-| リレーション | From → To | 意味 |
+ノード保存時に LLM（Claude Haiku）が新ノードと既存ノードの内容を読んで意味的な関係を推論し、以下のリレーションを自動付与する。
+
+### AI リレーション種別
+
+| リレーション | 意味 | 例 |
 |:---|:---|:---|
-| `INFLUENCES` | Research(industry) → Stock | 業界リサーチが個別銘柄に影響 |
-| `INFORMS` | MarketContext → Forecast | 市況がフォーキャストの前提条件 |
-| `SUPPORTS` / `CONTRADICTS` | Research(industry) → Report | 業界トレンドがレポートの判断を補強/矛盾 |
-| `CONTEXT_OF` | Research(market) → HealthCheck | 市況がヘルスチェックの解釈文脈 |
+| `INFLUENCES` | AがBに影響を与える | industry Research → 保有 Report（AI CapEx拡大が半導体株に影響） |
+| `CONTRADICTS` | AがBと矛盾する | 強気 Research vs 懸念 Note（成長鈍化の懸念） |
+| `CONTEXT_OF` | AがBの背景文脈 | market Research → HealthCheck（市場全体の不安がヘルスチェックの解釈に影響） |
+| `INFORMS` | AがBの判断材料になる | industry Research → Report（業界動向がレポートに材料提供） |
+| `SUPPORTS` | AがBを支持・補強する | Catalyst Note → 楽観 Research（カタリストが見通しを補強） |
+
+### リレーションプロパティ
+
+| Property | Type | Description |
+|:---|:---|:---|
+| confidence | float | LLMの確信度（0.6以上のみ保存） |
+| reason | string | LLMが判断した理由（最大500文字） |
+| created_by | string | 常に `'ai'` |
+| created_at | string | ISO 8601タイムスタンプ |
+
+### 発火タイミング
+
+| 保存イベント | 候補ノード（最大）|
+|:---|:---|
+| `save_research()` | portfolio holdings（max 8） |
+| `save_note()` | 同銘柄の Report + HealthCheck（max 6） |
+| `save_report()` | 同銘柄の Note + 同セクター Research（max 10） |
+
+### Graceful Degradation
+
+- `ANTHROPIC_API_KEY` 未設定 → no-op（0件）
+- Neo4j 未接続 → no-op
+- LLM タイムアウト / 非200レスポンス → no-op
+- confidence < 0.6 → フィルタ除外
+
+### サンプル Cypher
+
+```cypher
+-- AI が付与したリレーションを一覧表示 (KIK-434)
+MATCH ()-[r:INFLUENCES|CONTRADICTS|CONTEXT_OF|INFORMS|SUPPORTS]->()
+WHERE r.created_by = 'ai'
+RETURN type(r) AS rel_type, r.confidence AS confidence,
+       r.reason AS reason, r.created_at AS created_at
+ORDER BY r.created_at DESC LIMIT 10
+```
