@@ -333,6 +333,7 @@
 「PFのリスクを確認して、やばい銘柄があれば代わりを探して」
 → 1. /stock-portfolio health
 → 2. EXIT 銘柄があれば /screen-stocks で代替候補を検索
+→ 3. 代替候補が見つかったら what-if --remove "<EXIT銘柄>:SHARES" --add "<代替>:SHARES:PRICE" を必ず実行してから提案（KIK-450）
 ```
 
 ### 売買 → 確認
