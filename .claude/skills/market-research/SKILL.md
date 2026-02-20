@@ -54,6 +54,19 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/market-research/scrip
 
 - industry / market / business は Layer 2 が必要。未設定時はその旨を表示
 
+### APIステータスサマリー（KIK-431）
+
+各レポートの末尾に Grok API の状態を表示する:
+
+| 状態 | 表示 |
+|:-----|:-----|
+| 正常 | ✅ 正常 |
+| 未設定 | 🔑 未設定 — XAI_API_KEY を設定すると利用可能 |
+| 認証エラー | ❌ 認証エラー (401) — XAI_API_KEY を確認してください |
+| レート制限 | ⚠️ レート制限 (429) — しばらく待ってから再試行 |
+| タイムアウト | ⏱️ タイムアウト — ネットワーク接続を確認 |
+| その他のエラー | ❌ エラー — 詳細は stderr を確認 |
+
 ## 出力の補足
 
 スクリプトの出力をそのまま表示した後、Claudeが以下を補足してください:

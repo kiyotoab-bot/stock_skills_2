@@ -26,6 +26,29 @@ _DEFAULT_MODEL = "grok-4-1-fast-non-reasoning"
 _error_warned = [False]
 
 # ---------------------------------------------------------------------------
+# Error state tracking (KIK-431)
+# ---------------------------------------------------------------------------
+
+_error_state: dict = {
+    "status": "ok",       # not_configured | ok | auth_error | rate_limited | timeout | other_error
+    "status_code": None,  # int | None
+    "message": "",
+}
+
+
+def get_error_status() -> dict:
+    """Return the current Grok API error state (KIK-431)."""
+    return dict(_error_state)
+
+
+def reset_error_state() -> None:
+    """Reset the error state to 'ok' (KIK-431)."""
+    _error_state["status"] = "ok"
+    _error_state["status_code"] = None
+    _error_state["message"] = ""
+
+
+# ---------------------------------------------------------------------------
 # Empty result constants
 # ---------------------------------------------------------------------------
 
@@ -120,6 +143,9 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
     """
     api_key = _get_api_key()
     if not api_key:
+        _error_state["status"] = "not_configured"
+        _error_state["status_code"] = None
+        _error_state["message"] = "XAI_API_KEY is not set"
         return ""
 
     try:
@@ -149,6 +175,15 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
                     file=sys.stderr,
                 )
                 _error_warned[0] = True
+            # KIK-431: track error type by status code
+            if response.status_code == 401:
+                _error_state["status"] = "auth_error"
+            elif response.status_code == 429:
+                _error_state["status"] = "rate_limited"
+            else:
+                _error_state["status"] = "other_error"
+            _error_state["status_code"] = response.status_code
+            _error_state["message"] = f"HTTP {response.status_code}"
             return ""
 
         data = response.json()
@@ -163,22 +198,34 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
                         raw_text = content.get("text", "")
                         break
 
+        _error_state["status"] = "ok"
+        _error_state["status_code"] = 200
+        _error_state["message"] = ""
         return raw_text
 
     except requests.exceptions.Timeout:
         if not _error_warned[0]:
             print("[grok_client] Timeout (subsequent errors suppressed)", file=sys.stderr)
             _error_warned[0] = True
+        _error_state["status"] = "timeout"
+        _error_state["status_code"] = None
+        _error_state["message"] = "Request timed out"
         return ""
     except requests.exceptions.RequestException as e:
         if not _error_warned[0]:
             print(f"[grok_client] Request error: {e} (subsequent errors suppressed)", file=sys.stderr)
             _error_warned[0] = True
+        _error_state["status"] = "other_error"
+        _error_state["status_code"] = None
+        _error_state["message"] = str(e)
         return ""
     except Exception as e:
         if not _error_warned[0]:
             print(f"[grok_client] Unexpected error: {e} (subsequent errors suppressed)", file=sys.stderr)
             _error_warned[0] = True
+        _error_state["status"] = "other_error"
+        _error_state["status_code"] = None
+        _error_state["message"] = str(e)
         return ""
 
 
