@@ -29,6 +29,30 @@ def format_health_check(health_data: dict) -> str:
         lines.append("\u4fdd\u6709\u9298\u67c4\u304c\u3042\u308a\u307e\u305b\u3093\u3002")
         return "\n".join(lines)
 
+    # --- Compact summary (KIK-442) ---
+    total = len(positions)
+    exit_syms = [p["symbol"] for p in positions if p.get("alert", {}).get("level") == "exit"]
+    caution_syms = [p["symbol"] for p in positions if p.get("alert", {}).get("level") == "caution"]
+    early_syms = [p["symbol"] for p in positions if p.get("alert", {}).get("level") == "early_warning"]
+    healthy_count = sum(1 for p in positions if p.get("alert", {}).get("level", "none") == "none")
+
+    def _syms_str(syms: list, max_shown: int = 5) -> str:
+        if not syms:
+            return ""
+        shown = syms[:max_shown]
+        suffix = " ..." if len(syms) > max_shown else ""
+        return "  \u2192 " + ", ".join(shown) + suffix
+
+    lines.append("## \U0001f4ca \u30d8\u30eb\u30b9\u30c1\u30a7\u30c3\u30af \u30b5\u30de\u30ea\u30fc\uff08" + str(total) + "\u9298\u67c4\uff09")
+    lines.append("")
+    lines.append(f"\U0001f534 \u64a4\u9000\u691c\u8a0e  : {len(exit_syms)}\u9298\u67c4{_syms_str(exit_syms)}")
+    lines.append(f"\u26a0\ufe0f  \u6ce8\u610f      : {len(caution_syms)}\u9298\u67c4{_syms_str(caution_syms)}")
+    lines.append(f"\u23f0 \u65e9\u671f\u8b66\u544a  : {len(early_syms)}\u9298\u67c4{_syms_str(early_syms)}")
+    lines.append(f"\u2705 \u7570\u5e38\u306a\u3057  : {healthy_count}\u9298\u67c4")
+    lines.append("")
+    lines.append("\u2500\u2500\u2500 \u8a73\u7d30 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+    lines.append("")
+
     lines.append("## \u4fdd\u6709\u9298\u67c4\u30d8\u30eb\u30b9\u30c1\u30a7\u30c3\u30af")
     lines.append("")
 
