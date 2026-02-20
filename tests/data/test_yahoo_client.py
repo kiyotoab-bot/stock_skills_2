@@ -30,6 +30,9 @@ from src.data.yahoo_client import (
     get_macro_indicators,
 )
 
+# Patch target for CACHE_DIR: must target the submodule where it's defined (KIK-449)
+_CACHE_DIR_PATCH = "src.data.yahoo_client._cache.CACHE_DIR"
+
 
 # ---------------------------------------------------------------------------
 # _normalize_ratio
@@ -166,7 +169,7 @@ class TestCacheReadWrite:
     def test_write_and_read_cache(self, tmp_path):
         """Written cache data can be read back."""
         # Patch CACHE_DIR to use tmp_path
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             data = {"symbol": "7203.T", "price": 2850.0}
             _write_cache("7203.T", data)
 
@@ -182,7 +185,7 @@ class TestCacheReadWrite:
 
     def test_read_cache_adds_timestamp(self, tmp_path):
         """_write_cache adds a _cached_at timestamp."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             data = {"symbol": "TEST"}
             _write_cache("TEST", data)
 
@@ -193,13 +196,13 @@ class TestCacheReadWrite:
 
     def test_read_cache_returns_none_for_missing(self, tmp_path):
         """_read_cache returns None when cache file does not exist."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             result = _read_cache("NONEXISTENT")
             assert result is None
 
     def test_cache_valid_within_ttl(self, tmp_path):
         """Cache data is returned when within TTL."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             data = {"symbol": "7203.T", "price": 2850.0}
             _write_cache("7203.T", data)
 
@@ -210,7 +213,7 @@ class TestCacheReadWrite:
 
     def test_cache_expired_beyond_ttl(self, tmp_path):
         """Cache data returns None when beyond TTL."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             # Write with a timestamp that is 25 hours ago (beyond 24h TTL)
             expired_time = (datetime.now() - timedelta(hours=CACHE_TTL_HOURS + 1)).isoformat()
             data = {"symbol": "7203.T", "price": 2850.0, "_cached_at": expired_time}
@@ -224,7 +227,7 @@ class TestCacheReadWrite:
 
     def test_cache_valid_just_before_ttl(self, tmp_path):
         """Cache data is still valid just before TTL expiry."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             # Write with a timestamp that is 23 hours ago (just within 24h TTL)
             recent_time = (datetime.now() - timedelta(hours=CACHE_TTL_HOURS - 1)).isoformat()
             data = {"symbol": "7203.T", "price": 2850.0, "_cached_at": recent_time}
@@ -238,7 +241,7 @@ class TestCacheReadWrite:
 
     def test_read_cache_handles_corrupt_json(self, tmp_path):
         """_read_cache returns None for corrupt JSON files."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             cache_file = tmp_path / "CORRUPT.json"
             cache_file.write_text("not valid json {{{")
 
@@ -247,7 +250,7 @@ class TestCacheReadWrite:
 
     def test_read_cache_handles_missing_timestamp(self, tmp_path):
         """_read_cache returns None if _cached_at is missing from data."""
-        with patch("src.data.yahoo_client.CACHE_DIR", tmp_path):
+        with patch(_CACHE_DIR_PATCH, tmp_path):
             cache_file = tmp_path / "NOTIME.json"
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump({"symbol": "NOTIME"}, f)
@@ -258,7 +261,7 @@ class TestCacheReadWrite:
     def test_write_cache_creates_directory(self, tmp_path):
         """_write_cache creates the cache directory if it doesn't exist."""
         nested_dir = tmp_path / "nested" / "cache"
-        with patch("src.data.yahoo_client.CACHE_DIR", nested_dir):
+        with patch(_CACHE_DIR_PATCH, nested_dir):
             _write_cache("TEST", {"symbol": "TEST"})
             assert nested_dir.exists()
             assert (nested_dir / "TEST.json").exists()
