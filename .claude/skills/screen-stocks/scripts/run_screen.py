@@ -13,7 +13,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
 from src.data import yahoo_client
 from src.core.screening.screener import ValueScreener, QueryScreener, PullbackScreener, AlphaScreener, TrendingScreener, GrowthScreener
 from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown, format_alpha_markdown, format_trending_markdown, format_growth_markdown
@@ -21,14 +21,17 @@ from src.markets.japan import JapanMarket
 from src.markets.us import USMarket
 from src.markets.asean import ASEANMarket
 
-HAS_HISTORY, _hi = try_import("src.data.history_store", "save_screening")
-if HAS_HISTORY: save_screening = _hi["save_screening"]
+# Module availability from common.py (KIK-448); import specific functions when available
+HAS_HISTORY = HAS_HISTORY_STORE
+if HAS_HISTORY:
+    from src.data.history_store import save_screening
 
 HAS_SR_FORMAT, _sf = try_import("src.output.formatter", "format_shareholder_return_markdown")
 if HAS_SR_FORMAT: format_shareholder_return_markdown = _sf["format_shareholder_return_markdown"]
 
-HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_screening_frequency")
-if HAS_GRAPH_QUERY: get_screening_frequency = _gq["get_screening_frequency"]
+HAS_GRAPH_QUERY = _HAS_GQ
+if HAS_GRAPH_QUERY:
+    from src.data.graph_query import get_screening_frequency
 
 HAS_ANNOTATOR, _an = try_import("src.data.screen_annotator", "annotate_results")
 if HAS_ANNOTATOR: annotate_results = _an["annotate_results"]

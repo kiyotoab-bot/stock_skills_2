@@ -117,3 +117,31 @@ def try_import(module_path: str, *names: str):
         return True, result
     except (ImportError, AttributeError):
         return False, result
+
+
+# ---------------------------------------------------------------------------
+# Module availability flags (KIK-448)
+#
+# Centralised checks for optional modules used by 2+ skill scripts.
+# Each flag answers "can this module be imported?" — nothing more.
+# Individual scripts still import the specific functions they need,
+# guarded by these flags.
+# ---------------------------------------------------------------------------
+
+try:
+    import src.data.history_store as _history_store_mod  # noqa: F401
+    HAS_HISTORY_STORE = True
+except ImportError:
+    HAS_HISTORY_STORE = False
+
+try:
+    import src.data.graph_query as _graph_query_mod  # noqa: F401
+    HAS_GRAPH_QUERY = True
+except ImportError:
+    HAS_GRAPH_QUERY = False
+
+try:
+    import src.data.graph_store as _graph_store_mod  # noqa: F401
+    HAS_GRAPH_STORE = True
+except ImportError:
+    HAS_GRAPH_STORE = False

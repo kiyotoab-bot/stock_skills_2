@@ -13,7 +13,7 @@
 
 - データ取得は必ず `src/data/yahoo_client.py` 経由（直接 yfinance を呼ばない）
 - 新しい市場を追加する場合は `src/markets/base.py` の `Market` を継承
-- `HAS_MODULE` パターン: スクリプト層（run_*.py）は `try/except ImportError` で各モジュールの存在を確認し、`HAS_*` フラグで graceful degradation
+- `HAS_MODULE` パターン: スクリプト層（run_*.py）は `try/except ImportError` で各モジュールの存在を確認し、`HAS_*` フラグで graceful degradation。複数スクリプトで共通のモジュール可用性フラグ（`HAS_HISTORY_STORE`, `HAS_GRAPH_QUERY`, `HAS_GRAPH_STORE`）は `scripts/common.py` に一元管理 (KIK-448)。スクリプト固有のフラグは各スクリプト内に残す
 - yahoo_client はモジュール関数（クラスではない）。`from src.data import yahoo_client` → `yahoo_client.get_stock_info(symbol)`
 - 配当利回りの正規化: `_normalize_ratio()` が値 > 1 の場合 100 で割って比率に変換
 - フィールド名のエイリアス: indicators.py は yfinance 生キー（`trailingPE`, `priceToBook`）と正規化済みキー（`per`, `pbr`）の両方を対応

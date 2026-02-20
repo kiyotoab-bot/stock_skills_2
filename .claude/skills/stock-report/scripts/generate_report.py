@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
 from src.data.yahoo_client import get_stock_info, get_stock_detail
 from src.core.screening.indicators import calculate_value_score
 
@@ -19,17 +19,21 @@ if HAS_SHAREHOLDER_HISTORY: calculate_shareholder_return_history = _sh["calculat
 HAS_RETURN_STABILITY, _rs = try_import("src.core.screening.indicators", "assess_return_stability")
 if HAS_RETURN_STABILITY: assess_return_stability = _rs["assess_return_stability"]
 
-HAS_HISTORY, _hi = try_import("src.data.history_store", "save_report")
-if HAS_HISTORY: history_save_report = _hi["save_report"]
+# Module availability from common.py (KIK-448)
+HAS_HISTORY = HAS_HISTORY_STORE
+if HAS_HISTORY:
+    from src.data.history_store import save_report as history_save_report
 
 HAS_VALUE_TRAP, _vt = try_import("src.core.health_check", "_detect_value_trap")
 if HAS_VALUE_TRAP: _detect_value_trap = _vt["_detect_value_trap"]
 
-HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_prior_report")
-if HAS_GRAPH_QUERY: get_prior_report = _gq["get_prior_report"]
+HAS_GRAPH_QUERY = _HAS_GQ
+if HAS_GRAPH_QUERY:
+    from src.data.graph_query import get_prior_report
 
-HAS_INDUSTRY_CONTEXT, _ic = try_import("src.data.graph_query", "get_industry_research_for_sector")
-if HAS_INDUSTRY_CONTEXT: get_industry_research_for_sector = _ic["get_industry_research_for_sector"]
+HAS_INDUSTRY_CONTEXT = _HAS_GQ
+if HAS_INDUSTRY_CONTEXT:
+    from src.data.graph_query import get_industry_research_for_sector
 
 
 def main():
