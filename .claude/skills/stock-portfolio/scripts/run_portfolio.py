@@ -1007,7 +1007,11 @@ def cmd_what_if(
     print("What-If シミュレーション実行中...\n")
 
     # 2. Run simulation
-    result = run_what_if_simulation(csv_path, proposed, yahoo_client, removals=removals)
+    try:
+        result = run_what_if_simulation(csv_path, proposed, yahoo_client, removals=removals)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
     # 3. Output
     if HAS_WHAT_IF_FORMATTER:
