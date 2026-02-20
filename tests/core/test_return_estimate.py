@@ -539,3 +539,89 @@ class TestEstimatePortfolioReturn:
         detail_calls = [c[0][0] for c in mock_client.get_stock_detail.call_args_list]
         assert "JPY.CASH" not in detail_calls
         assert "AAPL" in detail_calls
+
+
+# ---------------------------------------------------------------------------
+# Industry catalyst adjustment (KIK-433)
+# ---------------------------------------------------------------------------
+
+class TestCatalystAdjustment:
+    """Tests for estimate_stock_return() catalyst adjustment logic."""
+
+    def _make_detail(self):
+        return {
+            "price": 100.0,
+            "target_high_price": 130.0,
+            "target_mean_price": 110.0,
+            "target_low_price": 80.0,
+            "dividend_yield": 0.02,
+            "number_of_analyst_opinions": 15,
+            "recommendation_mean": 2.0,
+            "forward_per": 20.0,
+            "sector": "Technology",
+        }
+
+    def test_optimistic_boosted_by_catalysts(self):
+        """3 positive catalysts → optimistic += 3 * 0.017 = 0.051."""
+        detail = self._make_detail()
+        # Base optimistic: (130-100)/100 + 0.02 = 0.32
+        base_result = estimate_stock_return("TEST", detail)
+        base_optimistic = base_result["optimistic"]
+
+        catalysts = {"count_positive": 3, "count_negative": 0, "positive": [], "negative": []}
+        result = estimate_stock_return("TEST", detail, industry_catalysts=catalysts)
+        expected = round(base_optimistic + 3 * 0.017, 4)
+        assert abs(result["optimistic"] - expected) < 0.0001
+
+    def test_pessimistic_lowered_by_catalysts(self):
+        """2 negative catalysts → pessimistic -= 2 * 0.017 = 0.034."""
+        detail = self._make_detail()
+        base_result = estimate_stock_return("TEST", detail)
+        base_pessimistic = base_result["pessimistic"]
+
+        catalysts = {"count_positive": 0, "count_negative": 2, "positive": [], "negative": []}
+        result = estimate_stock_return("TEST", detail, industry_catalysts=catalysts)
+        expected = round(base_pessimistic - 2 * 0.017, 4)
+        assert abs(result["pessimistic"] - expected) < 0.0001
+
+    def test_cap_at_10pct_positive(self):
+        """10 positive catalysts → bonus capped at 0.10."""
+        detail = self._make_detail()
+        catalysts = {"count_positive": 10, "count_negative": 0, "positive": [], "negative": []}
+        result = estimate_stock_return("TEST", detail, industry_catalysts=catalysts)
+        base_result = estimate_stock_return("TEST", detail)
+        expected = round(base_result["optimistic"] + 0.10, 4)
+        assert abs(result["optimistic"] - expected) < 0.0001
+
+    def test_cap_at_10pct_negative(self):
+        """10 negative catalysts → penalty capped at 0.10."""
+        detail = self._make_detail()
+        catalysts = {"count_positive": 0, "count_negative": 10, "positive": [], "negative": []}
+        result = estimate_stock_return("TEST", detail, industry_catalysts=catalysts)
+        base_result = estimate_stock_return("TEST", detail)
+        expected = round(base_result["pessimistic"] - 0.10, 4)
+        assert abs(result["pessimistic"] - expected) < 0.0001
+
+    def test_no_adjustment_without_catalysts(self):
+        """industry_catalysts=None → no change to estimates."""
+        detail = self._make_detail()
+        base_result = estimate_stock_return("TEST", detail)
+        result = estimate_stock_return("TEST", detail, industry_catalysts=None)
+        assert result["optimistic"] == base_result["optimistic"]
+        assert result["pessimistic"] == base_result["pessimistic"]
+        assert result["base"] == base_result["base"]
+
+    def test_catalyst_adjustment_key_in_result(self):
+        """Result always contains catalyst_adjustment key."""
+        detail = self._make_detail()
+        result = estimate_stock_return("TEST", detail)
+        assert "catalyst_adjustment" in result
+        assert result["catalyst_adjustment"] == 0.0
+
+    def test_catalyst_adjustment_value_set(self):
+        """catalyst_adjustment reflects net bonus - penalty."""
+        detail = self._make_detail()
+        catalysts = {"count_positive": 3, "count_negative": 1, "positive": [], "negative": []}
+        result = estimate_stock_return("TEST", detail, industry_catalysts=catalysts)
+        expected_adj = round(min(3 * 0.017, 0.10) - min(1 * 0.017, 0.10), 4)
+        assert abs(result["catalyst_adjustment"] - expected_adj) < 0.0001

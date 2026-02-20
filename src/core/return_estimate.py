@@ -221,6 +221,7 @@ def estimate_stock_return(
     stock_detail: dict,
     news: Optional[list] = None,
     x_sentiment: Optional[dict] = None,
+    industry_catalysts: Optional[dict] = None,
 ) -> dict:
     """Estimate return for a single stock/ETF.
 
@@ -234,6 +235,9 @@ def estimate_stock_return(
         News items from yahoo_client.get_stock_news().
     x_sentiment : dict, optional
         Sentiment data from grok_client.search_x_sentiment().
+    industry_catalysts : dict, optional
+        Catalyst data from graph_query.get_sector_catalysts() (KIK-433).
+        {count_positive: int, count_negative: int, ...}
 
     Returns
     -------
@@ -256,6 +260,7 @@ def estimate_stock_return(
             "dividend_yield": float|None,
             "news": list,
             "x_sentiment": dict|None,
+            "catalyst_adjustment": float,
         }
     """
     if _use_historical_method(stock_detail):
@@ -274,6 +279,18 @@ def estimate_stock_return(
         if vt["is_trap"]:
             value_trap_warning = "\u3001".join(vt["reasons"])
 
+    # Industry catalyst adjustment (KIK-433 Phase 1)
+    # growth_driver catalysts → boost optimistic; risk catalysts → lower pessimistic
+    catalyst_adjustment = 0.0
+    if industry_catalysts and estimate.get("base") is not None:
+        pos_bonus = min(industry_catalysts.get("count_positive", 0) * 0.017, 0.10)
+        neg_penalty = min(industry_catalysts.get("count_negative", 0) * 0.017, 0.10)
+        catalyst_adjustment = round(pos_bonus - neg_penalty, 4)
+        if estimate.get("optimistic") is not None:
+            estimate["optimistic"] = round(estimate["optimistic"] + pos_bonus, 4)
+        if estimate.get("pessimistic") is not None:
+            estimate["pessimistic"] = round(estimate["pessimistic"] - neg_penalty, 4)
+
     return {
         "symbol": symbol,
         "name": stock_detail.get("name") or "",
@@ -285,6 +302,7 @@ def estimate_stock_return(
         "news": news or [],
         "x_sentiment": x_sentiment,
         "value_trap_warning": value_trap_warning,
+        "catalyst_adjustment": catalyst_adjustment,
     }
 
 
@@ -400,8 +418,18 @@ def estimate_portfolio_return(csv_path: str, yahoo_client_module) -> dict:
         # Grok API is reserved for /market-research individual deep-dives.
         x_sentiment = None
 
+        # Fetch sector catalysts from Neo4j (KIK-433 Phase 1)
+        industry_catalysts = None
+        _sector = stock_detail.get("sector") or ""
+        if _sector:
+            try:
+                from src.data.graph_query import get_sector_catalysts as _gsc
+                industry_catalysts = _gsc(_sector, days=30)
+            except Exception:
+                pass
+
         # Estimate returns
-        estimate = estimate_stock_return(symbol, stock_detail, news, x_sentiment)
+        estimate = estimate_stock_return(symbol, stock_detail, news, x_sentiment, industry_catalysts)
 
         # Add position weight info
         price = stock_detail.get("price") or 0

@@ -28,6 +28,9 @@ if HAS_VALUE_TRAP: _detect_value_trap = _vt["_detect_value_trap"]
 HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_prior_report")
 if HAS_GRAPH_QUERY: get_prior_report = _gq["get_prior_report"]
 
+HAS_INDUSTRY_CONTEXT, _ic = try_import("src.data.graph_query", "get_industry_research_for_sector")
+if HAS_INDUSTRY_CONTEXT: get_industry_research_for_sector = _ic["get_industry_research_for_sector"]
+
 
 def main():
     if len(sys.argv) < 2:
@@ -179,6 +182,31 @@ def main():
                     fy_str = f"{fy}年: " if fy else ""
                     print(f"- {fy_str}総還元率 {rate*100:.2f}%")
                 print(f"- **安定度**: {stab_label}")
+
+    # KIK-433: Industry context from Neo4j (same-sector research)
+    _sector = data.get("sector") or ""
+    if HAS_INDUSTRY_CONTEXT and _sector:
+        try:
+            industry_ctx = get_industry_research_for_sector(_sector, days=30)
+        except Exception:
+            industry_ctx = []
+        if industry_ctx:
+            print()
+            print("## 業界コンテキスト（同セクター直近リサーチ）")
+            for ctx in industry_ctx[:3]:
+                target = ctx.get("target", "")
+                date_str = ctx.get("date", "")
+                summary = ctx.get("summary", "")
+                cats = ctx.get("catalysts", [])
+                growth = [c["text"] for c in cats if c.get("type") == "growth_driver"]
+                risks  = [c["text"] for c in cats if c.get("type") == "risk"]
+                print(f"\n### {target} ({date_str})")
+                if summary:
+                    print(summary[:200])
+                if growth:
+                    print("**追い風:** " + "、".join(growth[:3]))
+                if risks:
+                    print("**リスク:** " + "、".join(risks[:3]))
 
     # KIK-406: Prior report comparison
     if HAS_GRAPH_QUERY:

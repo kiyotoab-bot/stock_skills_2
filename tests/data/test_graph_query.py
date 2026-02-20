@@ -228,3 +228,83 @@ class TestGetRecurringPicks:
         gq, driver, _ = gq_with_driver
         driver.session.return_value.__enter__.return_value.run.side_effect = Exception("err")
         assert gq.get_recurring_picks() == []
+
+
+# ===================================================================
+# get_sector_catalysts (KIK-433)
+# ===================================================================
+
+class TestGetSectorCatalysts:
+    def _make_record(self, ctype, text):
+        rec = MagicMock()
+        rec.__getitem__ = lambda self, k: {"type": ctype, "text": text}[k]
+        return rec
+
+    def test_returns_classified_catalysts(self, gq_with_driver):
+        """growth_driver → positive, risk → negative."""
+        gq, _, session = gq_with_driver
+        r1 = self._make_record("growth_driver", "AI adoption rising")
+        r2 = self._make_record("risk", "Supply chain disruption")
+        r3 = self._make_record("trend", "Cloud migration")
+        session.run.return_value = iter([r1, r2, r3])
+        result = gq.get_sector_catalysts("Technology", days=30)
+        assert result["count_positive"] == 1
+        assert result["count_negative"] == 1
+        assert "AI adoption rising" in result["positive"]
+        assert "Supply chain disruption" in result["negative"]
+
+    def test_fallback_when_no_match(self, gq_with_driver):
+        """If sector-matched query returns 0 rows, fallback runs."""
+        gq, _, session = gq_with_driver
+        r1 = self._make_record("growth_driver", "General growth")
+        # First call (sector-matched) returns empty; second call (fallback) returns r1
+        session.run.side_effect = [iter([]), iter([r1])]
+        result = gq.get_sector_catalysts("Technology", days=30)
+        assert result["matched_sector"] is False
+        assert result["count_positive"] == 1
+
+    def test_returns_empty_no_driver(self):
+        import src.data.graph_query as gq
+        with patch("src.data.graph_store._get_driver", return_value=None):
+            result = gq.get_sector_catalysts("Technology")
+        assert result["count_positive"] == 0
+        assert result["count_negative"] == 0
+
+    def test_returns_empty_on_exception(self, gq_with_driver):
+        gq, driver, _ = gq_with_driver
+        driver.session.return_value.__enter__.return_value.run.side_effect = Exception("err")
+        result = gq.get_sector_catalysts("Technology")
+        assert result["positive"] == []
+        assert result["negative"] == []
+
+
+# ===================================================================
+# get_industry_research_for_sector (KIK-433)
+# ===================================================================
+
+class TestGetIndustryResearchForSector:
+    def test_returns_list_with_catalysts(self, gq_with_driver):
+        gq, _, session = gq_with_driver
+        rec = MagicMock()
+        rec.__getitem__ = lambda self, k: {
+            "date": "2026-02-10",
+            "target": "AI",
+            "summary": "AI market is expanding.",
+            "catalysts": [{"type": "growth_driver", "text": "LLM adoption"}],
+        }[k]
+        session.run.return_value = iter([rec])
+        result = gq.get_industry_research_for_sector("Technology", days=30)
+        assert len(result) == 1
+        assert result[0]["target"] == "AI"
+        assert result[0]["date"] == "2026-02-10"
+
+    def test_returns_empty_no_driver(self):
+        import src.data.graph_query as gq
+        with patch("src.data.graph_store._get_driver", return_value=None):
+            result = gq.get_industry_research_for_sector("Technology")
+        assert result == []
+
+    def test_returns_empty_on_exception(self, gq_with_driver):
+        gq, driver, _ = gq_with_driver
+        driver.session.return_value.__enter__.return_value.run.side_effect = Exception("err")
+        assert gq.get_industry_research_for_sector("Technology") == []
