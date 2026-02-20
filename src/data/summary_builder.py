@@ -149,6 +149,8 @@ def build_research_summary(
     elif research_type == "market":
         pa = grok.get("price_action", "")
         if pa:
+            if isinstance(pa, list):
+                pa = "\n".join(pa)
             pa_clean = pa.split("<")[0].strip()
             parts.append(pa_clean[:120])
         sent = grok.get("sentiment") or {}
@@ -158,6 +160,8 @@ def build_research_summary(
     elif research_type == "industry":
         trends = grok.get("trends", "")
         if trends:
+            if isinstance(trends, list):
+                trends = "\n".join(trends)
             trends_clean = trends.split("<")[0].strip()
             parts.append(trends_clean[:120])
 
@@ -167,6 +171,8 @@ def build_research_summary(
             parts.append(name)
         overview = grok.get("overview", "")
         if overview:
+            if isinstance(overview, list):
+                overview = "\n".join(overview)
             overview_clean = overview.split("<")[0].strip()
             parts.append(overview_clean[:120])
 
