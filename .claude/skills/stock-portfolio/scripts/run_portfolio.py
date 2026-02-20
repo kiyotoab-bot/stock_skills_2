@@ -116,6 +116,22 @@ DEFAULT_CSV = os.path.join(
 )
 
 
+# ---------------------------------------------------------------------------
+# Error helpers (KIK-443)
+# ---------------------------------------------------------------------------
+
+def _print_no_portfolio_message(csv_path: str) -> None:
+    """Print human-readable message when portfolio has no data (KIK-443)."""
+    if not os.path.exists(csv_path):
+        print(
+            "⚠️  ポートフォリオデータが見つかりません\n"
+            "    原因: portfolio.csv がまだ作成されていません\n"
+            "    対処: まず buy コマンドで銘柄を追加してください\n"
+            "    例: run_portfolio.py buy --symbol 7203.T --shares 100 --price 2800"
+        )
+    else:
+        print("ポートフォリオにデータがありません。")
+
 
 # ---------------------------------------------------------------------------
 # Fallback CSV helpers (used when Team 2 portfolio_manager is unavailable)
@@ -158,7 +174,7 @@ def cmd_list(csv_path: str) -> None:
         holdings = _fallback_load_csv(csv_path)
 
     if not holdings:
-        print("ポートフォリオにデータがありません。")
+        _print_no_portfolio_message(csv_path)
         return
 
     if HAS_PORTFOLIO_FORMATTER:
@@ -246,7 +262,7 @@ def cmd_snapshot(csv_path: str) -> None:
     # Fallback: no portfolio_manager available
     holdings = _fallback_load_csv(csv_path)
     if not holdings:
-        print("ポートフォリオにデータがありません。")
+        _print_no_portfolio_message(csv_path)
         return
 
     print("## ポートフォリオ スナップショット\n")

@@ -2,7 +2,7 @@
 
 import sys
 
-from scripts.common import setup_project_path, try_import
+from scripts.common import format_user_error, setup_project_path, try_import
 
 
 class TestSetupProjectPath:
@@ -61,3 +61,63 @@ class TestTryImport:
         assert ok is True
         assert len(imports) == 3
         assert all(v is not None for v in imports.values())
+
+
+class TestFormatUserError:
+    """Tests for format_user_error() (KIK-443)."""
+
+    def test_neo4j_unavailable(self):
+        msg = format_user_error("neo4j_unavailable")
+        assert "⚠️" in msg
+        assert "Neo4j" in msg
+        assert "docker compose" in msg
+        assert "Neo4jなしで続行" in msg
+
+    def test_grok_not_configured(self):
+        msg = format_user_error("grok_not_configured")
+        assert "⚠️" in msg
+        assert "XAI_API_KEY" in msg
+        assert "export" in msg
+        assert "yfinance" in msg
+
+    def test_grok_auth_error(self):
+        msg = format_user_error("grok_auth_error")
+        assert "⚠️" in msg
+        assert "認証" in msg
+        assert "xai.com" in msg
+
+    def test_grok_rate_limited(self):
+        msg = format_user_error("grok_rate_limited")
+        assert "⚠️" in msg
+        assert "レート制限" in msg
+        assert "再試行" in msg
+
+    def test_yahoo_timeout(self):
+        msg = format_user_error("yahoo_timeout")
+        assert "⚠️" in msg
+        assert "タイムアウト" in msg
+        assert "ネットワーク" in msg
+
+    def test_portfolio_not_found(self):
+        msg = format_user_error("portfolio_not_found")
+        assert "⚠️" in msg
+        assert "portfolio.csv" in msg
+        assert "buy" in msg
+
+    def test_with_context(self):
+        msg = format_user_error("yahoo_timeout", context="7203.T")
+        assert "7203.T" in msg
+
+    def test_unknown_error_type(self):
+        msg = format_user_error("totally_unknown_error")
+        assert "⚠️" in msg
+        assert "totally_unknown_error" in msg
+
+    def test_all_error_types_start_with_warning(self):
+        error_types = [
+            "neo4j_unavailable", "grok_not_configured", "grok_auth_error",
+            "grok_rate_limited", "yahoo_timeout", "portfolio_not_found",
+        ]
+        for err_type in error_types:
+            msg = format_user_error(err_type)
+            assert msg.startswith("⚠️"), f"{err_type} should start with warning emoji"

@@ -209,7 +209,8 @@ class TestExistingCommandsUnaffected:
             sys.stdout = old_stdout
 
         output = captured.getvalue()
-        assert "データがありません" in output
+        # KIK-443: when CSV does not exist, show human-readable setup guidance
+        assert "portfolio.csv" in output or "データがありません" in output
 
     def test_argparse_recognizes_simulate(self):
         """argparse correctly parses 'simulate' subcommand."""

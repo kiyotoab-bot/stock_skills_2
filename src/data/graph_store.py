@@ -13,6 +13,7 @@ NEO4J_MODE environment variable controls write depth (KIK-413):
 
 import os
 import re
+import sys
 import time
 from datetime import date, datetime
 from typing import Optional
@@ -27,6 +28,7 @@ _NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 _NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password")
 
 _driver = None
+_unavailable_warned = False  # KIK-443: warn once on connection failure
 
 
 # ---------------------------------------------------------------------------
@@ -76,13 +78,33 @@ def _get_driver():
 
 def is_available() -> bool:
     """Check if Neo4j is reachable."""
+    global _unavailable_warned
     driver = _get_driver()
     if driver is None:
+        if not _unavailable_warned:
+            print(
+                "⚠️  Neo4jに接続できません\n"
+                "    原因: Dockerコンテナが起動していない可能性があります\n"
+                "    対処: docker compose up -d を実行してください\n"
+                "    → Neo4jなしで続行します（コンテキストなし）",
+                file=sys.stderr,
+            )
+            _unavailable_warned = True
         return False
     try:
         driver.verify_connectivity()
+        _unavailable_warned = False  # reset on successful connection
         return True
     except Exception:
+        if not _unavailable_warned:
+            print(
+                "⚠️  Neo4jに接続できません\n"
+                "    原因: Dockerコンテナが起動していない可能性があります\n"
+                "    対処: docker compose up -d を実行してください\n"
+                "    → Neo4jなしで続行します（コンテキストなし）",
+                file=sys.stderr,
+            )
+            _unavailable_warned = True
         return False
 
 
