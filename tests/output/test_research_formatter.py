@@ -18,6 +18,7 @@ from src.output.research_formatter import (
     format_business_research,
     _sentiment_label,
     _vix_label,
+    _format_api_status,
 )
 
 
@@ -556,3 +557,160 @@ class TestFormatBusinessResearch:
         """No Perplexity section in output."""
         output = format_business_research(_full_business_data())
         assert "Perplexity" not in output
+
+
+# ===================================================================
+# _format_api_status (KIK-431)
+# ===================================================================
+
+class TestFormatApiStatus:
+    """Tests for _format_api_status helper (KIK-431)."""
+
+    def test_none_returns_empty(self):
+        """Returns empty string for None input."""
+        assert _format_api_status(None) == ""
+
+    def test_empty_dict_returns_empty(self):
+        """Returns empty string for empty dict."""
+        assert _format_api_status({}) == ""
+
+    def test_ok_status(self):
+        """ok status shows ✅ 正常."""
+        api_status = {"grok": {"status": "ok", "status_code": 200, "message": ""}}
+        output = _format_api_status(api_status)
+        assert "APIステータス" in output
+        assert "✅" in output
+        assert "正常" in output
+        assert "Grok (xAI)" in output
+
+    def test_not_configured_status(self):
+        """not_configured status shows 🔑 未設定."""
+        api_status = {"grok": {"status": "not_configured", "status_code": None, "message": ""}}
+        output = _format_api_status(api_status)
+        assert "🔑" in output
+        assert "未設定" in output
+        assert "XAI_API_KEY" in output
+
+    def test_auth_error_status(self):
+        """auth_error status shows ❌ 認証エラー."""
+        api_status = {"grok": {"status": "auth_error", "status_code": 401, "message": "HTTP 401"}}
+        output = _format_api_status(api_status)
+        assert "❌" in output
+        assert "認証エラー" in output
+        assert "401" in output
+
+    def test_rate_limited_status(self):
+        """rate_limited status shows ⚠️ レート制限."""
+        api_status = {"grok": {"status": "rate_limited", "status_code": 429, "message": "HTTP 429"}}
+        output = _format_api_status(api_status)
+        assert "⚠️" in output
+        assert "レート制限" in output
+        assert "429" in output
+
+    def test_timeout_status(self):
+        """timeout status shows ⏱️ タイムアウト."""
+        api_status = {"grok": {"status": "timeout", "status_code": None, "message": "timeout"}}
+        output = _format_api_status(api_status)
+        assert "⏱️" in output
+        assert "タイムアウト" in output
+
+    def test_other_error_status(self):
+        """other_error status shows ❌ エラー."""
+        api_status = {"grok": {"status": "other_error", "status_code": 500, "message": "HTTP 500"}}
+        output = _format_api_status(api_status)
+        assert "❌" in output
+        assert "エラー" in output
+
+
+# ===================================================================
+# API status integration in format functions (KIK-431)
+# ===================================================================
+
+def _add_api_status(data: dict, status: str) -> dict:
+    """Helper: add api_status to data dict."""
+    data = dict(data)
+    data["api_status"] = {"grok": {"status": status, "status_code": None, "message": ""}}
+    return data
+
+
+class TestFormatStockResearchApiStatus:
+    """API status section in format_stock_research (KIK-431)."""
+
+    def test_shows_ok_status(self):
+        """✅ 正常 is shown when grok status is ok."""
+        data = _add_api_status(_full_stock_data(), "ok")
+        output = format_stock_research(data)
+        assert "APIステータス" in output
+        assert "✅" in output
+        assert "正常" in output
+
+    def test_shows_auth_error(self):
+        """❌ 認証エラー is shown when grok status is auth_error."""
+        data = _add_api_status(_full_stock_data(), "auth_error")
+        output = format_stock_research(data)
+        assert "❌" in output
+        assert "認証エラー" in output
+
+    def test_shows_not_configured(self):
+        """🔑 未設定 is shown when grok status is not_configured."""
+        data = _add_api_status(_full_stock_data(), "not_configured")
+        output = format_stock_research(data)
+        assert "🔑" in output
+        assert "未設定" in output
+
+    def test_no_api_status_key_is_backward_compatible(self):
+        """No api_status key → no APIステータス section (backward compat)."""
+        data = _full_stock_data()
+        data.pop("api_status", None)
+        output = format_stock_research(data)
+        assert "APIステータス" not in output
+
+
+class TestFormatIndustryResearchApiStatus:
+    """API status section in format_industry_research (KIK-431)."""
+
+    def test_shows_ok_status(self):
+        """✅ 正常 is shown when grok status is ok."""
+        data = _add_api_status(_full_industry_data(), "ok")
+        output = format_industry_research(data)
+        assert "APIステータス" in output
+        assert "✅" in output
+
+    def test_api_unavailable_shows_not_configured(self):
+        """api_unavailable branch also shows status if api_status present."""
+        data = {
+            "theme": "EV",
+            "type": "industry",
+            "grok_research": {"trends": [], "key_players": [], "growth_drivers": [],
+                              "risks": [], "regulatory": [], "investor_focus": [], "raw_response": ""},
+            "api_unavailable": True,
+            "api_status": {"grok": {"status": "not_configured", "status_code": None, "message": ""}},
+        }
+        output = format_industry_research(data)
+        assert "🔑" in output
+
+
+class TestFormatBusinessResearchApiStatus:
+    """API status section in format_business_research (KIK-431)."""
+
+    def test_shows_ok_status(self):
+        """✅ 正常 is shown when grok status is ok."""
+        data = _add_api_status(_full_business_data(), "ok")
+        output = format_business_research(data)
+        assert "APIステータス" in output
+        assert "✅" in output
+
+    def test_api_unavailable_shows_status(self):
+        """api_unavailable branch also shows status if api_status present."""
+        data = {
+            "symbol": "AAPL",
+            "name": "Apple Inc.",
+            "type": "business",
+            "grok_research": {"overview": "", "segments": [], "revenue_model": "",
+                              "competitive_advantages": [], "key_metrics": [],
+                              "growth_strategy": [], "risks": [], "raw_response": ""},
+            "api_unavailable": True,
+            "api_status": {"grok": {"status": "not_configured", "status_code": None, "message": ""}},
+        }
+        output = format_business_research(data)
+        assert "🔑" in output

@@ -6,6 +6,58 @@ from src.output._format_helpers import fmt_pct as _fmt_pct
 from src.output._format_helpers import fmt_float as _fmt_float
 
 
+# ---------------------------------------------------------------------------
+# API status summary (KIK-431)
+# ---------------------------------------------------------------------------
+
+_STATUS_ICON = {
+    "ok": "✅",
+    "not_configured": "🔑",
+    "auth_error": "❌",
+    "rate_limited": "⚠️",
+    "timeout": "⏱️",
+    "other_error": "❌",
+}
+
+_STATUS_MSG = {
+    "ok": "正常",
+    "not_configured": "未設定 — XAI_API_KEY を設定すると利用可能",
+    "auth_error": "認証エラー (401) — XAI_API_KEY を確認してください",
+    "rate_limited": "レート制限 (429) — しばらく待ってから再試行",
+    "timeout": "タイムアウト — ネットワーク接続を確認",
+    "other_error": "エラー — 詳細は stderr を確認",
+}
+
+
+def _format_api_status(api_status: Optional[dict]) -> str:
+    """Format API status summary section (KIK-431).
+
+    Parameters
+    ----------
+    api_status : dict | None
+        ``{"grok": {"status": ..., "status_code": ..., "message": ...}}``
+        from researcher functions.  Returns empty string when None.
+    """
+    if not api_status:
+        return ""
+    grok = api_status.get("grok", {})
+    if not isinstance(grok, dict):
+        return ""
+    status = grok.get("status", "ok")
+    icon = _STATUS_ICON.get(status, "❓")
+    msg = _STATUS_MSG.get(status, status)
+    lines = [
+        "---",
+        "",
+        "## APIステータス",
+        "| API | 状態 |",
+        "|:----|:-----|",
+        f"| Grok (xAI) | {icon} {msg} |",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _fmt_int(value) -> str:
     """Format a value as a comma-separated integer, or '-' if None."""
     if value is None:
@@ -223,6 +275,11 @@ def format_stock_research(data: dict) -> str:
         )
         lines.append("")
 
+    # API status summary (KIK-431)
+    status_section = _format_api_status(data.get("api_status"))
+    if status_section:
+        lines.append(status_section)
+
     return "\n".join(lines)
 
 
@@ -257,6 +314,9 @@ def format_industry_research(data: dict) -> str:
             "XAI_API_KEY 環境変数を設定してください。*"
         )
         lines.append("")
+        status_section = _format_api_status(data.get("api_status"))
+        if status_section:
+            lines.append(status_section)
         return "\n".join(lines)
 
     grok = data.get("grok_research", {})
@@ -331,6 +391,11 @@ def format_industry_research(data: dict) -> str:
     else:
         lines.append("情報なし")
     lines.append("")
+
+    # API status summary (KIK-431)
+    status_section = _format_api_status(data.get("api_status"))
+    if status_section:
+        lines.append(status_section)
 
     return "\n".join(lines)
 
@@ -462,6 +527,11 @@ def format_market_research(data: dict) -> str:
         lines.append("情報なし")
     lines.append("")
 
+    # API status summary (KIK-431)
+    status_section = _format_api_status(data.get("api_status"))
+    if status_section:
+        lines.append(status_section)
+
     return "\n".join(lines)
 
 
@@ -498,6 +568,9 @@ def format_business_research(data: dict) -> str:
             "XAI_API_KEY 環境変数を設定してください。*"
         )
         lines.append("")
+        status_section = _format_api_status(data.get("api_status"))
+        if status_section:
+            lines.append(status_section)
         return "\n".join(lines)
 
     grok = data.get("grok_research", {})
@@ -574,5 +647,10 @@ def format_business_research(data: dict) -> str:
     else:
         lines.append("情報なし")
     lines.append("")
+
+    # API status summary (KIK-431)
+    status_section = _format_api_status(data.get("api_status"))
+    if status_section:
+        lines.append(status_section)
 
     return "\n".join(lines)

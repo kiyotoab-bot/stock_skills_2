@@ -14,6 +14,8 @@ from src.data.grok_client import (
     is_available,
     search_x_sentiment,
     _build_sentiment_prompt,
+    get_error_status,
+    reset_error_state,
 )
 
 
@@ -187,3 +189,107 @@ class TestSearchXSentiment:
 
         result = search_x_sentiment("AAPL")
         assert result["positive"] == []
+
+
+# ---------------------------------------------------------------------------
+# get_error_status (KIK-431)
+# ---------------------------------------------------------------------------
+
+class TestGetErrorStatus:
+    """Tests for error state tracking (KIK-431)."""
+
+    def setup_method(self):
+        """Reset error state before each test."""
+        reset_error_state()
+
+    def test_not_configured(self, monkeypatch):
+        """Status is not_configured when XAI_API_KEY is absent."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+        search_x_sentiment("AAPL")
+        status = get_error_status()
+        assert status["status"] == "not_configured"
+        assert status["status_code"] is None
+
+    @patch("src.data.grok_client.requests.post")
+    def test_auth_error(self, mock_post, monkeypatch):
+        """Status is auth_error on HTTP 401."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_post.return_value = mock_response
+
+        search_x_sentiment("AAPL")
+        status = get_error_status()
+        assert status["status"] == "auth_error"
+        assert status["status_code"] == 401
+
+    @patch("src.data.grok_client.requests.post")
+    def test_rate_limited(self, mock_post, monkeypatch):
+        """Status is rate_limited on HTTP 429."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_post.return_value = mock_response
+
+        search_x_sentiment("AAPL")
+        status = get_error_status()
+        assert status["status"] == "rate_limited"
+        assert status["status_code"] == 429
+
+    @patch("src.data.grok_client.requests.post")
+    def test_other_error(self, mock_post, monkeypatch):
+        """Status is other_error on non-200/401/429 responses."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_post.return_value = mock_response
+
+        search_x_sentiment("AAPL")
+        status = get_error_status()
+        assert status["status"] == "other_error"
+        assert status["status_code"] == 500
+
+    @patch("src.data.grok_client.requests.post")
+    def test_timeout(self, mock_post, monkeypatch):
+        """Status is timeout on request timeout."""
+        import requests as req
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_post.side_effect = req.exceptions.Timeout("Timed out")
+
+        search_x_sentiment("AAPL", timeout=1)
+        status = get_error_status()
+        assert status["status"] == "timeout"
+        assert status["status_code"] is None
+
+    @patch("src.data.grok_client.requests.post")
+    def test_ok(self, mock_post, monkeypatch):
+        """Status is ok on a successful call."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"positive":[],"negative":[],"sentiment_score":0}'}],
+                }
+            ]
+        }
+        mock_post.return_value = mock_response
+
+        search_x_sentiment("AAPL")
+        status = get_error_status()
+        assert status["status"] == "ok"
+        assert status["status_code"] == 200
+
+    def test_reset_error_state(self, monkeypatch):
+        """reset_error_state() clears all state fields."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+        search_x_sentiment("AAPL")
+        assert get_error_status()["status"] == "not_configured"
+
+        reset_error_state()
+        status = get_error_status()
+        assert status["status"] == "ok"
+        assert status["status_code"] is None
+        assert status["message"] == ""

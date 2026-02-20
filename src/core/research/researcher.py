@@ -24,6 +24,13 @@ def _grok_available() -> bool:
     return HAS_GROK and grok_client.is_available()
 
 
+def _get_grok_api_status() -> dict:
+    """Return the Grok API status after calls (KIK-431)."""
+    if not HAS_GROK or not grok_client.is_available():
+        return {"grok": {"status": "not_configured", "status_code": None, "message": ""}}
+    return {"grok": grok_client.get_error_status()}
+
+
 def _safe_grok_call(func, *args, **kwargs):
     """Call a grok_client function with error handling.
 
@@ -182,6 +189,7 @@ def research_stock(symbol: str, yahoo_client_module) -> dict:
         "grok_research": grok_research,
         "x_sentiment": x_sentiment,
         "news": news,
+        "api_status": _get_grok_api_status(),
     }
 
 
@@ -212,6 +220,7 @@ def research_industry(theme: str) -> dict:
         "type": "industry",
         "grok_research": grok_result,
         "api_unavailable": not grok_available,
+        "api_status": _get_grok_api_status(),
     }
 
 
@@ -255,6 +264,7 @@ def research_market(market: str, yahoo_client_module=None) -> dict:
         "macro_indicators": macro_indicators,
         "grok_research": grok_research,
         "api_unavailable": not grok_available,
+        "api_status": _get_grok_api_status(),
     }
 
 
@@ -294,4 +304,5 @@ def research_business(symbol: str, yahoo_client_module) -> dict:
         "type": "business",
         "grok_research": grok_result,
         "api_unavailable": not grok_available,
+        "api_status": _get_grok_api_status(),
     }

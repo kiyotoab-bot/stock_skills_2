@@ -18,6 +18,7 @@ from src.core.research.researcher import (
     research_market,
     research_business,
     _grok_warned,
+    _get_grok_api_status,
 )
 
 
@@ -389,3 +390,84 @@ class TestResearchBusiness:
         assert result["symbol"] == "INVALID"
         assert result["name"] == ""
         assert result["api_unavailable"] is True
+
+
+# ===================================================================
+# api_status (KIK-431)
+# ===================================================================
+
+class TestApiStatus:
+    """Tests for api_status in research results (KIK-431)."""
+
+    def test_research_stock_includes_api_status(self, monkeypatch):
+        """research_stock() returns api_status with grok key."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+        mock_yc = _make_mock_yahoo_client(info=_sample_stock_info())
+
+        result = research_stock("7203.T", mock_yc)
+
+        assert "api_status" in result
+        assert "grok" in result["api_status"]
+        assert "status" in result["api_status"]["grok"]
+
+    def test_research_industry_includes_api_status(self, monkeypatch):
+        """research_industry() returns api_status with grok key."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+        result = research_industry("半導体")
+
+        assert "api_status" in result
+        assert "grok" in result["api_status"]
+
+    def test_research_market_includes_api_status(self, monkeypatch):
+        """research_market() returns api_status with grok key."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+        result = research_market("日経平均")
+
+        assert "api_status" in result
+        assert "grok" in result["api_status"]
+
+    def test_research_business_includes_api_status(self, monkeypatch):
+        """research_business() returns api_status with grok key."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+        mock_yc = _make_mock_yahoo_client(info={"name": "Canon Inc."})
+
+        result = research_business("7751.T", mock_yc)
+
+        assert "api_status" in result
+        assert "grok" in result["api_status"]
+
+    def test_api_status_not_configured_when_no_key(self, monkeypatch):
+        """api_status.grok.status is not_configured when key absent."""
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+        mock_yc = _make_mock_yahoo_client(info=_sample_stock_info())
+
+        result = research_stock("7203.T", mock_yc)
+
+        assert result["api_status"]["grok"]["status"] == "not_configured"
+
+    def test_api_status_ok_when_grok_succeeds(self, monkeypatch):
+        """api_status.grok.status is ok when Grok API succeeds."""
+        monkeypatch.setenv("XAI_API_KEY", "xai-test-key")
+
+        from src.data import grok_client
+        monkeypatch.setattr(grok_client, "is_available", lambda: True)
+        monkeypatch.setattr(
+            grok_client, "search_stock_deep",
+            lambda symbol, name="", timeout=30: _sample_deep_result(),
+        )
+        monkeypatch.setattr(
+            grok_client, "search_x_sentiment",
+            lambda symbol, name="", timeout=30: _sample_sentiment(),
+        )
+        # Simulate ok state
+        monkeypatch.setattr(
+            grok_client, "get_error_status",
+            lambda: {"status": "ok", "status_code": 200, "message": ""},
+        )
+
+        mock_yc = _make_mock_yahoo_client(info=_sample_stock_info())
+        result = research_stock("7203.T", mock_yc)
+
+        assert result["api_status"]["grok"]["status"] == "ok"
