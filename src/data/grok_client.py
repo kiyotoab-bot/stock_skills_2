@@ -143,6 +143,15 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
     """
     api_key = _get_api_key()
     if not api_key:
+        if not _error_warned[0]:
+            print(
+                "⚠️  Grok APIキーが設定されていません\n"
+                "    原因: XAI_API_KEY 環境変数が未設定です\n"
+                "    対処: export XAI_API_KEY=your_key を設定してください\n"
+                "    → yfinanceデータのみで実行します",
+                file=sys.stderr,
+            )
+            _error_warned[0] = True
         _error_state["status"] = "not_configured"
         _error_state["status_code"] = None
         _error_state["message"] = "XAI_API_KEY is not set"
@@ -169,11 +178,29 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
 
         if response.status_code != 200:
             if not _error_warned[0]:
-                print(
-                    f"[grok_client] API error: "
-                    f"status={response.status_code} (subsequent errors suppressed)",
-                    file=sys.stderr,
-                )
+                if response.status_code == 401:
+                    print(
+                        "⚠️  Grok API認証エラー\n"
+                        "    原因: APIキーが無効または期限切れの可能性があります\n"
+                        "    対処: xai.com でAPIキーを確認・再発行してください\n"
+                        "    → yfinanceデータのみで実行します",
+                        file=sys.stderr,
+                    )
+                elif response.status_code == 429:
+                    print(
+                        "⚠️  Grok APIのレート制限に達しました\n"
+                        "    原因: 短時間に多くのリクエストが送信されました\n"
+                        "    対処: しばらく待ってから再試行してください（通常1〜2分）\n"
+                        "    → yfinanceデータのみで実行します",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"⚠️  Grok APIエラー (HTTP {response.status_code})\n"
+                        "    対処: しばらく待ってから再試行してください\n"
+                        "    → yfinanceデータのみで実行します",
+                        file=sys.stderr,
+                    )
                 _error_warned[0] = True
             # KIK-431: track error type by status code
             if response.status_code == 401:
@@ -205,7 +232,13 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
 
     except requests.exceptions.Timeout:
         if not _error_warned[0]:
-            print("[grok_client] Timeout (subsequent errors suppressed)", file=sys.stderr)
+            print(
+                "⚠️  Grok APIへの接続がタイムアウトしました\n"
+                "    原因: ネットワーク接続が不安定、またはAPIが一時的に応答していません\n"
+                "    対処: ネットワーク接続を確認し、再試行してください\n"
+                "    → yfinanceデータのみで実行します",
+                file=sys.stderr,
+            )
             _error_warned[0] = True
         _error_state["status"] = "timeout"
         _error_state["status_code"] = None
@@ -213,7 +246,13 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
         return ""
     except requests.exceptions.RequestException as e:
         if not _error_warned[0]:
-            print(f"[grok_client] Request error: {e} (subsequent errors suppressed)", file=sys.stderr)
+            print(
+                f"⚠️  Grok APIへの接続に失敗しました\n"
+                "    原因: ネットワークエラーが発生しました\n"
+                "    対処: ネットワーク接続を確認し、再試行してください\n"
+                "    → yfinanceデータのみで実行します",
+                file=sys.stderr,
+            )
             _error_warned[0] = True
         _error_state["status"] = "other_error"
         _error_state["status_code"] = None
@@ -221,7 +260,12 @@ def _call_grok_api(prompt: str, timeout: int = 30) -> str:
         return ""
     except Exception as e:
         if not _error_warned[0]:
-            print(f"[grok_client] Unexpected error: {e} (subsequent errors suppressed)", file=sys.stderr)
+            print(
+                f"⚠️  Grok APIで予期しないエラーが発生しました\n"
+                "    対処: しばらく待ってから再試行してください\n"
+                "    → yfinanceデータのみで実行します",
+                file=sys.stderr,
+            )
             _error_warned[0] = True
         _error_state["status"] = "other_error"
         _error_state["status_code"] = None
