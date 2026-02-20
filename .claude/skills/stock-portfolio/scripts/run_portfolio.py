@@ -96,6 +96,12 @@ _IMPORT_REGISTRY = [
     ("src.data.graph_store", "GRAPH_STORE", [
         ("sync_portfolio", None),
     ]),
+    ("src.core.portfolio.portfolio_manager", "PERFORMANCE_REVIEW", [
+        ("get_performance_review", None),
+    ]),
+    ("src.output.review_formatter", "REVIEW_FORMATTER", [
+        ("format_performance_review", None),
+    ]),
 ]
 
 for _mod_path, _flag_suffix, _names in _IMPORT_REGISTRY:
@@ -390,19 +396,59 @@ def cmd_buy(
 # Command: sell
 # ---------------------------------------------------------------------------
 
-def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
-    """Record a sale (reduce shares for a symbol)."""
+def cmd_sell(
+    csv_path: str,
+    symbol: str,
+    shares: int,
+    sell_price: float | None = None,
+    sell_date: str | None = None,
+) -> None:
+    """Record a sale (reduce shares for a symbol). KIK-441: sell_price/sell_date added."""
     if HAS_PORTFOLIO_MANAGER:
         try:
-            result = sell_position(csv_path, symbol, shares)
+            result = sell_position(csv_path, symbol, shares,
+                                   sell_price=sell_price, sell_date=sell_date)
             remaining = result.get("shares", 0)
-            if remaining == 0:
-                print(f"売却完了: {symbol} {shares}株 (全株売却 -- ポートフォリオから削除)")
+            cost_price = result.get("cost_price")
+            realized_pnl = result.get("realized_pnl")
+            pnl_rate = result.get("pnl_rate")
+            hold_days = result.get("hold_days")
+            currency = result.get("cost_currency", "JPY")
+            trade_date = sell_date or date.today().isoformat()
+
+            if HAS_PORTFOLIO_FORMATTER:
+                print(format_trade_result({
+                    "symbol": symbol,
+                    "shares": shares,
+                    "price": sell_price,
+                    "currency": currency,
+                    "total_shares": remaining,
+                    "avg_cost": None,
+                    "cost_price": cost_price,
+                    "sell_price": sell_price,
+                    "realized_pnl": realized_pnl,
+                    "pnl_rate": pnl_rate,
+                    "hold_days": hold_days,
+                }, "sell"))
             else:
-                print(f"売却記録を追加しました: {symbol} {shares}株 (残り {remaining}株)")
+                if remaining == 0:
+                    print(f"売却完了: {symbol} {shares}株 (全株売却 -- ポートフォリオから削除)")
+                else:
+                    print(f"売却記録を追加しました: {symbol} {shares}株 (残り {remaining}株)")
+
             if HAS_HISTORY:
                 try:
-                    save_trade(symbol, "sell", shares, 0.0, "", date.today().isoformat())
+                    save_trade(
+                        symbol, "sell", shares,
+                        price=cost_price or 0.0,
+                        currency=currency,
+                        date_str=trade_date,
+                        sell_price=sell_price,
+                        realized_pnl=realized_pnl,
+                        pnl_rate=pnl_rate,
+                        hold_days=hold_days,
+                        cost_price=cost_price,
+                    )
                 except Exception as e:
                     print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
                 _save_trade_market_context()
@@ -431,9 +477,11 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
 
     _fallback_save_csv(csv_path, holdings)
 
+    trade_date = sell_date or date.today().isoformat()
     if HAS_HISTORY:
         try:
-            save_trade(symbol, "sell", shares, 0.0, "", date.today().isoformat())
+            save_trade(symbol, "sell", shares, 0.0, "", trade_date,
+                       sell_price=sell_price)
         except Exception as e:
             print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         _save_trade_market_context()
@@ -445,6 +493,36 @@ def cmd_sell(csv_path: str, symbol: str, shares: int) -> None:
             sync_portfolio(_holdings)
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Command: review (KIK-441)
+# ---------------------------------------------------------------------------
+
+
+def cmd_review(
+    year: int | None = None,
+    symbol: str | None = None,
+) -> None:
+    """売買パフォーマンスレビューを表示する (KIK-441)。"""
+    if not HAS_PERFORMANCE_REVIEW:
+        print("Error: get_performance_review が利用できません。")
+        sys.exit(1)
+
+    data = get_performance_review(year=year, symbol=symbol)
+
+    if HAS_REVIEW_FORMATTER:
+        print(format_performance_review(data, year=year, symbol=symbol))
+    else:
+        # フォールバック: 統計だけプリント
+        stats = data.get("stats", {})
+        trades = data.get("trades", [])
+        print(f"## 売買パフォーマンスレビュー")
+        print(f"- 取引件数: {stats.get('total', 0)}")
+        if stats.get("win_rate") is not None:
+            print(f"- 勝率: {stats['win_rate'] * 100:.1f}%")
+        if stats.get("total_pnl") is not None:
+            print(f"- 合計実現損益: {stats['total_pnl']:+,.0f}")
 
 
 # ---------------------------------------------------------------------------
@@ -979,6 +1057,17 @@ def main():
     sell_parser = subparsers.add_parser("sell", help="売却記録")
     sell_parser.add_argument("--symbol", required=True, help="銘柄シンボル (例: 7203.T)")
     sell_parser.add_argument("--shares", required=True, type=int, help="売却株数")
+    sell_parser.add_argument("--price", type=float, default=None,
+                             help="売却単価 (KIK-441, 例: 138.5)")
+    sell_parser.add_argument("--date", default=None,
+                             help="売却日 (KIK-441, YYYY-MM-DD, デフォルト: 今日)")
+
+    # review (KIK-441)
+    review_parser = subparsers.add_parser("review", help="売買パフォーマンスレビュー (KIK-441)")
+    review_parser.add_argument("--year", type=int, default=None,
+                               help="集計年 (例: 2026, デフォルト: 全期間)")
+    review_parser.add_argument("--symbol", default=None,
+                               help="銘柄フィルタ (例: NVDA)")
 
     # analyze
     subparsers.add_parser("analyze", help="構造分析 (セクター/地域/通貨HHI)")
@@ -1097,7 +1186,13 @@ def main():
             memo=args.memo,
         )
     elif args.command == "sell":
-        cmd_sell(csv_path=csv_path, symbol=args.symbol, shares=args.shares)
+        cmd_sell(
+            csv_path=csv_path,
+            symbol=args.symbol,
+            shares=args.shares,
+            sell_price=getattr(args, "price", None),
+            sell_date=getattr(args, "date", None),
+        )
     elif args.command == "analyze":
         cmd_analyze(csv_path)
     elif args.command == "list":
@@ -1133,6 +1228,11 @@ def main():
             preset=args.preset,
             region=args.region,
             days=args.days,
+        )
+    elif args.command == "review":
+        cmd_review(
+            year=getattr(args, "year", None),
+            symbol=getattr(args, "symbol", None),
         )
     else:
         parser.print_help()

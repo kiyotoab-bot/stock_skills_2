@@ -30,6 +30,7 @@ from src.output.analyze_formatter import (
 )
 from src.output.rebalance_formatter import format_rebalance_report
 from src.output.simulate_formatter import format_simulation, format_what_if
+from src.output.review_formatter import format_performance_review
 
 __all__ = [
     "format_snapshot",
@@ -42,6 +43,7 @@ __all__ = [
     "format_rebalance_report",
     "format_simulation",
     "format_what_if",
+    "format_performance_review",
 ]
 
 
@@ -266,6 +268,41 @@ def format_trade_result(result: dict, action: str) -> str:
             f"- \u66f4\u65b0\u5f8c\u306e\u4fdd\u6709: {total_shares:,}\u682a "
             f"(\u5e73\u5747\u53d6\u5f97\u5358\u4fa1: {avg_cost_str})"
         )
+
+    # KIK-441: sell 時に P&L がある場合は追加表示
+    if action_lower in ("sell", "\u58f2\u5374", "\u58f2\u308a"):
+        realized_pnl = result.get("realized_pnl")
+        pnl_rate = result.get("pnl_rate")
+        hold_days = result.get("hold_days")
+        sell_price_val = result.get("sell_price")
+        cost_price_val = result.get("cost_price")
+
+        if realized_pnl is not None:
+            lines.append("")
+            lines.append("### \u5b9f\u73fe\u640d\u76ca")
+            if cost_price_val is not None:
+                lines.append(
+                    f"- \u53d6\u5f97\u5358\u4fa1: {_fmt_currency_value(cost_price_val, currency)}"
+                )
+            if sell_price_val is not None:
+                lines.append(
+                    f"- 売却単価: {_fmt_currency_value(sell_price_val, currency)}"
+                )
+            if hold_days is not None:
+                lines.append(f"- \u4fdd\u6709\u671f\u9593: {hold_days}\u65e5")
+            sign = "+" if realized_pnl >= 0 else ""
+            rate_str = (
+                f" ({sign}{pnl_rate * 100:.2f}%)" if pnl_rate is not None else ""
+            )
+            lines.append(
+                f"- \u5b9f\u73fe\u640d\u76ca: **{sign}{_fmt_currency_value(realized_pnl, currency)}**{rate_str}"
+            )
+            # 税引後概算（20%課税）
+            after_tax = realized_pnl * 0.80
+            sign2 = "+" if after_tax >= 0 else ""
+            lines.append(
+                f"- \u7a0e\u5f15\u5f8c\u6982\u7b97: {sign2}{_fmt_currency_value(after_tax, currency)}\uff0820%\u8ab2\u7a0e\u60f3\u5b9a\uff09"
+            )
 
     lines.append("")
     return "\n".join(lines)

@@ -208,13 +208,23 @@ def sell_position(
     csv_path: str,
     symbol: str,
     shares: int,
+    sell_price: Optional[float] = None,
+    sell_date: Optional[str] = None,
 ) -> dict:
     """売却。shares分を減算。0以下になったら行を削除。
+
+    Parameters
+    ----------
+    sell_price : float, optional
+        売却単価。指定時に realized_pnl / pnl_rate を計算。
+    sell_date : str, optional
+        売却日 (YYYY-MM-DD)。指定時に hold_days を計算。
 
     Returns
     -------
     dict
-        更新後のポジション dict（削除された場合は shares=0 の dict）
+        更新後のポジション dict（削除された場合は shares=0 の dict）。
+        KIK-441: sold_shares / sell_price / realized_pnl / pnl_rate / hold_days を追加。
 
     Raises
     ------
@@ -252,7 +262,124 @@ def sell_position(
         result = dict(target)
 
     save_portfolio(portfolio, csv_path)
+
+    # KIK-441: P&L フィールドを追加
+    result["sold_shares"] = shares
+    result["sell_price"] = sell_price
+
+    cost_price = target.get("cost_price")
+    if sell_price is not None and cost_price is not None and cost_price != 0:
+        result["realized_pnl"] = (sell_price - cost_price) * shares
+        result["pnl_rate"] = (sell_price - cost_price) / cost_price
+    else:
+        result["realized_pnl"] = None
+        result["pnl_rate"] = None
+
+    purchase_date = target.get("purchase_date", "")
+    if sell_date and purchase_date:
+        try:
+            from datetime import date as _date
+            d1 = _date.fromisoformat(purchase_date)
+            d2 = _date.fromisoformat(sell_date)
+            result["hold_days"] = (d2 - d1).days
+        except (ValueError, TypeError):
+            result["hold_days"] = None
+    else:
+        result["hold_days"] = None
+
     return result
+
+
+def get_performance_review(
+    year: Optional[int] = None,
+    symbol: Optional[str] = None,
+    base_dir: str = "data/history",
+) -> dict:
+    """売買パフォーマンスレビュー集計 (KIK-441)。
+
+    data/history/trade/*.json から trade_type="sell" かつ
+    realized_pnl があるレコードを集計して統計を返す。
+
+    Parameters
+    ----------
+    year : int, optional
+        指定年でフィルタ（例: 2026）。None なら全期間。
+    symbol : str, optional
+        指定シンボルでフィルタ。None なら全銘柄。
+    base_dir : str
+        history ルートディレクトリ。
+
+    Returns
+    -------
+    dict
+        {
+            "trades": [...],  # フィルタ済みの sell レコード一覧
+            "stats": {
+                "total": int,
+                "wins": int,
+                "win_rate": float | None,
+                "avg_return": float | None,   # pnl_rate の平均
+                "avg_hold_days": float | None,
+                "total_pnl": float | None,
+            }
+        }
+    """
+    from src.data.history_store import load_history
+
+    all_trades = load_history("trade", base_dir=base_dir)
+
+    # sell かつ realized_pnl があるものだけ
+    sells = [
+        t for t in all_trades
+        if t.get("trade_type") == "sell" and t.get("realized_pnl") is not None
+    ]
+
+    # year フィルタ
+    if year is not None:
+        sells = [t for t in sells if str(t.get("date", "")).startswith(str(year))]
+
+    # symbol フィルタ
+    if symbol is not None:
+        sym_upper = symbol.upper()
+        sells = [t for t in sells if t.get("symbol", "").upper() == sym_upper]
+
+    # 統計計算
+    total = len(sells)
+    if total == 0:
+        return {
+            "trades": [],
+            "stats": {
+                "total": 0,
+                "wins": 0,
+                "win_rate": None,
+                "avg_return": None,
+                "avg_hold_days": None,
+                "total_pnl": None,
+            },
+        }
+
+    wins = sum(1 for t in sells if (t.get("realized_pnl") or 0) > 0)
+    win_rate = wins / total
+
+    pnl_rates_stored = [t["pnl_rate"] for t in sells if t.get("pnl_rate") is not None]
+    avg_return = sum(pnl_rates_stored) / len(pnl_rates_stored) if pnl_rates_stored else None
+
+    hold_days_list = [t["hold_days"] for t in sells if t.get("hold_days") is not None]
+    avg_hold_days = sum(hold_days_list) / len(hold_days_list) if hold_days_list else None
+
+    total_pnl = sum(t.get("realized_pnl", 0) or 0 for t in sells)
+
+    return {
+        "trades": sells,
+        "stats": {
+            "total": total,
+            "wins": wins,
+            "win_rate": win_rate,
+            "avg_return": avg_return,
+            "avg_hold_days": avg_hold_days,
+            "total_pnl": total_pnl,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

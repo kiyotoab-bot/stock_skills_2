@@ -34,8 +34,22 @@ python3 .../run_portfolio.py buy --symbol <sym> --shares <n> --price <p> [--curr
 ### sell -- 売却記録
 
 ```bash
-python3 .../run_portfolio.py sell --symbol <sym> --shares <n>
+python3 .../run_portfolio.py sell --symbol <sym> --shares <n> [--price <売却単価>] [--date YYYY-MM-DD]
 ```
+
+`--price` を指定すると実現損益・損益率・税引後概算を計算して表示し、`data/history/trade/*.json` に保存する（KIK-441）。
+
+### review -- 売買パフォーマンスレビュー (KIK-441)
+
+過去の売却記録（`--price` 付きで記録したもの）から損益統計を集計して表示する。
+
+```bash
+python3 .../run_portfolio.py review [--year 2026] [--symbol NVDA]
+```
+
+**出力内容:**
+- 取引履歴テーブル（銘柄・売却日・株数・取得単価・売却単価・保有日数・実現損益・損益率）
+- 統計（取引件数・勝率・平均リターン・平均保有期間・合計実現損益）
 
 ### analyze -- 構造分析
 
