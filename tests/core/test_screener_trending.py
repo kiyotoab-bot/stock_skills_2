@@ -168,7 +168,7 @@ class TestTrendingScreen:
         screener.screen(region="us", theme="AI")
 
         mock_grok.search_trending_stocks.assert_called_once_with(
-            region="us", theme="AI",
+            region="us", theme="AI", timeout=60,
         )
 
     def test_no_data_sorted_last(self):

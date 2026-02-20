@@ -749,7 +749,7 @@ def search_market(
 def search_trending_stocks(
     region: str = "japan",
     theme: Optional[str] = None,
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> dict:
     """Search X for currently trending stocks in a specific market region.
 

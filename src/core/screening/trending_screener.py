@@ -43,6 +43,7 @@ class TrendingScreener:
         region: str = "japan",
         theme: Optional[str] = None,
         top_n: int = 20,
+        timeout: int = 60,
     ) -> tuple:
         """Run the trending stock screening pipeline.
 
@@ -52,7 +53,7 @@ class TrendingScreener:
             (results, market_context)
         """
         trending = self.grok_client.search_trending_stocks(
-            region=region, theme=theme,
+            region=region, theme=theme, timeout=timeout,
         )
 
         trending_stocks = trending.get("stocks", [])
