@@ -9,6 +9,7 @@ from src.core.portfolio.portfolio_manager import (
     save_portfolio,
     add_position,
     sell_position,
+    get_performance_review,
     CSV_COLUMNS,
     _infer_country,
     _infer_currency,
@@ -325,6 +326,196 @@ class TestSellPosition:
         add_position(csv_path, "AAPL", 10, 175.0, "USD", "2025-01-01")
         result = sell_position(csv_path, "aapl", 5)
         assert result["shares"] == 5
+
+    # KIK-441: P&L フィールドのテスト
+
+    def test_sell_with_price_returns_realized_pnl(self, csv_path):
+        """sell_position with sell_price should return realized_pnl and pnl_rate."""
+        add_position(csv_path, "NVDA", 10, 120.0, "USD", "2025-01-01")
+        result = sell_position(csv_path, "NVDA", 5, sell_price=138.0)
+
+        assert result["sell_price"] == 138.0
+        assert result["sold_shares"] == 5
+        assert result["realized_pnl"] == pytest.approx((138.0 - 120.0) * 5)
+        assert result["pnl_rate"] == pytest.approx((138.0 - 120.0) / 120.0)
+
+    def test_sell_without_price_no_realized_pnl(self, csv_path):
+        """sell_position without sell_price should have None P&L fields."""
+        add_position(csv_path, "NVDA", 10, 120.0, "USD", "2025-01-01")
+        result = sell_position(csv_path, "NVDA", 5)
+
+        assert result["sell_price"] is None
+        assert result["realized_pnl"] is None
+        assert result["pnl_rate"] is None
+
+    def test_sell_with_date_calculates_hold_days(self, csv_path):
+        """sell_position with sell_date should calculate hold_days."""
+        add_position(csv_path, "NVDA", 10, 120.0, "USD", "2026-01-10")
+        result = sell_position(csv_path, "NVDA", 5,
+                               sell_price=138.0, sell_date="2026-02-20")
+
+        assert result["hold_days"] == 41  # 2026-01-10 to 2026-02-20
+
+    def test_sell_negative_pnl(self, csv_path):
+        """sell_position with sell_price < cost_price should return negative P&L."""
+        add_position(csv_path, "NVDA", 10, 150.0, "USD", "2025-01-01")
+        result = sell_position(csv_path, "NVDA", 5, sell_price=120.0)
+
+        assert result["realized_pnl"] == pytest.approx((120.0 - 150.0) * 5)
+        assert result["pnl_rate"] == pytest.approx((120.0 - 150.0) / 150.0)
+
+    def test_sell_without_date_no_hold_days(self, csv_path):
+        """sell_position without sell_date should have None hold_days."""
+        add_position(csv_path, "NVDA", 10, 120.0, "USD", "2026-01-10")
+        result = sell_position(csv_path, "NVDA", 5, sell_price=138.0)
+
+        assert result["hold_days"] is None
+
+
+# ===================================================================
+# get_performance_review (KIK-441)
+# ===================================================================
+
+
+class TestGetPerformanceReview:
+    def test_empty_history_returns_empty_stats(self, tmp_path):
+        """get_performance_review with no trade files should return empty stats."""
+        base_dir = str(tmp_path)
+        data = get_performance_review(base_dir=base_dir)
+
+        assert data["stats"]["total"] == 0
+        assert data["stats"]["win_rate"] is None
+        assert data["trades"] == []
+
+    def test_filters_only_sell_with_pnl(self, tmp_path):
+        """Only sell trades with realized_pnl should be included."""
+        import json
+        trade_dir = tmp_path / "trade"
+        trade_dir.mkdir(parents=True)
+
+        # buy trade — should be excluded
+        (trade_dir / "2026-01-01_buy_NVDA.json").write_text(json.dumps({
+            "trade_type": "buy", "symbol": "NVDA", "date": "2026-01-01",
+            "shares": 10, "price": 120.0, "currency": "USD",
+        }), encoding="utf-8")
+
+        # sell without realized_pnl — should be excluded
+        (trade_dir / "2026-02-01_sell_AAPL_nopnl.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "AAPL", "date": "2026-02-01",
+            "shares": 5, "price": 175.0, "currency": "USD",
+        }), encoding="utf-8")
+
+        # sell with realized_pnl — should be included
+        (trade_dir / "2026-02-20_sell_NVDA.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "NVDA", "date": "2026-02-20",
+            "shares": 5, "price": 120.0, "currency": "USD",
+            "sell_price": 138.0, "realized_pnl": 90.0, "pnl_rate": 0.15,
+            "hold_days": 41,
+        }), encoding="utf-8")
+
+        data = get_performance_review(base_dir=str(tmp_path))
+
+        assert data["stats"]["total"] == 1
+        assert data["stats"]["wins"] == 1
+        assert data["stats"]["win_rate"] == pytest.approx(1.0)
+        assert data["stats"]["avg_return"] == pytest.approx(0.15)
+        assert data["stats"]["avg_hold_days"] == pytest.approx(41.0)
+        assert data["stats"]["total_pnl"] == pytest.approx(90.0)
+
+    def test_year_filter(self, tmp_path):
+        """Year filter should exclude trades from other years."""
+        import json
+        trade_dir = tmp_path / "trade"
+        trade_dir.mkdir(parents=True)
+
+        (trade_dir / "2025-12-01_sell_NVDA.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "NVDA", "date": "2025-12-01",
+            "shares": 5, "realized_pnl": 50.0, "pnl_rate": 0.10,
+        }), encoding="utf-8")
+
+        (trade_dir / "2026-02-20_sell_NVDA.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "NVDA", "date": "2026-02-20",
+            "shares": 5, "realized_pnl": 90.0, "pnl_rate": 0.15,
+        }), encoding="utf-8")
+
+        data = get_performance_review(year=2026, base_dir=str(tmp_path))
+        assert data["stats"]["total"] == 1
+        assert data["stats"]["total_pnl"] == pytest.approx(90.0)
+
+    def test_symbol_filter(self, tmp_path):
+        """Symbol filter should exclude trades for other symbols."""
+        import json
+        trade_dir = tmp_path / "trade"
+        trade_dir.mkdir(parents=True)
+
+        (trade_dir / "2026-01-01_sell_AAPL.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "AAPL", "date": "2026-01-01",
+            "shares": 3, "realized_pnl": 30.0, "pnl_rate": 0.05,
+        }), encoding="utf-8")
+
+        (trade_dir / "2026-02-20_sell_NVDA.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "NVDA", "date": "2026-02-20",
+            "shares": 5, "realized_pnl": 90.0, "pnl_rate": 0.15,
+        }), encoding="utf-8")
+
+        data = get_performance_review(symbol="NVDA", base_dir=str(tmp_path))
+        assert data["stats"]["total"] == 1
+        assert len(data["trades"]) == 1
+        assert data["trades"][0]["symbol"] == "NVDA"
+
+    def test_win_rate_calculation(self, tmp_path):
+        """Win rate should be wins / total (1 win out of 2 = 50%)."""
+        import json
+        trade_dir = tmp_path / "trade"
+        trade_dir.mkdir(parents=True)
+
+        (trade_dir / "2026-01-01_sell_AAPL.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "AAPL", "date": "2026-01-01",
+            "shares": 3, "realized_pnl": 30.0, "pnl_rate": 0.05,
+        }), encoding="utf-8")
+
+        (trade_dir / "2026-02-01_sell_NVDA.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "NVDA", "date": "2026-02-01",
+            "shares": 5, "realized_pnl": -25.0, "pnl_rate": -0.10,
+        }), encoding="utf-8")
+
+        data = get_performance_review(base_dir=str(tmp_path))
+        assert data["stats"]["total"] == 2
+        assert data["stats"]["wins"] == 1
+        assert data["stats"]["win_rate"] == pytest.approx(0.5)
+
+    def test_avg_return_none_when_no_pnl_rate_stored(self, tmp_path):
+        """avg_return should be None when no trade has pnl_rate stored.
+
+        Old-format sell records may have realized_pnl but no pnl_rate.
+        In that case avg_return is None (cannot compute without pnl_rate).
+        """
+        import json
+        trade_dir = tmp_path / "trade"
+        trade_dir.mkdir(parents=True)
+
+        # realized_pnl あり、pnl_rate なし（古いフォーマット相当）
+        (trade_dir / "2025-12-01_sell_NVDA.json").write_text(json.dumps({
+            "trade_type": "sell", "symbol": "NVDA", "date": "2025-12-01",
+            "shares": 5, "realized_pnl": 90.0,
+            # pnl_rate フィールドなし
+        }), encoding="utf-8")
+
+        data = get_performance_review(base_dir=str(tmp_path))
+        assert data["stats"]["total"] == 1
+        assert data["stats"]["total_pnl"] == pytest.approx(90.0)
+        # pnl_rate が保存されていない場合は avg_return は計算不可
+        assert data["stats"]["avg_return"] is None
+
+    def test_cost_price_zero_returns_no_pnl(self, csv_path):
+        """sell_position with cost_price=0 should return None for P&L fields."""
+        # add_position で cost_price=0 を作る（境界値）
+        add_position(csv_path, "TEST", 10, 0.0, "USD", "2026-01-01")
+        result = sell_position(csv_path, "TEST", 5, sell_price=100.0)
+
+        # cost_price=0 の場合 P&L は計算しない
+        assert result["realized_pnl"] is None
+        assert result["pnl_rate"] is None
 
 
 # ===================================================================

@@ -242,6 +242,32 @@ class TestSaveTrade:
         save_trade("X", "buy", 1, 1.0, "USD", "2026-01-01", base_dir=str(tmp_path))
         assert (tmp_path / "trade").is_dir()
 
+    # KIK-441: sell P&L フィールド
+
+    def test_save_sell_with_pnl_fields(self, tmp_path):
+        """save_trade with sell P&L fields should persist them to JSON."""
+        path = save_trade(
+            "NVDA", "sell", 5, 120.0, "USD", "2026-02-20",
+            sell_price=138.0, realized_pnl=90.0, pnl_rate=0.15,
+            hold_days=41, cost_price=120.0,
+            base_dir=str(tmp_path),
+        )
+        data = _read_json(path)
+        assert data["sell_price"] == 138.0
+        assert data["realized_pnl"] == 90.0
+        assert data["pnl_rate"] == pytest.approx(0.15)
+        assert data["hold_days"] == 41
+        assert data["cost_price"] == 120.0
+
+    def test_save_sell_without_pnl_fields(self, tmp_path):
+        """save_trade without P&L fields should not include them in JSON."""
+        path = save_trade("NVDA", "sell", 5, 120.0, "USD", "2026-02-20",
+                          base_dir=str(tmp_path))
+        data = _read_json(path)
+        assert "sell_price" not in data
+        assert "realized_pnl" not in data
+        assert "hold_days" not in data
+
 
 # ===================================================================
 # save_health

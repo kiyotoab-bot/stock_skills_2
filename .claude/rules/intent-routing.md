@@ -109,6 +109,7 @@
 | **シミュレーション**: 〇年後、複利、積立、老後、目標額 | `simulate` |
 | **過去検証**: バックテスト、検証、過去の成績 | `backtest` |
 | **What-If**: 追加したら、買ったらどうなる、影響、シミュレーション追加 | `what-if` |
+| **パフォーマンスレビュー**: 売買成績、勝率、損益統計、何%取れた | `review` |
 | **売買→記録**: 買った理由を記録したい、投資理由をメモ | `buy` → `/investment-note save --type thesis` |
 | **損切り→学び**: 損切りの学びを記録、反省メモ | `sell` → `/investment-note save --type lesson` |
 
@@ -131,7 +132,18 @@
 **buy/sell の自然言語変換**:
 - 「トヨタを100株 2850円で買った」→ `buy --symbol 7203.T --shares 100 --price 2850 --currency JPY`
 - 「AAPLを5株売った」→ `sell --symbol AAPL --shares 5`
+- 「NVDAを5株138ドルで売った」→ `sell --symbol NVDA --shares 5 --price 138`
 - 企業名はティッカーシンボルに変換する
+
+**KIK-441: 売却価格の確認フロー**:
+- 「売った」と言ってきた場合、価格が未指定なら確認する: 「売却単価を教えてもらえますか？実現損益を記録できます。（スキップしてもOK）」
+- 価格あり → `sell --symbol ... --shares ... --price <価格>` 実行
+- スキップ → `sell --symbol ... --shares ...` 実行（価格なし）
+
+**KIK-441: review コマンドの自然言語変換**:
+- 「売買成績を見たい」「勝率は？」「損益統計」「何%取れた？」 → `review`
+- 「今年の成績」 → `review --year <今年>`
+- 「NVDAの売買成績」 → `review --symbol NVDA`
 
 **rebalance の戦略推定**:
 - 「リスクを抑えたい」→ `--strategy defensive`

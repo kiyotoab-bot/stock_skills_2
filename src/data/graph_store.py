@@ -348,6 +348,9 @@ def merge_trade(
     trade_date: str, trade_type: str, symbol: str,
     shares: int, price: float, currency: str, memo: str = "",
     semantic_summary: str = "", embedding: list[float] | None = None,
+    sell_price: float | None = None,
+    realized_pnl: float | None = None,
+    hold_days: int | None = None,
 ) -> bool:
     """Create a Trade node and BOUGHT/SOLD relationship."""
     if _get_mode() == "off":
@@ -363,10 +366,14 @@ def merge_trade(
                 "MERGE (t:Trade {id: $id}) "
                 "SET t.date = $date, t.type = $type, t.symbol = $symbol, "
                 "t.shares = $shares, t.price = $price, t.currency = $currency, "
-                "t.memo = $memo",
+                "t.memo = $memo, "
+                "t.sell_price = $sell_price, t.realized_pnl = $realized_pnl, "
+                "t.hold_days = $hold_days",
                 id=trade_id, date=trade_date, type=trade_type,
                 symbol=symbol, shares=shares, price=price,
                 currency=currency, memo=memo,
+                sell_price=sell_price, realized_pnl=realized_pnl,
+                hold_days=hold_days,
             )
             session.run(
                 f"MATCH (t:Trade {{id: $trade_id}}) "
