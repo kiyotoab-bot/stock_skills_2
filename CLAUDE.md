@@ -50,7 +50,7 @@ pip install -r requirements.txt
 ### レイヤー概要
 ```
 Skills (.claude/skills/*/SKILL.md → scripts/*.py) — 8スキル
-Core   (src/core/) — screening/ portfolio/ risk/ research/ + root modules
+Core   (src/core/) — screening/ portfolio/ risk/ research/ + proactive_engine (KIK-435), ...
 Data   (src/data/) — yahoo_client, grok_client, perplexity_client, history_store, graph_store, graph_linker (KIK-434), ...
 Output (src/output/) — formatter, stress_formatter, portfolio_formatter, research_formatter
 
