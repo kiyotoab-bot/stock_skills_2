@@ -128,7 +128,7 @@ except ImportError:
 ```
 
 ### 4. 24h JSON Cache
-`yahoo_client.py` はレスポンスを `data/cache/` に JSON キャッシュ（TTL 24時間）。APIレート制限を回避しつつ、十分な鮮度を維持。
+`yahoo_client/` パッケージ（KIK-449）はレスポンスを `data/cache/` に JSON キャッシュ（TTL 24時間）。APIレート制限を回避しつつ、十分な鮮度を維持。
 
 ### 5. Idempotent Graph Writes
 `graph_store.py` のすべての書き込みは MERGE ベース。同じデータを複数回書き込んでも結果が変わらない。
@@ -171,7 +171,7 @@ except ImportError:
 
 | モジュール | 役割 |
 |:---|:---|
-| yahoo_client.py | yfinance ラッパー + 24h JSON cache + 異常値ガード |
+| yahoo_client/ | yfinance ラッパー + 24h JSON cache + 異常値ガード (KIK-449: detail/screen/history/macro/\_cache/\_normalize に分割) |
 | grok_client.py | Grok API (X検索/Web検索) + XAI_API_KEY 環境変数 |
 | history_store.py | スキル実行結果の JSON 自動蓄積 (data/history/) |
 | graph_store.py | Neo4j CRUD (21ノードタイプ, MERGE ベース, ベクトルインデックス(KIK-420)) |

@@ -27,8 +27,8 @@ def _make_quotes(n: int, start: int = 0) -> list[dict]:
 class TestSinglePage:
     """When total <= page size, only one page is fetched."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_single_page(self, mock_screen, mock_sleep):
         quotes = _make_quotes(5)
         mock_screen.return_value = {"total": 5, "quotes": quotes}
@@ -50,8 +50,8 @@ class TestSinglePage:
 class TestMultiPage:
     """When total > page size, multiple pages are fetched."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_multi_page(self, mock_screen, mock_sleep):
         page1 = _make_quotes(250, start=0)
         page2 = _make_quotes(250, start=250)
@@ -85,8 +85,8 @@ class TestMultiPage:
 class TestMaxResultsLimit:
     """max_results should cap the number of results fetched."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_max_results_limit(self, mock_screen, mock_sleep):
         quotes = _make_quotes(100)
         mock_screen.return_value = {"total": 1000, "quotes": quotes}
@@ -107,8 +107,8 @@ class TestMaxResultsLimit:
 class TestMaxResultsZero:
     """max_results=0 should fetch all available pages."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_max_results_zero_means_no_limit(self, mock_screen, mock_sleep):
         page1 = _make_quotes(250, start=0)
         page2 = _make_quotes(250, start=250)
@@ -136,8 +136,8 @@ class TestMaxResultsZero:
 class TestEmptyResponses:
     """Handle None and empty responses gracefully."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_empty_response_none(self, mock_screen, mock_sleep):
         """yf.screen returns None -> empty list."""
         mock_screen.return_value = None
@@ -147,8 +147,8 @@ class TestEmptyResponses:
 
         assert result == []
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_empty_quotes(self, mock_screen, mock_sleep):
         """yf.screen returns total=0 and empty quotes -> empty list."""
         mock_screen.return_value = {"total": 0, "quotes": []}
@@ -167,8 +167,8 @@ class TestEmptyResponses:
 class TestErrorHandling:
     """Errors during pagination should return partial results."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_error_returns_partial(self, mock_screen, mock_sleep):
         page1 = _make_quotes(250)
 
@@ -198,8 +198,8 @@ class TestErrorHandling:
 class TestRateLimitDelay:
     """Verify time.sleep(1) is called between pages."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_rate_limit_delay(self, mock_screen, mock_sleep):
         page1 = _make_quotes(250, start=0)
         page2 = _make_quotes(50, start=250)
@@ -228,8 +228,8 @@ class TestRateLimitDelay:
 class TestPageSizeAdjustment:
     """When max_results limits the second page, size should be adjusted."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_page_size_adjustment(self, mock_screen, mock_sleep):
         page1 = _make_quotes(250, start=0)
         page2 = _make_quotes(50, start=250)
@@ -264,8 +264,8 @@ class TestPageSizeAdjustment:
 class TestOffsetParameter:
     """Verify the offset parameter is correctly passed on each call."""
 
-    @patch("src.data.yahoo_client.time.sleep")
-    @patch("src.data.yahoo_client.yf.screen")
+    @patch("src.data.yahoo_client.screen.time.sleep")
+    @patch("src.data.yahoo_client.screen.yf.screen")
     def test_offset_parameter_passed(self, mock_screen, mock_sleep):
         page1 = _make_quotes(250, start=0)
         page2 = _make_quotes(250, start=250)
