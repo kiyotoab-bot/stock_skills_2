@@ -278,7 +278,115 @@ def get_catalysts(symbol: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 10. Report trend (KIK-413)
+# 10. Sector Catalysts (KIK-433)
+# ---------------------------------------------------------------------------
+
+def get_sector_catalysts(sector: str, days: int = 30) -> dict:
+    """Get Catalyst nodes from recent industry Research matching the sector.
+
+    Matches Research.target vs sector using case-insensitive CONTAINS.
+    Falls back to all recent industry catalysts if no sector match found.
+
+    Returns
+    -------
+    dict
+        {positive: [str], negative: [str], count_positive: int,
+         count_negative: int, matched_sector: bool}
+    """
+    from datetime import date, timedelta
+    empty = {"positive": [], "negative": [], "count_positive": 0, "count_negative": 0, "matched_sector": False}
+    driver = _get_driver()
+    if driver is None:
+        return empty
+    since = (date.today() - timedelta(days=days)).isoformat()
+    try:
+        with driver.session() as session:
+            # Try sector-matched query first
+            result = session.run(
+                "MATCH (r:Research {research_type: 'industry'})-[:HAS_CATALYST]->(c:Catalyst) "
+                "WHERE r.date >= $since "
+                "  AND (toLower(r.target) CONTAINS toLower($sector) "
+                "       OR toLower($sector) CONTAINS toLower(r.target)) "
+                "RETURN c.type AS type, c.text AS text "
+                "ORDER BY r.date DESC LIMIT 50",
+                since=since, sector=sector,
+            )
+            records = list(result)
+            matched = len(records) > 0
+            if not matched:
+                # Fallback: all recent industry catalysts
+                result = session.run(
+                    "MATCH (r:Research {research_type: 'industry'})-[:HAS_CATALYST]->(c:Catalyst) "
+                    "WHERE r.date >= $since "
+                    "RETURN c.type AS type, c.text AS text "
+                    "ORDER BY r.date DESC LIMIT 30",
+                    since=since,
+                )
+                records = list(result)
+            positive = []
+            negative = []
+            for rec in records:
+                ctype = rec["type"]
+                text = rec["text"]
+                if ctype == "growth_driver":
+                    positive.append(text)
+                elif ctype == "risk":
+                    negative.append(text)
+            return {
+                "positive": positive,
+                "negative": negative,
+                "count_positive": len(positive),
+                "count_negative": len(negative),
+                "matched_sector": matched,
+            }
+    except Exception:
+        return empty
+
+
+def get_industry_research_for_sector(sector: str, days: int = 30) -> list:
+    """Get recent industry Research summaries matching the sector.
+
+    Matches Research.target vs sector using case-insensitive CONTAINS.
+
+    Returns
+    -------
+    list[dict]
+        [{date, target, summary, catalysts: [{type, text}]}]
+    """
+    from datetime import date, timedelta
+    driver = _get_driver()
+    if driver is None:
+        return []
+    since = (date.today() - timedelta(days=days)).isoformat()
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (r:Research {research_type: 'industry'}) "
+                "WHERE r.date >= $since "
+                "  AND (toLower(r.target) CONTAINS toLower($sector) "
+                "       OR toLower($sector) CONTAINS toLower(r.target)) "
+                "OPTIONAL MATCH (r)-[:HAS_CATALYST]->(c:Catalyst) "
+                "RETURN r.date AS date, r.target AS target, r.summary AS summary, "
+                "       collect({type: c.type, text: c.text}) AS catalysts "
+                "ORDER BY r.date DESC LIMIT 5",
+                since=since, sector=sector,
+            )
+            out = []
+            for rec in result:
+                cats = [c for c in rec["catalysts"] if c.get("type") is not None]
+                out.append({
+                    "date": rec["date"],
+                    "target": rec["target"],
+                    "summary": rec["summary"] or "",
+                    "catalysts": cats,
+                })
+            return out
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# 11. Report trend (KIK-413)
 # ---------------------------------------------------------------------------
 
 def get_report_trend(symbol: str, limit: int = 10) -> list[dict]:

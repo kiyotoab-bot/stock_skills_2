@@ -543,3 +543,51 @@ User Action (e.g. buy)
 - JSON ファイルが master データソース。すべての read/write は JSON 経由
 - Neo4j は検索・関連付け用の view。`graph_store.py` の全関数は例外を握りつぶして `False` を返す
 - Neo4j が落ちていても全スキルが正常動作する
+
+---
+
+## KIK-433: 業界コンテキスト連携（Phase 1）
+
+業界リサーチで蓄積された Catalyst ノードをフォーキャスト・レポートに反映する。
+
+### 現在のクエリパターン（Phase 1）
+
+`graph_query.get_sector_catalysts(sector, days=30)`:
+
+```cypher
+-- セクターマッチ（case-insensitive CONTAINS）
+MATCH (r:Research {research_type: 'industry'})-[:HAS_CATALYST]->(c:Catalyst)
+WHERE r.date >= $since
+  AND (toLower(r.target) CONTAINS toLower($sector)
+       OR toLower($sector) CONTAINS toLower(r.target))
+RETURN c.type AS type, c.text AS text
+ORDER BY r.date DESC LIMIT 50
+```
+
+- `growth_driver` → ポジティブ（optimistic シナリオを +N×1.7% 上方修正）
+- `risk` → ネガティブ（pessimistic シナリオを -N×1.7% 下方修正）
+- 調整上限: ±10%
+
+`graph_query.get_industry_research_for_sector(sector, days=30)`:
+
+```cypher
+MATCH (r:Research {research_type: 'industry'})
+WHERE r.date >= $since
+  AND (toLower(r.target) CONTAINS toLower($sector)
+       OR toLower($sector) CONTAINS toLower(r.target))
+OPTIONAL MATCH (r)-[:HAS_CATALYST]->(c:Catalyst)
+RETURN r.date AS date, r.target AS target, r.summary AS summary,
+       collect({type: c.type, text: c.text}) AS catalysts
+ORDER BY r.date DESC LIMIT 5
+```
+
+### Phase 2（計画中）
+
+以下のリレーションを追加予定:
+
+| リレーション | From → To | 意味 |
+|:---|:---|:---|
+| `INFLUENCES` | Research(industry) → Stock | 業界リサーチが個別銘柄に影響 |
+| `INFORMS` | MarketContext → Forecast | 市況がフォーキャストの前提条件 |
+| `SUPPORTS` / `CONTRADICTS` | Research(industry) → Report | 業界トレンドがレポートの判断を補強/矛盾 |
+| `CONTEXT_OF` | Research(market) → HealthCheck | 市況がヘルスチェックの解釈文脈 |
