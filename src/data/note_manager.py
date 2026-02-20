@@ -130,6 +130,13 @@ def save_note(
     except Exception:
         pass  # Neo4j unavailable, JSON is the master
 
+    # KIK-434: AI graph linking (graceful degradation)
+    try:
+        from src.data.graph_linker import link_note
+        link_note(note_id, symbol, note_type, content)
+    except Exception:
+        pass
+
     return note
 
 

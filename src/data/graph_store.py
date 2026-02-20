@@ -1308,3 +1308,79 @@ def get_stock_history(symbol: str) -> dict:
         return result
     except Exception:
         return dict(_empty)
+
+
+# ---------------------------------------------------------------------------
+# AI-driven relationship creation (KIK-434)
+# ---------------------------------------------------------------------------
+
+_AI_REL_CYPHERS = {
+    "INFLUENCES": (
+        "MATCH (a {id: $fid}) MATCH (b {id: $tid}) "
+        "MERGE (a)-[r:INFLUENCES]->(b) "
+        "SET r.confidence = $conf, r.reason = $reason, "
+        "r.created_by = 'ai', r.created_at = $ts"
+    ),
+    "CONTRADICTS": (
+        "MATCH (a {id: $fid}) MATCH (b {id: $tid}) "
+        "MERGE (a)-[r:CONTRADICTS]->(b) "
+        "SET r.confidence = $conf, r.reason = $reason, "
+        "r.created_by = 'ai', r.created_at = $ts"
+    ),
+    "CONTEXT_OF": (
+        "MATCH (a {id: $fid}) MATCH (b {id: $tid}) "
+        "MERGE (a)-[r:CONTEXT_OF]->(b) "
+        "SET r.confidence = $conf, r.reason = $reason, "
+        "r.created_by = 'ai', r.created_at = $ts"
+    ),
+    "INFORMS": (
+        "MATCH (a {id: $fid}) MATCH (b {id: $tid}) "
+        "MERGE (a)-[r:INFORMS]->(b) "
+        "SET r.confidence = $conf, r.reason = $reason, "
+        "r.created_by = 'ai', r.created_at = $ts"
+    ),
+    "SUPPORTS": (
+        "MATCH (a {id: $fid}) MATCH (b {id: $tid}) "
+        "MERGE (a)-[r:SUPPORTS]->(b) "
+        "SET r.confidence = $conf, r.reason = $reason, "
+        "r.created_by = 'ai', r.created_at = $ts"
+    ),
+}
+
+
+def create_ai_relationship(
+    from_id: str,
+    to_id: str,
+    rel_type: str,
+    confidence: float,
+    reason: str,
+) -> bool:
+    """MERGE an AI-determined semantic relationship between two nodes (KIK-434).
+
+    Relationship types supported: INFLUENCES, CONTRADICTS, CONTEXT_OF,
+    INFORMS, SUPPORTS.  All carry confidence, reason, created_by='ai',
+    and created_at timestamp properties.
+
+    Returns True on success, False otherwise (including unsupported rel_type).
+    """
+    if _get_mode() == "off":
+        return False
+    cypher = _AI_REL_CYPHERS.get(rel_type)
+    if not cypher:
+        return False
+    driver = _get_driver()
+    if driver is None:
+        return False
+    try:
+        ts = datetime.now().isoformat(timespec="seconds")
+        with driver.session() as session:
+            session.run(
+                cypher,
+                fid=from_id, tid=to_id,
+                conf=float(confidence),
+                reason=str(reason)[:500],
+                ts=ts,
+            )
+        return True
+    except Exception:
+        return False

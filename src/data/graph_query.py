@@ -699,3 +699,120 @@ def vector_search(
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_k]
+
+
+# ---------------------------------------------------------------------------
+# KIK-434: Candidate node queries for AI graph linking
+# ---------------------------------------------------------------------------
+
+def get_portfolio_holdings_for_linking(limit: int = 8) -> list[dict]:
+    """Return portfolio holdings enriched with their latest Report for AI linking.
+
+    Returns list of dicts: {id, type, symbol, sector, score, verdict, summary}
+    Empty list when Neo4j is unavailable or no holdings found.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (p:Portfolio {name: 'default'})-[:HOLDS]->(s:Stock) "
+                "OPTIONAL MATCH (r:Report)-[:ANALYZED]->(s) "
+                "WITH s, r ORDER BY r.date DESC "
+                "WITH s, collect(r)[0] AS rep "
+                "RETURN "
+                "  coalesce(rep.id, 'stock_' + s.symbol) AS id, "
+                "  'Report' AS type, "
+                "  s.symbol AS symbol, "
+                "  coalesce(s.sector, '') AS sector, "
+                "  coalesce(rep.score, 0) AS score, "
+                "  coalesce(rep.verdict, '') AS verdict, "
+                "  ('保有: ' + s.symbol + ' score=' + toString(coalesce(rep.score, 0))) AS summary "
+                "LIMIT $limit",
+                limit=limit,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+def get_nodes_for_symbol(
+    symbol: str,
+    include_notes: bool = False,
+    limit: int = 6,
+) -> list[dict]:
+    """Return recent Report and HealthCheck nodes for a symbol (AI linking).
+
+    When include_notes=True, also includes Note nodes.
+    Returns list of dicts: {id, type, summary}
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    results = []
+    try:
+        with driver.session() as session:
+            # Most recent Report
+            rec = session.run(
+                "MATCH (r:Report)-[:ANALYZED]->(s:Stock {symbol: $symbol}) "
+                "RETURN r.id AS id, 'Report' AS type, "
+                "('score=' + toString(coalesce(r.score, 0)) + ' ' + coalesce(r.verdict, '')) AS summary "
+                "ORDER BY r.date DESC LIMIT 1",
+                symbol=symbol,
+            )
+            results.extend([dict(r) for r in rec])
+
+            # Recent HealthChecks (up to 2)
+            rec2 = session.run(
+                "MATCH (h:HealthCheck)-[:CHECKED]->(s:Stock {symbol: $symbol}) "
+                "RETURN h.id AS id, 'HealthCheck' AS type, "
+                "coalesce(h.summary, '') AS summary "
+                "ORDER BY h.date DESC LIMIT 2",
+                symbol=symbol,
+            )
+            results.extend([dict(r) for r in rec2])
+
+            if include_notes:
+                rec3 = session.run(
+                    "MATCH (n:Note)-[:ABOUT]->(s:Stock {symbol: $symbol}) "
+                    "RETURN n.id AS id, 'Note' AS type, "
+                    "coalesce(n.content, '') AS summary "
+                    "ORDER BY n.date DESC LIMIT 3",
+                    symbol=symbol,
+                )
+                results.extend([dict(r) for r in rec3])
+    except Exception:
+        pass
+    return results[:limit]
+
+
+def get_industry_research_for_linking(
+    sector: str,
+    days: int = 30,
+    limit: int = 3,
+) -> list[dict]:
+    """Return recent industry Research nodes matching a sector (AI linking).
+
+    Returns list of dicts: {id, type, target, summary}
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    from datetime import date, timedelta
+    since = (date.today() - timedelta(days=days)).isoformat()
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (r:Research {research_type: 'industry'}) "
+                "WHERE r.date >= $since "
+                "  AND (toLower(r.target) CONTAINS toLower($sector) "
+                "       OR toLower($sector) CONTAINS toLower(r.target)) "
+                "RETURN r.id AS id, 'Research' AS type, "
+                "r.target AS target, coalesce(r.summary, '') AS summary "
+                "ORDER BY r.date DESC LIMIT $limit",
+                since=since, sector=sector, limit=limit,
+            )
+            return [dict(r) for r in result]
+    except Exception:
+        return []
