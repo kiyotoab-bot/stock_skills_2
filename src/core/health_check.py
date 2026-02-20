@@ -17,6 +17,7 @@ import pandas as pd
 from typing import Optional
 
 from src.core.common import is_cash as _is_cash, is_etf as _is_etf, finite_or_none
+from src.core._thresholds import th
 from src.core.screening.indicators import (
     calculate_shareholder_return,
     calculate_shareholder_return_history,
@@ -29,10 +30,10 @@ ALERT_EARLY_WARNING = "early_warning"
 ALERT_CAUTION = "caution"
 ALERT_EXIT = "exit"
 
-# Technical thresholds
-SMA_APPROACHING_GAP = 0.02  # SMA50 within 2% of SMA200
-RSI_PREV_THRESHOLD = 50  # Previous RSI level for drop detection
-RSI_DROP_THRESHOLD = 40  # Current RSI level indicating a drop
+# Technical thresholds (from config/thresholds.yaml, KIK-446)
+SMA_APPROACHING_GAP = th("health", "sma_approaching_gap", 0.02)
+RSI_PREV_THRESHOLD = th("health", "rsi_prev_threshold", 50)
+RSI_DROP_THRESHOLD = th("health", "rsi_drop_threshold", 40)
 
 
 def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
@@ -91,8 +92,8 @@ def check_trend_health(hist: Optional[pd.DataFrame]) -> dict:
     sma50_above_sma200 = current_sma50 > current_sma200
     dead_cross = not sma50_above_sma200
 
-    # --- Cross event detection (lookback 60 trading days) ---
-    _CROSS_LOOKBACK = 60
+    # --- Cross event detection (lookback N trading days) ---
+    _CROSS_LOOKBACK = th("health", "cross_lookback", 60)
     cross_signal = "none"
     days_since_cross = None
     cross_date = None
@@ -218,14 +219,14 @@ def check_change_quality(stock_detail: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Long-term investment suitability thresholds (KIK-371)
+# Long-term investment suitability thresholds (KIK-371, KIK-446)
 # ---------------------------------------------------------------------------
-_LT_ROE_HIGH = 0.15
-_LT_ROE_LOW = 0.10
-_LT_EPS_GROWTH_HIGH = 0.10
-_LT_DIVIDEND_HIGH = 0.02
-_LT_PER_OVERVALUED = 40
-_LT_PER_SAFE = 25
+_LT_ROE_HIGH = th("health", "lt_roe_high", 0.15)
+_LT_ROE_LOW = th("health", "lt_roe_low", 0.10)
+_LT_EPS_GROWTH_HIGH = th("health", "lt_eps_growth_high", 0.10)
+_LT_DIVIDEND_HIGH = th("health", "lt_dividend_high", 0.02)
+_LT_PER_OVERVALUED = th("health", "lt_per_overvalued", 40)
+_LT_PER_SAFE = th("health", "lt_per_safe", 25)
 
 
 def check_long_term_suitability(

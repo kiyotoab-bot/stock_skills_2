@@ -13,6 +13,7 @@ import math
 from typing import Optional
 
 from src.core.common import is_etf as _is_etf_base
+from src.core._thresholds import th
 
 try:
     from src.core.health_check import _detect_value_trap
@@ -20,9 +21,9 @@ try:
 except ImportError:
     HAS_VALUE_TRAP = False
 
-# Historical return estimation thresholds
-RETURN_CAP = 0.30  # Max annualized return cap (±30%)
-MIN_SPREAD = 0.05  # Minimum spread for optimistic/pessimistic scenarios
+# Historical return estimation thresholds (from config/thresholds.yaml, KIK-446)
+RETURN_CAP = th("estimate", "return_cap", 0.30)
+MIN_SPREAD = th("estimate", "min_spread", 0.05)
 
 
 
