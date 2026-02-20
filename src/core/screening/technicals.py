@@ -3,6 +3,8 @@
 import numpy as np
 import pandas as pd
 
+from src.core._thresholds import th
+
 
 def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     """RSI using Wilder's smoothing method (exponential moving average)."""
@@ -105,8 +107,10 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
     uptrend = (current_price > current_sma200) and (current_sma50 > current_sma200)
 
     # --- Condition 2: Pullback depth ---
+    _pb_min = th("technicals", "pullback_min", -0.20)
+    _pb_max = th("technicals", "pullback_max", -0.05)
     is_pullback = (
-        (-0.20 <= pullback_pct <= -0.05)
+        (_pb_min <= pullback_pct <= _pb_max)
         and (current_price > current_sma200)
     )
 
@@ -114,6 +118,19 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
     _, _, lower_band = compute_bollinger_bands(close, period=20, std_dev=2.0)
 
     lookback = 5  # Check last 5 trading days for bounce signals
+    _rsi_rev_lo = th("technicals", "rsi_reversal_lo", 25.0)
+    _rsi_rev_hi = th("technicals", "rsi_reversal_hi", 50.0)
+    _rsi_dep_lo = th("technicals", "rsi_depth_lo", 25.0)
+    _rsi_dep_hi = th("technicals", "rsi_depth_hi", 35.0)
+    _bb_prox = th("technicals", "bb_proximity_mult", 1.02)
+    _vol_surge = th("technicals", "volume_surge_ratio", 1.2)
+    _sc_rsi_rev = th("technicals", "score_rsi_reversal", 40.0)
+    _sc_rsi_dep = th("technicals", "score_rsi_depth", 15.0)
+    _sc_bb = th("technicals", "score_bb_proximity", 25.0)
+    _sc_vol = th("technicals", "score_volume_surge", 10.0)
+    _sc_price = th("technicals", "score_price_reversal", 10.0)
+    _bounce_min = th("technicals", "bounce_signal_min", 40.0)
+
     bounce_score = 0.0
     bounce_details: dict = {
         "rsi_reversal": False,
@@ -152,40 +169,40 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
             "price_reversal": False,
         }
 
-        # RSI reversal: RSI in 25-50 zone and turning up (40 pts)
+        # RSI reversal: RSI in reversal zone and turning up
         if (
-            25.0 <= day_rsi <= 50.0
+            _rsi_rev_lo <= day_rsi <= _rsi_rev_hi
             and not np.isnan(day_prev_rsi)
             and day_rsi > day_prev_rsi
         ):
-            day_score += 40.0
+            day_score += _sc_rsi_rev
             day_details["rsi_reversal"] = True
 
-        # RSI depth bonus: deep correction RSI 25-35 (15 pts)
-        if 25.0 <= day_rsi <= 35.0:
-            day_score += 15.0
+        # RSI depth bonus: deep correction in depth zone
+        if _rsi_dep_lo <= day_rsi <= _rsi_dep_hi:
+            day_score += _sc_rsi_dep
             day_details["rsi_depth_bonus"] = True
 
-        # BB lower proximity: price within 1.02x of lower band (25 pts)
-        if not np.isnan(day_lower) and day_lower > 0 and day_close <= day_lower * 1.02:
-            day_score += 25.0
+        # BB lower proximity: price within multiplier of lower band
+        if not np.isnan(day_lower) and day_lower > 0 and day_close <= day_lower * _bb_prox:
+            day_score += _sc_bb
             day_details["bb_proximity"] = True
 
-        # Volume surge bonus: volume_ratio > 1.2 (10 pts)
-        if not np.isnan(day_volume_ratio) and day_volume_ratio > 1.2:
-            day_score += 10.0
+        # Volume surge bonus
+        if not np.isnan(day_volume_ratio) and day_volume_ratio > _vol_surge:
+            day_score += _sc_vol
             day_details["volume_surge"] = True
 
-        # Price reversal: close > previous close (10 pts)
+        # Price reversal: close > previous close
         if not np.isnan(day_prev_close) and day_close > day_prev_close:
-            day_score += 10.0
+            day_score += _sc_price
             day_details["price_reversal"] = True
 
         if day_score > bounce_score:
             bounce_score = day_score
             bounce_details = {**day_details, "lookback_day": offset}
 
-    bounce_signal = bounce_score >= 40.0
+    bounce_signal = bounce_score >= _bounce_min
 
     all_conditions = uptrend and is_pullback and bounce_signal
 
