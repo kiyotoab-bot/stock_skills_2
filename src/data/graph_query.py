@@ -416,8 +416,15 @@ def get_report_trend(symbol: str, limit: int = 10) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_upcoming_events(limit: int = 10) -> list[dict]:
+def get_upcoming_events(limit: int = 10, within_days: int = None) -> list[dict]:
     """Get UpcomingEvent nodes from the most recent MarketContext.
+
+    Parameters
+    ----------
+    limit : int
+        Maximum number of events to return.
+    within_days : int, optional
+        If provided, filter events to those occurring within N days from today.
 
     Returns list of {date, text}.
     """
@@ -426,12 +433,24 @@ def get_upcoming_events(limit: int = 10) -> list[dict]:
         return []
     try:
         with driver.session() as session:
-            result = session.run(
-                "MATCH (m:MarketContext)-[:HAS_EVENT]->(e:UpcomingEvent) "
-                "RETURN e.date AS date, e.text AS text "
-                "ORDER BY m.date DESC, e.id LIMIT $limit",
-                limit=limit,
-            )
+            if within_days is not None:
+                from datetime import date, timedelta
+                today = date.today().isoformat()
+                until = (date.today() + timedelta(days=within_days)).isoformat()
+                result = session.run(
+                    "MATCH (m:MarketContext)-[:HAS_EVENT]->(e:UpcomingEvent) "
+                    "WHERE e.date >= $today AND e.date <= $until "
+                    "RETURN e.date AS date, e.text AS text "
+                    "ORDER BY e.date LIMIT $limit",
+                    today=today, until=until, limit=limit,
+                )
+            else:
+                result = session.run(
+                    "MATCH (m:MarketContext)-[:HAS_EVENT]->(e:UpcomingEvent) "
+                    "RETURN e.date AS date, e.text AS text "
+                    "ORDER BY m.date DESC, e.id LIMIT $limit",
+                    limit=limit,
+                )
             return [dict(r) for r in result]
     except Exception:
         return []
@@ -814,5 +833,97 @@ def get_industry_research_for_linking(
                 since=since, sector=sector, limit=limit,
             )
             return [dict(r) for r in result]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# KIK-435: Proactive intelligence helpers
+# ---------------------------------------------------------------------------
+
+def get_last_health_check_date() -> Optional[str]:
+    """Return ISO date string of the most recent HealthCheck, or None (KIK-435)."""
+    driver = _get_driver()
+    if driver is None:
+        return None
+    try:
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (h:HealthCheck) RETURN h.date AS date ORDER BY h.date DESC LIMIT 1"
+            )
+            for r in result:
+                return r["date"]
+        return None
+    except Exception:
+        return None
+
+
+def get_old_thesis_notes(older_than_days: int = 90) -> list[dict]:
+    """Return thesis notes older than N days (KIK-435).
+
+    Tries Neo4j first; falls back to JSON files via note_manager.
+    Returns list of dicts: {symbol, days_old}
+    """
+    from datetime import date, timedelta
+    driver = _get_driver()
+    if driver is not None:
+        try:
+            since = (date.today() - timedelta(days=older_than_days)).isoformat()
+            with driver.session() as session:
+                result = session.run(
+                    "MATCH (n:Note {type: 'thesis'}) WHERE n.date <= $since "
+                    "RETURN n.symbol AS symbol, n.date AS note_date "
+                    "ORDER BY n.date ASC LIMIT 3",
+                    since=since,
+                )
+                out = []
+                for r in result:
+                    note_date = r["note_date"] or ""
+                    days_old = (
+                        (date.today() - date.fromisoformat(note_date)).days
+                        if note_date else older_than_days
+                    )
+                    out.append({"symbol": r["symbol"], "days_old": days_old})
+                if out:
+                    return out
+        except Exception:
+            pass
+    # JSON fallback
+    try:
+        from src.data.note_manager import load_notes
+        notes = load_notes(note_type="thesis")
+        cutoff = (date.today() - timedelta(days=older_than_days)).isoformat()
+        out = []
+        for n in notes:
+            if n.get("date", "") <= cutoff:
+                note_date = n.get("date", "")
+                days_old = (
+                    (date.today() - date.fromisoformat(note_date)).days
+                    if note_date else older_than_days
+                )
+                out.append({"symbol": n.get("symbol", ""), "days_old": days_old})
+        return out[:3]
+    except Exception:
+        return []
+
+
+def get_concern_notes(limit: int = 1) -> list[dict]:
+    """Return recent concern-type notes (KIK-435).
+
+    Returns list of dicts: {symbol, days_old}
+    """
+    from datetime import date
+    try:
+        from src.data.note_manager import load_notes
+        notes = load_notes(note_type="concern")
+        out = []
+        for n in notes[:limit]:
+            note_date = n.get("date", "")
+            days_old = (
+                (date.today() - date.fromisoformat(note_date)).days
+                if note_date else 0
+            )
+            out.append({"symbol": n.get("symbol", ""), "days_old": days_old})
+        return out
     except Exception:
         return []

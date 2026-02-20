@@ -124,3 +124,26 @@ CONTEXT_RECENT_HOURS=168    # これ以内 → RECENT / これ超 → STALE
 - スクリプトエラー時: 無視して intent-routing のみで判断
 - シンボル検出できない場合 + TEI 未起動: 「コンテキストなし」→ 通常の intent-routing
 - シンボル検出できない場合 + TEI 起動中: ベクトル検索で関連ノードを取得可能（KIK-420）
+
+## プロアクティブ提案 (KIK-435)
+
+スキル実行後、蓄積知識に基づく次のアクションを提案する。
+
+```bash
+python3 scripts/suggest.py [--symbol <ticker>] [--sector <sector>]
+```
+
+- 出力があればスキル実行結果の末尾に表示する
+- Neo4j 未接続・エラー時は graceful degradation（出力なし、クラッシュしない）
+- 提案は最大 3 件。urgency: high（赤信号） > medium（要確認） > low（参考）
+
+**トリガー種別:**
+
+| 種別 | トリガー条件 | urgency |
+|:---|:---|:---|
+| 時間 | ヘルスチェック >14日未実施 | medium（>30日は high） |
+| 時間 | テーゼメモ >90日経過 | medium |
+| 時間 | 決算イベントが 7日以内 | high |
+| 状態 | 同銘柄がスクリーニングで 3回以上上位 | medium |
+| 状態 | 懸念メモが記録済み | medium |
+| コンテキスト | リサーチセクターが保有銘柄と一致 | low |
