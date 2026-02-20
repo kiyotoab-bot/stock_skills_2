@@ -18,7 +18,7 @@ from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import
+from scripts.common import try_import, HAS_HISTORY_STORE
 from src.data import yahoo_client
 from src.core.portfolio.concentration import analyze_concentration, compute_hhi
 from src.core.ticker_utils import infer_country as _infer_country
@@ -49,9 +49,10 @@ MACRO_FACTORS = _corr["MACRO_FACTORS"] if _has_corr else []
 _, _rec = try_import("src.core.risk.recommender", "generate_recommendations")
 generate_recommendations = _rec["generate_recommendations"]
 
-# KIK-428: History auto-save
-HAS_HISTORY, _hi = try_import("src.data.history_store", "save_stress_test")
-if HAS_HISTORY: _save_stress_test = _hi["save_stress_test"]
+# KIK-428: History auto-save — module availability from common.py (KIK-448)
+HAS_HISTORY = HAS_HISTORY_STORE
+if HAS_HISTORY:
+    from src.data.history_store import save_stress_test as _save_stress_test
 
 
 

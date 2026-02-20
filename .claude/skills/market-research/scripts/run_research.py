@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
 from src.data import yahoo_client
 
 HAS_RESEARCHER, _res = try_import(
@@ -30,13 +30,14 @@ if HAS_FORMATTER:
 HAS_BUSINESS_FORMATTER, _bf = try_import("src.output.research_formatter", "format_business_research")
 if HAS_BUSINESS_FORMATTER: format_business_research = _bf["format_business_research"]
 
-HAS_HISTORY, _hi = try_import("src.data.history_store", "save_research", "save_market_context")
+# Module availability from common.py (KIK-448)
+HAS_HISTORY = HAS_HISTORY_STORE
 if HAS_HISTORY:
-    save_research = _hi["save_research"]
-    save_market_context = _hi["save_market_context"]
+    from src.data.history_store import save_research, save_market_context
 
-HAS_GRAPH_QUERY, _gq = try_import("src.data.graph_query", "get_research_chain")
-if HAS_GRAPH_QUERY: get_research_chain = _gq["get_research_chain"]
+HAS_GRAPH_QUERY = _HAS_GQ
+if HAS_GRAPH_QUERY:
+    from src.data.graph_query import get_research_chain
 
 
 def _print_research_history(research_type: str, target: str):
