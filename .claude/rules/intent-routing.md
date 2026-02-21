@@ -84,6 +84,17 @@
 - 組み合わせ例: 「AI関連で割安株」→ `--theme ai --preset value`、「半導体の成長株」→ `--theme ai --preset high-growth`
 - `trending`/`pullback`/`alpha` プリセットは `--theme` 未対応（他のプリセットのみ）
 
+**KIK-440 関連（トレンドテーマ自動検出）**:
+- 「今熱いテーマは？」「トレンドテーマ」「注目セクター」 → `--auto-theme`（Grokでテーマ自動検出）
+- 「今どのセクターが熱い？」 → `--auto-theme`（テーマ一覧 + スクリーニング）
+- 「今の相場で何を買えばいい？」 → `--auto-theme`（テーマ検出 + デフォルトpreset）
+- 「トレンドテーマで割安株」 → `--auto-theme --preset value`
+- 「注目テーマの成長株」 → `--auto-theme --preset high-growth`
+- `--auto-theme` と `--theme` は排他（同時使用不可）
+- `--auto-theme` は `trending`/`pullback`/`alpha` プリセットと非対応
+- `XAI_API_KEY` 必須（Grok API でテーマ検出）
+- 違い: `trending` = X上の話題の**個別銘柄**を検出、`--auto-theme` = トレンドの**テーマ・セクター**を検出して各テーマで質の高い銘柄を探す
+
 ### 分析ドメイン → `/stock-report` or `/market-research`
 
 **判定基準**: 数値分析か定性分析か

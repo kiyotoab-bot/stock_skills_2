@@ -334,3 +334,33 @@ def format_trending_markdown(results: list[dict], market_context: str = "") -> s
 
     _append_annotation_footer(lines, results)
     return "\n".join(lines)
+
+
+def format_auto_theme_header(themes: list[dict], skipped: list[dict] | None = None) -> str:
+    """Format Grok trending themes header (KIK-440).
+
+    Parameters
+    ----------
+    themes : list[dict]
+        Detected themes with keys: theme, reason, confidence.
+    skipped : list[dict] | None
+        Themes that were skipped (not in themes.yaml).
+
+    Returns
+    -------
+    str
+        Formatted header string.
+    """
+    from datetime import date
+
+    lines = [f"\U0001f525 Grok が検出したトレンドテーマ（{date.today().isoformat()}）\n"]
+    for i, t in enumerate(themes, 1):
+        conf_pct = int(t.get("confidence", 0) * 100)
+        lines.append(f"{i}. **{t['theme']}** (信頼度: {conf_pct}%)")
+        if t.get("reason"):
+            lines.append(f"   {t['reason']}")
+        lines.append("")
+    if skipped:
+        lines.append(f"\u203b 未対応テーマ（スキップ）: {', '.join(t['theme'] for t in skipped)}\n")
+    lines.append("---\n")
+    return "\n".join(lines)
