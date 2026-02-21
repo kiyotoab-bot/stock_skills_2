@@ -252,12 +252,14 @@ class TestConstants:
         assert set(ASEAN_EXCHANGES) == {"SES", "SET", "KLS", "JKT", "PHS"}
 
     def test_criteria_field_map_keys(self):
-        """_CRITERIA_FIELD_MAP should have the expected keys including KIK-432 additions."""
+        """_CRITERIA_FIELD_MAP should have the expected keys including KIK-432/437 additions."""
         expected = {
             "max_per", "max_pbr", "min_dividend_yield", "min_roe",
             "min_revenue_growth", "min_earnings_growth", "min_market_cap",
             # KIK-432: high-growth preset criteria
             "min_quarterly_revenue_growth", "max_psr", "min_gross_margin",
+            # KIK-437: small-cap-growth
+            "max_market_cap",
         }
         assert set(_CRITERIA_FIELD_MAP.keys()) == expected
 
@@ -423,3 +425,49 @@ class TestBuildQueryWithTheme:
         """Invalid theme key should raise ValueError from build_query."""
         with pytest.raises(ValueError):
             build_query({}, region="us", theme="nonexistent-theme")
+
+
+# ===================================================================
+# KIK-437: max_market_cap in _CRITERIA_FIELD_MAP
+# ===================================================================
+
+
+class TestMaxMarketCapCriteria:
+    def test_max_market_cap_present(self):
+        """max_market_cap should be mapped to intradaymarketcap with lt operator."""
+        assert "max_market_cap" in _CRITERIA_FIELD_MAP
+        field, op = _CRITERIA_FIELD_MAP["max_market_cap"]
+        assert "intradaymarketcap" in field
+        assert op == "lt"
+
+    def test_min_and_max_market_cap_symmetric(self):
+        """min_market_cap (gt) and max_market_cap (lt) use the same field."""
+        min_field, min_op = _CRITERIA_FIELD_MAP["min_market_cap"]
+        max_field, max_op = _CRITERIA_FIELD_MAP["max_market_cap"]
+        assert min_field == max_field
+        assert min_op == "gt"
+        assert max_op == "lt"
+
+    def test_build_query_with_max_market_cap(self):
+        """build_query with max_market_cap should produce a valid EquityQuery."""
+        criteria = {"max_market_cap": 100_000_000_000}
+        query = build_query(criteria, region="jp")
+        assert isinstance(query, EquityQuery)
+
+    def test_build_query_small_cap_growth_criteria(self):
+        """build_query with full small-cap-growth criteria should work."""
+        criteria = {
+            "min_revenue_growth": 0.20,
+            "min_quarterly_revenue_growth": 0.10,
+            "max_psr": 15.0,
+            "min_gross_margin": 0.20,
+            "max_market_cap": 100_000_000_000,
+        }
+        query = build_query(criteria, region="jp")
+        assert isinstance(query, EquityQuery)
+
+    def test_build_criteria_conditions_max_market_cap(self):
+        """_build_criteria_conditions with max_market_cap should produce 1 condition."""
+        conditions = _build_criteria_conditions({"max_market_cap": 1_000_000_000})
+        assert len(conditions) == 1
+        assert isinstance(conditions[0], EquityQuery)

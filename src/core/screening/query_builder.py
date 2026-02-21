@@ -49,6 +49,7 @@ _CRITERIA_FIELD_MAP: dict[str, tuple[str, str]] = {
     "min_revenue_growth":   ("totalrevenues1yrgrowth.lasttwelvemonths", "gt"),
     "min_earnings_growth":  ("epsgrowth.lasttwelvemonths",           "gt"),
     "min_market_cap":       ("intradaymarketcap",                    "gt"),
+    "max_market_cap":       ("intradaymarketcap",                    "lt"),  # KIK-437
     # KIK-432: high-growth preset fields
     "min_quarterly_revenue_growth": ("quarterlyrevenuegrowth.quarterly",               "gt"),
     "max_psr":                       ("lastclosemarketcaptotalrevenue.lasttwelvemonths", "lt"),

@@ -98,6 +98,22 @@ REGION_NAMES = {
     "cn": "中国株",
 }
 
+# Region-specific small-cap market cap thresholds (KIK-437)
+# intradaymarketcap is in local currency; these are approximate "small-cap" ceilings.
+_SMALL_CAP_MARKET_CAP = {
+    "jp": 100_000_000_000,       # 1000億円
+    "us": 1_000_000_000,         # $1B
+    "sg": 2_000_000_000,         # SGD 2B
+    "th": 30_000_000_000,        # THB 30B
+    "my": 5_000_000_000,         # MYR 5B
+    "id": 15_000_000_000_000,    # IDR 15T
+    "ph": 50_000_000_000,        # PHP 50B
+    "hk": 10_000_000_000,        # HKD 10B
+    "kr": 1_000_000_000_000,     # KRW 1T
+    "tw": 30_000_000_000,        # TWD 30B
+    "cn": 10_000_000_000,        # CNY 10B
+}
+
 VALID_SECTORS = [
     "Technology",
     "Financial Services",
@@ -322,6 +338,14 @@ def run_query_mode(args):
         sector_label = f" [{args.sector}]" if args.sector else ""
         theme_label = f" [{args.theme}]" if args.theme else ""
 
+        # Region-aware market cap override for small-cap-growth (KIK-437)
+        overrides = None
+        if args.preset == "small-cap-growth":
+            if region_code in _SMALL_CAP_MARKET_CAP:
+                overrides = {"max_market_cap": _SMALL_CAP_MARKET_CAP[region_code]}
+            else:
+                print(f"Warning: {region_code} の小型株時価総額閾値が未定義です。YAMLデフォルト値を使用します。", file=sys.stderr)
+
         if args.with_pullback:
             results = screener.screen(
                 region=region_code,
@@ -330,6 +354,7 @@ def run_query_mode(args):
                 theme=args.theme,
                 top_n=args.top,
                 with_pullback=True,
+                criteria_overrides=overrides,
             )
             results, excluded = _annotate(results)
             pullback_label = " + 押し目フィルタ"
@@ -351,6 +376,7 @@ def run_query_mode(args):
                 sector=args.sector,
                 theme=args.theme,
                 top_n=args.top,
+                criteria_overrides=overrides,
             )
             results, excluded = _annotate(results)
             print(f"\n## {region_name} - {args.preset}{sector_label}{theme_label} スクリーニング結果 (EquityQuery)\n")
@@ -436,7 +462,7 @@ def main():
     parser.add_argument(
         "--preset",
         default="value",
-        choices=["value", "high-dividend", "growth", "growth-value", "deep-value", "quality", "pullback", "alpha", "trending", "long-term", "shareholder-return", "high-growth"],
+        choices=["value", "high-dividend", "growth", "growth-value", "deep-value", "quality", "pullback", "alpha", "trending", "long-term", "shareholder-return", "high-growth", "small-cap-growth"],
     )
     parser.add_argument(
         "--sector",
@@ -519,6 +545,10 @@ def main():
 
     if args.preset == "high-growth" and args.mode == "legacy":
         print("Note: high-growth preset requires query mode. Switching to --mode query.")
+        args.mode = "query"
+
+    if args.preset == "small-cap-growth" and args.mode == "legacy":
+        print("Note: small-cap-growth preset requires query mode. Switching to --mode query.")
         args.mode = "query"
 
     if args.preset == "trending" and args.mode == "legacy":

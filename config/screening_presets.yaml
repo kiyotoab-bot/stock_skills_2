@@ -75,6 +75,15 @@ presets:
       max_psr: 20.0                       # PSR <= 20（バブル防止）
       min_gross_margin: 0.20              # 粗利率 >= 20%（最低限の事業性）
 
+  small-cap-growth:
+    description: "小型急成長株（時価総額1000億以下・売上急成長・10倍株候補）"
+    criteria:
+      min_revenue_growth: 0.20           # 売上成長率 >= 20% (YoY)
+      min_quarterly_revenue_growth: 0.10  # 直近四半期売上成長率 >= 10%
+      max_psr: 15.0                       # PSR <= 15（high-growth の 20 より厳しい）
+      min_gross_margin: 0.20              # 粗利率 >= 20%
+      max_market_cap: 100000000000        # 時価総額 <= 1000億円（JPY基準、他地域は自動調整）
+
   long-term:
     description: "長期投資適性（高ROE・EPS成長・高配当・安定企業）"
     criteria:
