@@ -97,6 +97,11 @@ EMPTY_BUSINESS = {
     "raw_response": "",
 }
 
+EMPTY_TRENDING_THEMES = {
+    "themes": [],
+    "raw_response": "",
+}
+
 
 # ---------------------------------------------------------------------------
 # Public helpers
@@ -291,6 +296,24 @@ def _parse_json_response(raw_text: str) -> dict:
     except (json.JSONDecodeError, ValueError):
         pass
     return {}
+
+
+def _parse_json_array_response(raw_text: str):
+    """Extract a JSON array from *raw_text*.
+
+    Finds the first ``[`` and last ``]`` and attempts ``json.loads``.
+    Returns an empty list on failure.
+    """
+    try:
+        json_start = raw_text.find("[")
+        json_end = raw_text.rfind("]") + 1
+        if json_start >= 0 and json_end > json_start:
+            result = json.loads(raw_text[json_start:json_end])
+            if isinstance(result, list):
+                return result
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +561,28 @@ def _build_business_prompt(symbol: str, company_name: str = "") -> str:
         f'  "growth_strategy": ["strategy1", "strategy2"],\n'
         f'  "risks": ["risk1", "risk2"]\n'
         f'}}'
+    )
+
+
+def _build_trending_themes_prompt(region: str = "global") -> str:
+    """Build prompt for discovering trending investment themes (KIK-440)."""
+    region_desc = {"japan": "日本市場", "jp": "日本市場", "us": "米国市場", "global": "グローバル市場"}
+    label = region_desc.get(region, f"{region.upper()}市場")
+    valid_keys = "ai, ev, cloud-saas, cybersecurity, biotech, renewable-energy, fintech, defense, healthcare"
+
+    return (
+        f"X（Twitter）とWebの情報をもとに、今{label}で投資家が注目している"
+        f"セクター・投資テーマを調査してください。\n\n"
+        f"勢いのあるテーマを3〜5つ特定し、各テーマについて:\n"
+        f"- なぜ今注目されているか（簡潔な理由）\n"
+        f"- 信頼度（0.0〜1.0）\n"
+        f"を提供してください。\n\n"
+        f"重要: theme は以下のキーのいずれかで返してください:\n"
+        f"{valid_keys}\n\n"
+        f"JSON形式で回答:\n"
+        f"[\n"
+        f'  {{"theme": "テーマキー", "reason": "注目理由（日本語）", "confidence": 0.85}}\n'
+        f"]"
     )
 
 
@@ -891,4 +936,49 @@ def search_business(
     if isinstance(parsed.get("risks"), list):
         result["risks"] = parsed["risks"]
 
+    return result
+
+
+def get_trending_themes(
+    region: str = "global",
+    timeout: int = 30,
+) -> dict:
+    """Discover trending investment themes via Grok X/Web search (KIK-440).
+
+    Parameters
+    ----------
+    region : str
+        Market region for theme discovery (japan/us/global).
+    timeout : int
+        Request timeout in seconds.
+
+    Returns
+    -------
+    dict
+        Keys: themes (list of {theme, reason, confidence}),
+              raw_response (str).
+    """
+    raw_text = _call_grok_api(_build_trending_themes_prompt(region), timeout)
+    if not raw_text:
+        return dict(EMPTY_TRENDING_THEMES)
+
+    result = dict(EMPTY_TRENDING_THEMES)
+    result["raw_response"] = raw_text
+
+    # Try array first (expected format), then object with "themes" key
+    parsed = _parse_json_array_response(raw_text)
+    if not parsed:
+        obj = _parse_json_response(raw_text)
+        parsed = obj.get("themes", []) if isinstance(obj.get("themes"), list) else []
+
+    validated = []
+    for item in parsed:
+        if isinstance(item, dict) and isinstance(item.get("theme"), str):
+            validated.append({
+                "theme": item["theme"].strip().lower(),
+                "reason": item.get("reason", "") if isinstance(item.get("reason"), str) else "",
+                "confidence": float(item.get("confidence", 0.5)) if isinstance(item.get("confidence"), (int, float)) else 0.5,
+            })
+    validated.sort(key=lambda x: x["confidence"], reverse=True)
+    result["themes"] = validated
     return result

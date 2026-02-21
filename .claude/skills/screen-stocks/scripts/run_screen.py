@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
 from src.data import yahoo_client
 from src.core.screening.screener import ValueScreener, QueryScreener, PullbackScreener, AlphaScreener, TrendingScreener, GrowthScreener
-from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown, format_alpha_markdown, format_trending_markdown, format_growth_markdown
+from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown, format_alpha_markdown, format_trending_markdown, format_growth_markdown, format_auto_theme_header
 from src.markets.japan import JapanMarket
 from src.markets.us import USMarket
 from src.markets.asean import ASEANMarket
@@ -247,8 +247,130 @@ def run_trending_mode(args):
     print()
 
 
+def run_auto_theme_mode(args):
+    """Run auto-theme mode: detect trending themes via Grok, then screen each (KIK-440)."""
+    try:
+        from src.data import grok_client as gc
+        if not gc.is_available():
+            print("Error: --auto-theme requires XAI_API_KEY environment variable.")
+            print("Set: export XAI_API_KEY=your-api-key")
+            sys.exit(1)
+    except ImportError:
+        print("Error: grok_client module not available.")
+        sys.exit(1)
+
+    region_key = args.region.lower()
+    regions = REGION_EXPAND.get(region_key, [region_key])
+    first_region = regions[0]
+    region_name = REGION_NAMES.get(first_region, region_key.upper())
+
+    print(f"\n## {region_name} - トレンドテーマ自動検出 + スクリーニング\n")
+    print("Step 1: Grok でトレンドテーマを検出中...")
+
+    grok_result = gc.get_trending_themes(region=region_key, timeout=60)
+    all_themes = grok_result.get("themes", [])
+
+    if not all_themes:
+        print("トレンドテーマを検出できませんでした。")
+        return
+
+    # Validate against themes.yaml
+    try:
+        from src.core.screening.query_builder import load_themes
+        valid_theme_keys = set(load_themes().keys())
+    except Exception:
+        valid_theme_keys = set()
+
+    if valid_theme_keys:
+        active_themes = [t for t in all_themes if t["theme"] in valid_theme_keys]
+        skipped_themes = [t for t in all_themes if t["theme"] not in valid_theme_keys]
+    else:
+        active_themes = all_themes
+        skipped_themes = []
+
+    print(format_auto_theme_header(active_themes, skipped_themes))
+
+    if not active_themes:
+        print("有効なテーマが見つかりませんでした（すべて未対応テーマ）。")
+        return
+
+    # Screen each theme
+    _GROWTH_PRESETS = {"growth", "high-growth", "small-cap-growth"}
+
+    for theme_info in active_themes:
+        theme_key = theme_info["theme"]
+        print(f"\n### テーマ: {theme_key}\n")
+
+        for region_code in regions:
+            rname = REGION_NAMES.get(region_code, region_code.upper())
+
+            if args.preset in _GROWTH_PRESETS:
+                if args.preset == "growth":
+                    screener = GrowthScreener(yahoo_client)
+                elif args.preset == "high-growth":
+                    screener = GrowthScreener(
+                        yahoo_client, preset="high-growth",
+                        sort_by="revenue_growth", require_positive_eps=False,
+                    )
+                else:  # small-cap-growth
+                    screener = GrowthScreener(
+                        yahoo_client, preset="small-cap-growth",
+                        sort_by="revenue_growth", require_positive_eps=False,
+                    )
+
+                overrides = None
+                if args.preset == "small-cap-growth" and region_code in _SMALL_CAP_MARKET_CAP:
+                    overrides = {"max_market_cap": _SMALL_CAP_MARKET_CAP[region_code]}
+
+                results = screener.screen(
+                    region=region_code, top_n=args.top,
+                    sector=args.sector, theme=theme_key,
+                    criteria_overrides=overrides,
+                )
+                results, excluded = _annotate(results)
+                print(f"{rname}: {len(results)}銘柄")
+                if excluded:
+                    print(f"※ 直近売却済み {excluded}銘柄を除外")
+                if results:
+                    print(format_growth_markdown(results))
+            else:
+                screener = QueryScreener(yahoo_client)
+                results = screener.screen(
+                    region=region_code,
+                    preset=args.preset,
+                    sector=args.sector,
+                    theme=theme_key,
+                    top_n=args.top,
+                )
+                results, excluded = _annotate(results)
+                print(f"{rname}: {len(results)}銘柄")
+                if excluded:
+                    print(f"※ 直近売却済み {excluded}銘柄を除外")
+                if results:
+                    if args.preset == "shareholder-return" and HAS_SR_FORMAT:
+                        print(format_shareholder_return_markdown(results))
+                    else:
+                        print(format_query_markdown(results))
+
+            _print_recurring_picks(results)
+            _print_graphrag_context(results)
+
+            if HAS_HISTORY and results:
+                try:
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                except Exception as e:
+                    print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
+
+    print()
+
+
 def run_query_mode(args):
     """Run screening using EquityQuery (default mode)."""
+    # auto-theme dispatch (KIK-440)
+    if getattr(args, "auto_theme", False):
+        run_auto_theme_mode(args)
+        return
+
     region_key = args.region.lower()
     regions = REGION_EXPAND.get(region_key)
     if regions is None:
@@ -504,6 +626,12 @@ def main():
         default=None,
         help="Theme filter (e.g., ai, ev, defense, cloud-saas). Supported by all presets except trending/pullback/alpha.",
     )
+    parser.add_argument(
+        "--auto-theme",
+        action="store_true",
+        default=False,
+        help="Grok APIでトレンドテーマを自動検出し、各テーマでスクリーニングを実行。XAI_API_KEY必須。",
+    )
     parser.add_argument("--top", type=int, default=20)
     parser.add_argument(
         "--with-pullback",
@@ -559,6 +687,14 @@ def main():
                     sys.exit(1)
             except Exception:
                 pass  # Graceful degradation if themes.yaml is unavailable
+
+    # Validate --auto-theme (KIK-440)
+    if args.auto_theme and args.theme:
+        print("Error: --auto-theme と --theme は同時に使用できません。")
+        sys.exit(1)
+    if args.auto_theme and args.preset in ("trending", "pullback", "alpha"):
+        print(f"Warning: --auto-theme は --preset {args.preset} と併用できません。--auto-theme を無視します。")
+        args.auto_theme = False
 
     # pullback preset always uses query mode (needs EquityQuery + technical analysis)
     if args.preset == "pullback" and args.mode == "legacy":

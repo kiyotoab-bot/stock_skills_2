@@ -58,6 +58,43 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 
 テーマ定義は `config/themes.yaml` で管理。
 
+## トレンドテーマ自動検出（KIK-440）
+
+`--auto-theme` を指定すると、Grok API（X/Web検索）でトレンドテーマを自動検出し、各テーマで既存のスクリーニングを順次実行する。
+
+### パイプライン
+
+1. Grok API がX/Webから注目テーマを3〜5つ検出（信頼度付き）
+2. `themes.yaml` のキーと照合し、有効テーマのみ実行（未対応テーマはスキップ通知）
+3. 各テーマで指定プリセットのスクリーニングを実行
+
+### 制約事項
+
+- `--auto-theme` と `--theme` は排他（同時使用不可）
+- `trending`/`pullback`/`alpha` プリセットとは併用不可
+- `XAI_API_KEY` 必須（未設定時はエラー終了）
+
+### `trending` プリセットとの違い
+
+| | `--preset trending` | `--auto-theme` |
+|:---|:---|:---|
+| 検出対象 | X上の話題の**個別銘柄** | トレンドの**テーマ・セクター** |
+| 粒度 | 銘柄粒度 | テーマ粒度 |
+| スクリーニング | ファンダメンタルズ評価 | テーマ内で任意のプリセットで評価 |
+
+### 実行例
+
+```bash
+# 日本のトレンドテーマで割安株をスクリーニング
+python3 .../run_screen.py --region japan --preset value --auto-theme
+
+# 米国のトレンドテーマで高成長株
+python3 .../run_screen.py --region us --preset high-growth --auto-theme
+
+# グローバルのトレンドテーマでデフォルトプリセット
+python3 .../run_screen.py --preset value --auto-theme
+```
+
 ## スクリーニングモード
 
 - `--mode query` (デフォルト): **EquityQuery方式**。yfinance の EquityQuery API を使い、銘柄リスト不要で条件に合う銘柄を直接検索する。全地域に対応。高速。
