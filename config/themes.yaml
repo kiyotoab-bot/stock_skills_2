@@ -52,6 +52,7 @@ themes:
     description: "防衛・航空宇宙"
     industries:
       - Aerospace & Defense
+      - Specialty Industrial Machinery  # 日本の防衛大手(三菱重工・IHI・川崎重工等)はこの分類
 
   healthcare:
     description: "ヘルスケア"
