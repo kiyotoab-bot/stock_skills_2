@@ -78,6 +78,7 @@ python3 /Users/kikuchihiroyuki/stock-skills/.claude/skills/screen-stocks/scripts
 - `long-term` : 長期投資適性（高ROE≧15%・EPS成長≧10%・配当≧2%・PER≦25・PBR≦3・時価総額1000億以上。長期保有に適した安定成長銘柄を検索）
 - `shareholder-return` : 株主還元重視（配当利回り+自社株買い利回りの総還元率でランキング。安定度評価付き: ✅安定/📈増加/⚠️一時的/📉低下）
 - `high-growth` : 高成長株（利益不問・売上成長率≧20%・直近四半期売上成長≧10%・PSR≦20・粗利率≧20%。赤字成長企業も対象。PERは使わずPSRでバブル防止）（KIK-432）
+- `small-cap-growth` : 小型急成長株（時価総額1000億以下・売上成長率≧20%・PSR≦15・粗利率≧20%。機関投資家未発見の10倍株候補。地域別時価総額自動調整付き。リスク★★★★）（KIK-437）
 
 ## 出力
 
@@ -184,6 +185,15 @@ python3 .../run_screen.py --region us --preset growth --theme ev
 
 # バイオテックの高成長株
 python3 .../run_screen.py --region us --preset high-growth --theme biotech
+
+# 日本の小型急成長株（時価総額1000億以下）
+python3 .../run_screen.py --region japan --preset small-cap-growth
+
+# 米国の小型急成長株（時価総額$1B以下に自動調整）
+python3 .../run_screen.py --region us --preset small-cap-growth
+
+# AI関連の小型成長株
+python3 .../run_screen.py --region us --preset small-cap-growth --theme ai
 ```
 
 ## アノテーション機能 (KIK-418/419)

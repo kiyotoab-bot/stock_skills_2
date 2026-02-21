@@ -114,6 +114,7 @@ class QueryScreener:
         sort_field: str = "intradaymarketcap",
         sort_asc: bool = False,
         with_pullback: bool = False,
+        criteria_overrides: Optional[dict] = None,
     ) -> list[dict]:
         """Run EquityQuery-based screening and return scored results.
 
@@ -163,6 +164,10 @@ class QueryScreener:
                 criteria = load_preset(preset)
             else:
                 criteria = {}
+
+        # Apply region-specific overrides (KIK-437: small-cap market cap adjustment)
+        if criteria_overrides:
+            criteria.update(criteria_overrides)
 
         # Build the EquityQuery
         query = build_query(criteria, region=region, exchange=exchange, sector=sector, theme=theme)

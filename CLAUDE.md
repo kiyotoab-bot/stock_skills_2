@@ -54,7 +54,7 @@ Core   (src/core/) — screening/ portfolio/ risk/ research/ + proactive_engine 
 Data   (src/data/) — yahoo_client/ (KIK-449: submodule分割), grok_client, history_store, graph_store, graph_linker (KIK-434), ...
 Output (src/output/) — formatter, stress_formatter, portfolio_formatter, research_formatter
 
-Config: config/screening_presets.yaml (11 presets), config/exchanges.yaml (60+ regions)
+Config: config/screening_presets.yaml (12 presets), config/exchanges.yaml (60+ regions)
 Rules:  .claude/rules/ (graph-context, intent-routing, workflow, development, screening, portfolio, testing)
 Docs:   docs/ (architecture, neo4j-schema, skill-catalog)
 ```

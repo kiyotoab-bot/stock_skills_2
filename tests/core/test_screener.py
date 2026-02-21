@@ -430,3 +430,49 @@ class TestGrowthScreener:
         assert "per" in r
         assert "pbr" in r
         assert "roe" in r
+
+
+# ===================================================================
+# KIK-437: QueryScreener.screen() criteria_overrides
+# ===================================================================
+
+
+class TestQueryScreenerCriteriaOverrides:
+    """Tests for criteria_overrides parameter on QueryScreener.screen()."""
+
+    def test_overrides_none_is_noop(self):
+        """criteria_overrides=None should not alter behavior."""
+        class MockClient:
+            def screen_stocks(self, *a, **kw):
+                return []
+        screener = QueryScreener(MockClient())
+        result = screener.screen(region="jp", preset="small-cap-growth", criteria_overrides=None)
+        assert result == []
+
+    def test_overrides_replaces_preset_key(self):
+        """criteria_overrides should replace matching keys from preset."""
+        captured = {}
+        class MockClient:
+            def screen_stocks(self, query, **kw):
+                captured["called"] = True
+                return []
+        screener = QueryScreener(MockClient())
+        screener.screen(
+            region="jp",
+            preset="small-cap-growth",
+            criteria_overrides={"max_market_cap": 999},
+        )
+        assert captured.get("called") is True
+
+    def test_overrides_with_explicit_criteria(self):
+        """criteria_overrides should work with explicit criteria dict too."""
+        class MockClient:
+            def screen_stocks(self, *a, **kw):
+                return []
+        screener = QueryScreener(MockClient())
+        result = screener.screen(
+            region="jp",
+            criteria={"max_per": 15},
+            criteria_overrides={"max_market_cap": 1_000_000_000},
+        )
+        assert result == []
