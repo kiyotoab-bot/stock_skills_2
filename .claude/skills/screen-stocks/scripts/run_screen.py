@@ -13,7 +13,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ, print_context, print_suggestions
 from src.data import yahoo_client
 from src.core.screening.screener import ValueScreener, QueryScreener, PullbackScreener, AlphaScreener, TrendingScreener, GrowthScreener
 from src.output.formatter import format_markdown, format_query_markdown, format_pullback_markdown, format_alpha_markdown, format_trending_markdown, format_growth_markdown, format_auto_theme_header
@@ -721,10 +721,16 @@ def main():
         print("Note: trending preset requires query mode. Switching to --mode query.")
         args.mode = "query"
 
+    # Context retrieval (KIK-465)
+    print_context(f"screen {args.region} {args.preset}")
+
     if args.mode == "query":
         run_query_mode(args)
     else:
         run_legacy_mode(args)
+
+    # Proactive suggestions (KIK-465)
+    print_suggestions(context_summary=f"スクリーニング完了: {args.preset} {args.region}")
 
 
 if __name__ == "__main__":

@@ -129,12 +129,21 @@ CONTEXT_RECENT_HOURS=168    # これ以内 → RECENT / これ超 → STALE
 
 スキル実行後、蓄積知識に基づく次のアクションを提案する。
 
+### 自動組み込み (KIK-465)
+
+各スキルスクリプトに `print_context()` と `print_suggestions()` が組み込まれており、スキル実行時に自動的にコンテキスト取得・提案表示が行われる。手動で `get_context.py` や `suggest.py` を呼ぶ必要はない。
+
+- 冒頭: `print_context()` でグラフコンテキストを自動取得・表示
+- 末尾: `print_suggestions()` でプロアクティブ提案を自動表示
+- 10秒タイムアウト（SIGALRM）
+- Neo4j 未接続・エラー時は graceful degradation（出力なし、クラッシュしない）
+
+### CLI ラッパー（手動実行用）
+
 ```bash
 python3 scripts/suggest.py [--symbol <ticker>] [--sector <sector>]
 ```
 
-- 出力があればスキル実行結果の末尾に表示する
-- Neo4j 未接続・エラー時は graceful degradation（出力なし、クラッシュしない）
 - 提案は最大 3 件。urgency: high（赤信号） > medium（要確認） > low（参考）
 
 **トリガー種別:**
@@ -147,3 +156,4 @@ python3 scripts/suggest.py [--symbol <ticker>] [--sector <sector>]
 | 状態 | 同銘柄がスクリーニングで 3回以上上位 | medium |
 | 状態 | 懸念メモが記録済み | medium |
 | コンテキスト | リサーチセクターが保有銘柄と一致 | low |
+| コンテキスト | 実行結果にキーワード一致（決算・利上げ・EXIT等） | low |

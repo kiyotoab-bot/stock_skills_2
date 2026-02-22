@@ -26,6 +26,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from src.data import yahoo_client
 from src.core.ticker_utils import infer_country as _infer_country
+from scripts.common import print_context, print_suggestions
 
 # ---------------------------------------------------------------------------
 # Optional module imports — registry-based bulk import (KIK-393)
@@ -1260,6 +1261,9 @@ def main():
         parser.print_help()
         sys.exit(1)
 
+    # Context retrieval (KIK-465)
+    print_context(f"portfolio {args.command}")
+
     csv_path = os.path.normpath(args.csv)
 
     if args.command == "snapshot":
@@ -1332,6 +1336,10 @@ def main():
     else:
         parser.print_help()
         sys.exit(1)
+
+    # Proactive suggestions (KIK-465)
+    _sym = getattr(args, "symbol", "") or ""
+    print_suggestions(symbol=_sym, context_summary=f"ポートフォリオ: {args.command}")
 
 
 if __name__ == "__main__":

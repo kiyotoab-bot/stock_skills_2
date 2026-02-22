@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ, print_context, print_suggestions
 from src.data import yahoo_client
 
 HAS_RESEARCHER, _res = try_import(
@@ -179,7 +179,16 @@ def main():
     p_business.set_defaults(func=cmd_business)
 
     args = parser.parse_args()
+
+    # Context retrieval (KIK-465)
+    _target = getattr(args, "symbol", None) or getattr(args, "theme", None) or getattr(args, "market", None) or ""
+    print_context(f"research {args.command} {_target}")
+
     args.func(args)
+
+    # Proactive suggestions (KIK-465)
+    _sym = getattr(args, "symbol", "") or ""
+    print_suggestions(symbol=_sym, context_summary=f"リサーチ完了: {args.command} {_target}")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import print_suggestions
+
 WATCHLIST_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "data", "watchlists")
 
 
@@ -72,6 +74,8 @@ def cmd_add(name, new_symbols):
     symbols.extend(new_symbols)
     _save(name, symbols)
     print(f"'{name}' に {len(new_symbols)} 銘柄を追加しました: {', '.join(new_symbols)}")
+    for s in new_symbols:
+        print_suggestions(symbol=s, context_summary=f"ウォッチリスト追加: {s}")
 
 
 def cmd_remove(name, remove_symbols):
@@ -83,6 +87,9 @@ def cmd_remove(name, remove_symbols):
         print(f"'{name}' から {len(removed)} 銘柄を削除しました: {', '.join(removed)}")
     else:
         print("該当する銘柄が見つかりませんでした。")
+    if removed:
+        for s in removed:
+            print_suggestions(symbol=s, context_summary=f"ウォッチリスト削除: {s}")
 
 
 def main():
