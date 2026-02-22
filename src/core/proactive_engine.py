@@ -7,6 +7,7 @@ Trigger categories:
   Time:        thesis note >90d old, last health check >14d ago, earnings within 7d
   State:       recurring screening picks, concern notes, held stock w/ new report
   Contextual:  research sector matches held stocks
+  Context:     execution result keyword matching (KIK-465)
 """
 
 from datetime import date
@@ -16,6 +17,55 @@ _HEALTH_STALE_DAYS  = 14   # no health check for N days → suggest check
 _HEALTH_HIGH_DAYS   = 30   # > this → urgency=high
 _EARNINGS_WARN_DAYS = 7    # upcoming earnings within N days → warn
 _RECURRING_MIN      = 3    # screened N+ times → suggest deeper report
+
+# ---------------------------------------------------------------------------
+# Context-based trigger patterns (KIK-465)
+# ---------------------------------------------------------------------------
+
+_CONTEXT_PATTERNS: dict[str, dict] = {
+    "energy": {
+        "keywords": ["エネルギー", "原油", "石油", "天然ガス", "energy", "oil"],
+        "emoji": "\u26a1",
+        "title": "エネルギーセクターの確認",
+        "command_hint": "screen-stocks --sector Energy",
+    },
+    "tech_weak": {
+        "keywords": ["テック軟調", "ハイテク下落", "テクノロジー下落", "tech decline"],
+        "emoji": "\U0001f4c9",
+        "title": "テック銘柄のリスク確認",
+        "command_hint": "stress-test --scenario テック暴落",
+    },
+    "gold": {
+        "keywords": ["金急騰", "金価格", "ゴールド", "gold"],
+        "emoji": "\U0001f947",
+        "title": "コモディティ関連の影響確認",
+        "command_hint": "stress-test",
+    },
+    "rate": {
+        "keywords": ["利上げ", "金利上昇", "rate hike", "利下げ", "金利低下"],
+        "emoji": "\U0001f3e6",
+        "title": "金利変動のPF影響確認",
+        "command_hint": "stress-test --scenario 日銀利上げ",
+    },
+    "earnings": {
+        "keywords": ["決算", "好決算", "悪決算", "earnings", "上方修正", "下方修正"],
+        "emoji": "\U0001f4ca",
+        "title": "決算関連銘柄のフォローアップ",
+        "command_hint": "stock-report",
+    },
+    "health_warning": {
+        "keywords": ["警戒", "EXIT", "損切り", "バリュートラップ", "デッドクロス"],
+        "emoji": "\U0001f6a8",
+        "title": "警戒銘柄の対応検討",
+        "command_hint": "screen-stocks --preset alpha",
+    },
+    "screening_result": {
+        "keywords": ["スクリーニング完了", "銘柄発見", "上位ランクイン"],
+        "emoji": "\U0001f50d",
+        "title": "上位銘柄の詳細分析",
+        "command_hint": "stock-report",
+    },
+}
 
 
 class ProactiveEngine:
@@ -35,6 +85,7 @@ class ProactiveEngine:
         suggestions += self._check_time_triggers()
         suggestions += self._check_state_triggers(symbol)
         suggestions += self._check_contextual_triggers(sector)
+        suggestions += self._check_context_triggers(context)
 
         # Sort by urgency, deduplicate by title
         _order = {"high": 0, "medium": 1, "low": 2}
@@ -192,6 +243,27 @@ class ProactiveEngine:
         except Exception:
             pass
         return out
+
+    # ------------------------------------------------------------------
+    # Context triggers (KIK-465) — keyword matching on execution results
+    # ------------------------------------------------------------------
+
+    def _check_context_triggers(self, context: str = "") -> list[dict]:
+        """Generate suggestions based on execution result context."""
+        if not context:
+            return []
+        out: list[dict] = []
+        context_lower = context.lower()
+        for _key, pattern in _CONTEXT_PATTERNS.items():
+            if any(kw.lower() in context_lower for kw in pattern["keywords"]):
+                out.append({
+                    "emoji": pattern["emoji"],
+                    "title": pattern["title"],
+                    "reason": f"実行結果に関連: {context[:60]}",
+                    "command_hint": pattern["command_hint"],
+                    "urgency": "low",
+                })
+        return out[:2]
 
 
 # ---------------------------------------------------------------------------

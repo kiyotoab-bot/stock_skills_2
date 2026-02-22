@@ -1,7 +1,11 @@
 """Common utilities for skill scripts -- path setup and graceful imports."""
 
+import signal
 import sys
 from pathlib import Path
+from typing import Optional
+
+_CONTEXT_TIMEOUT = 10  # seconds — max wait for context/suggestions
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +149,76 @@ try:
     HAS_GRAPH_STORE = True
 except ImportError:
     HAS_GRAPH_STORE = False
+
+
+# ---------------------------------------------------------------------------
+# Context retrieval & proactive suggestions (KIK-465)
+#
+# Embedded into each skill script's start/end for reliable execution.
+# Graceful degradation: returns None / no output on any failure.
+# ---------------------------------------------------------------------------
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("Context/suggestion timeout")
+
+
+def print_context(user_input: str) -> Optional[str]:
+    """Get and print graph context at script start.
+
+    Returns the action label (FRESH/RECENT/STALE/NONE) or None on failure.
+    Timeout: 10 seconds max. Graceful degradation on any error.
+    """
+    if not user_input:
+        return None
+    try:
+        from src.data.auto_context import get_context
+
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(_CONTEXT_TIMEOUT)
+        try:
+            result = get_context(user_input)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+        if result and result.get("context_markdown"):
+            print(result["context_markdown"])
+            print()
+            return result.get("action_label")
+        return None
+    except Exception:
+        return None
+
+
+def print_suggestions(
+    symbol: str = "",
+    sector: str = "",
+    context_summary: str = "",
+) -> None:
+    """Print proactive suggestions at script end.
+
+    Args:
+        symbol: Current symbol in focus.
+        sector: Current sector in focus.
+        context_summary: Execution result summary for context-aware suggestions.
+    """
+    try:
+        from src.core.proactive_engine import format_suggestions, get_suggestions
+
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(_CONTEXT_TIMEOUT)
+        try:
+            suggestions = get_suggestions(
+                context=context_summary,
+                symbol=symbol,
+                sector=sector,
+            )
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+        output = format_suggestions(suggestions)
+        if output:
+            print(output)
+    except Exception:
+        pass

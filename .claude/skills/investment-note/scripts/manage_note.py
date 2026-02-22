@@ -7,6 +7,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import print_suggestions
 from src.data.note_manager import save_note, load_notes, delete_note
 
 
@@ -31,6 +32,10 @@ def cmd_save(args):
     print(f"メモを保存しました: {note['id']}")
     print(f"  対象: {label} / タイプ: {note['type']} / カテゴリ: {note.get('category', '-')}")
     print(f"  内容: {note['content']}")
+    print_suggestions(
+        symbol=args.symbol or "",
+        context_summary=f"メモ保存: {args.type} {label}",
+    )
 
 
 def cmd_list(args):

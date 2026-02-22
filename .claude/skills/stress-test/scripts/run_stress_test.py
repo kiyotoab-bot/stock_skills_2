@@ -18,7 +18,7 @@ from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import, HAS_HISTORY_STORE
+from scripts.common import try_import, HAS_HISTORY_STORE, print_context, print_suggestions
 from src.data import yahoo_client
 from src.core.portfolio.concentration import analyze_concentration, compute_hhi
 from src.core.ticker_utils import infer_country as _infer_country
@@ -235,6 +235,9 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Context retrieval (KIK-465)
+    print_context(f"stress-test {args.portfolio}")
 
     # ------------------------------------------------------------------
     # Parse symbols
@@ -573,6 +576,9 @@ def main():
             )
         except Exception:
             pass  # graceful degradation
+
+    # Proactive suggestions (KIK-465)
+    print_suggestions(context_summary=f"ストレステスト完了: {args.portfolio}")
 
 
 if __name__ == "__main__":

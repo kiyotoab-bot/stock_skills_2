@@ -6,6 +6,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
+from scripts.common import print_suggestions
 from src.data.graph_nl_query import query
 
 
@@ -28,6 +29,7 @@ def main():
         sys.exit(0)
 
     print(result["formatted"])
+    print_suggestions(context_summary=f"グラフクエリ: {user_input[:60]}")
 
 
 if __name__ == "__main__":

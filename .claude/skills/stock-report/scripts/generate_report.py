@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ, print_context, print_suggestions
 from src.data.yahoo_client import get_stock_info, get_stock_detail
 from src.core.screening.indicators import calculate_value_score
 
@@ -43,6 +43,10 @@ def main():
         sys.exit(1)
 
     symbol = sys.argv[1]
+
+    # Context retrieval (KIK-465)
+    print_context(f"report {symbol}")
+
     data = get_stock_detail(symbol)
     if data is None:
         data = get_stock_info(symbol)
@@ -231,6 +235,9 @@ def main():
             history_save_report(symbol, data, score, verdict)
         except Exception as e:
             print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
+
+    # Proactive suggestions (KIK-465)
+    print_suggestions(symbol=symbol, context_summary=f"レポート生成: {symbol}")
 
 
 if __name__ == "__main__":
