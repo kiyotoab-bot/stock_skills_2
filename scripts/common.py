@@ -190,6 +190,38 @@ def print_context(user_input: str) -> Optional[str]:
         return None
 
 
+def print_removal_contexts(symbols: list[str]) -> None:
+    """Print graph context for removal candidate symbols (KIK-470).
+
+    Called before what-if simulation to show screening history,
+    investment notes, and research for stocks about to be sold.
+    Timeout: 10 seconds total. Graceful degradation on any error.
+    """
+    if not symbols:
+        return
+    try:
+        from src.data.auto_context import get_context
+
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(_CONTEXT_TIMEOUT)
+        try:
+            contexts = []
+            for sym in symbols:
+                result = get_context(sym)
+                if result and result.get("context_markdown"):
+                    contexts.append(result["context_markdown"])
+            if contexts:
+                print("---")
+                print("## 売却候補のコンテキスト (KIK-470)\n")
+                print("\n\n".join(contexts))
+                print()
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+    except Exception:
+        pass  # graceful degradation
+
+
 def print_suggestions(
     symbol: str = "",
     sector: str = "",

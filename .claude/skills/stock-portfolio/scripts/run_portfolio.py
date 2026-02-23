@@ -26,7 +26,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 from src.data import yahoo_client
 from src.core.ticker_utils import infer_country as _infer_country
-from scripts.common import print_context, print_suggestions
+from scripts.common import print_context, print_removal_contexts, print_suggestions
 
 # ---------------------------------------------------------------------------
 # Optional module imports — registry-based bulk import (KIK-393)
@@ -1004,6 +1004,11 @@ def cmd_what_if(
     except ValueError as e:
         print(f"Error (--remove): {e}")
         sys.exit(1)
+
+    # KIK-470: Show context for removal candidates
+    if removals:
+        removal_symbols = [r["symbol"] for r in removals]
+        print_removal_contexts(removal_symbols)
 
     print("What-If シミュレーション実行中...\n")
 
