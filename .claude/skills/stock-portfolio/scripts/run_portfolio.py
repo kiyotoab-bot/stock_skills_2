@@ -28,6 +28,9 @@ from src.data import yahoo_client
 from src.core.ticker_utils import infer_country as _infer_country
 from scripts.common import print_context, print_removal_contexts, print_suggestions
 
+# KIK-472: Module-level state to pass health_data to print_suggestions
+_last_health_data: dict | None = None
+
 # ---------------------------------------------------------------------------
 # Optional module imports — registry-based bulk import (KIK-393)
 # Each entry: (module_path, HAS_flag_suffix, [(original_name, alias), ...])
@@ -699,6 +702,7 @@ def cmd_analyze(csv_path: str) -> None:
 
 def cmd_health(csv_path: str) -> None:
     """Run health check on portfolio holdings."""
+    global _last_health_data
     if not HAS_HEALTH_CHECK:
         print("Error: health_check モジュールが見つかりません。")
         sys.exit(1)
@@ -706,6 +710,7 @@ def cmd_health(csv_path: str) -> None:
     print("ヘルスチェック実行中（価格・財務データ取得）...\n")
 
     health_data = hc_run_health_check(csv_path, yahoo_client)
+    _last_health_data = health_data  # KIK-472: store for action item processing
     positions = health_data.get("positions", [])
 
     if not positions:
@@ -1342,9 +1347,13 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # Proactive suggestions (KIK-465)
+    # Proactive suggestions (KIK-465) + action items (KIK-472)
     _sym = getattr(args, "symbol", "") or ""
-    print_suggestions(symbol=_sym, context_summary=f"ポートフォリオ: {args.command}")
+    print_suggestions(
+        symbol=_sym,
+        context_summary=f"ポートフォリオ: {args.command}",
+        health_data=_last_health_data,
+    )
 
 
 if __name__ == "__main__":

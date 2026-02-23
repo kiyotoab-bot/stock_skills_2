@@ -955,3 +955,48 @@ def get_themes_for_symbols_batch(symbols: list[str]) -> dict[str, list[str]]:
             return {record["symbol"]: record["themes"] for record in result}
     except Exception:
         return {}
+
+
+# ---------------------------------------------------------------------------
+# ActionItem history (KIK-472)
+# ---------------------------------------------------------------------------
+
+
+def get_action_item_history(symbol: str | None = None, limit: int = 10) -> list[dict]:
+    """Get ActionItem nodes for graph-query skill.
+
+    Returns list of {id, date, trigger_type, title, symbol, urgency, status,
+    linear_identifier, linear_issue_url}.
+    """
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            if symbol:
+                result = session.run(
+                    "MATCH (a:ActionItem)-[:TARGETS]->(s:Stock {symbol: $symbol}) "
+                    "RETURN a.id AS id, a.date AS date, "
+                    "a.trigger_type AS trigger_type, a.title AS title, "
+                    "a.symbol AS symbol, a.urgency AS urgency, "
+                    "a.status AS status, "
+                    "a.linear_identifier AS linear_identifier, "
+                    "a.linear_issue_url AS linear_issue_url "
+                    "ORDER BY a.date DESC LIMIT $limit",
+                    symbol=symbol, limit=limit,
+                )
+            else:
+                result = session.run(
+                    "MATCH (a:ActionItem) "
+                    "RETURN a.id AS id, a.date AS date, "
+                    "a.trigger_type AS trigger_type, a.title AS title, "
+                    "a.symbol AS symbol, a.urgency AS urgency, "
+                    "a.status AS status, "
+                    "a.linear_identifier AS linear_identifier, "
+                    "a.linear_issue_url AS linear_issue_url "
+                    "ORDER BY a.date DESC LIMIT $limit",
+                    limit=limit,
+                )
+            return [dict(r) for r in result]
+    except Exception:
+        return []

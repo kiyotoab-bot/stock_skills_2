@@ -145,6 +145,8 @@ _SCHEMA_CONSTRAINTS = [
     # KIK-428 stress test / forecast auto-save
     "CREATE CONSTRAINT stress_test_id IF NOT EXISTS FOR (st:StressTest) REQUIRE st.id IS UNIQUE",
     "CREATE CONSTRAINT forecast_id IF NOT EXISTS FOR (f:Forecast) REQUIRE f.id IS UNIQUE",
+    # KIK-472 action item
+    "CREATE CONSTRAINT action_item_id IF NOT EXISTS FOR (a:ActionItem) REQUIRE a.id IS UNIQUE",
 ]
 
 _SCHEMA_INDEXES = [
@@ -164,6 +166,9 @@ _SCHEMA_INDEXES = [
     "CREATE INDEX sentiment_source IF NOT EXISTS FOR (s:Sentiment) ON (s.source)",
     "CREATE INDEX catalyst_type IF NOT EXISTS FOR (c:Catalyst) ON (c.type)",
     "CREATE INDEX indicator_date IF NOT EXISTS FOR (i:Indicator) ON (i.date)",
+    # KIK-472 action item indexes
+    "CREATE INDEX action_item_status IF NOT EXISTS FOR (a:ActionItem) ON (a.status)",
+    "CREATE INDEX action_item_date IF NOT EXISTS FOR (a:ActionItem) ON (a.date)",
 ]
 
 # KIK-420: Vector indexes for semantic search
@@ -1415,3 +1420,121 @@ def create_ai_relationship(
         return True
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------
+# ActionItem node (KIK-472)
+# ---------------------------------------------------------------------------
+
+
+def merge_action_item(
+    action_id: str,
+    action_date: str,
+    trigger_type: str,
+    title: str,
+    symbol: str | None = None,
+    urgency: str = "medium",
+    linear_issue_id: str | None = None,
+    linear_issue_url: str | None = None,
+    linear_identifier: str | None = None,
+    source_node_id: str | None = None,
+) -> bool:
+    """Create/update ActionItem node + TARGETS->Stock + optional source relationship."""
+    if _get_mode() == "off":
+        return False
+    driver = _get_driver()
+    if driver is None:
+        return False
+    try:
+        with driver.session() as session:
+            session.run(
+                "MERGE (a:ActionItem {id: $id}) "
+                "SET a.date = $date, a.trigger_type = $trigger_type, "
+                "a.title = $title, a.symbol = $symbol, "
+                "a.urgency = $urgency, a.status = coalesce(a.status, 'open'), "
+                "a.linear_issue_id = $linear_id, "
+                "a.linear_issue_url = $linear_url, "
+                "a.linear_identifier = $linear_ident",
+                id=action_id, date=action_date,
+                trigger_type=trigger_type, title=title,
+                symbol=symbol or "", urgency=urgency,
+                linear_id=linear_issue_id or "",
+                linear_url=linear_issue_url or "",
+                linear_ident=linear_identifier or "",
+            )
+            if symbol:
+                session.run(
+                    "MATCH (a:ActionItem {id: $action_id}) "
+                    "MERGE (s:Stock {symbol: $symbol}) "
+                    "MERGE (a)-[:TARGETS]->(s)",
+                    action_id=action_id, symbol=symbol,
+                )
+            if source_node_id:
+                session.run(
+                    "MATCH (a:ActionItem {id: $action_id}) "
+                    "MATCH (src {id: $source_id}) "
+                    "MERGE (src)-[:TRIGGERED]->(a)",
+                    action_id=action_id, source_id=source_node_id,
+                )
+        return True
+    except Exception:
+        return False
+
+
+def update_action_item_linear(
+    action_id: str,
+    linear_issue_id: str,
+    linear_issue_url: str,
+    linear_identifier: str,
+) -> bool:
+    """Link ActionItem to Linear issue after creation."""
+    if _get_mode() == "off":
+        return False
+    driver = _get_driver()
+    if driver is None:
+        return False
+    try:
+        with driver.session() as session:
+            session.run(
+                "MATCH (a:ActionItem {id: $id}) "
+                "SET a.linear_issue_id = $lid, "
+                "a.linear_issue_url = $lurl, "
+                "a.linear_identifier = $lident",
+                id=action_id,
+                lid=linear_issue_id,
+                lurl=linear_issue_url,
+                lident=linear_identifier,
+            )
+        return True
+    except Exception:
+        return False
+
+
+def get_open_action_items(symbol: str | None = None) -> list[dict]:
+    """Query open ActionItem nodes for dedup check."""
+    driver = _get_driver()
+    if driver is None:
+        return []
+    try:
+        with driver.session() as session:
+            if symbol:
+                result = session.run(
+                    "MATCH (a:ActionItem {status: 'open'}) "
+                    "WHERE a.symbol = $symbol "
+                    "RETURN a.id AS id, a.date AS date, "
+                    "a.trigger_type AS trigger_type, a.title AS title, "
+                    "a.symbol AS symbol, a.urgency AS urgency "
+                    "ORDER BY a.date DESC",
+                    symbol=symbol,
+                )
+            else:
+                result = session.run(
+                    "MATCH (a:ActionItem {status: 'open'}) "
+                    "RETURN a.id AS id, a.date AS date, "
+                    "a.trigger_type AS trigger_type, a.title AS title, "
+                    "a.symbol AS symbol, a.urgency AS urgency "
+                    "ORDER BY a.date DESC",
+                )
+            return [dict(r) for r in result]
+    except Exception:
+        return []

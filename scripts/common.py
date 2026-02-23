@@ -150,6 +150,12 @@ try:
 except ImportError:
     HAS_GRAPH_STORE = False
 
+try:
+    import src.data.linear_client as _linear_client_mod  # noqa: F401
+    HAS_LINEAR_CLIENT = True
+except ImportError:
+    HAS_LINEAR_CLIENT = False
+
 
 # ---------------------------------------------------------------------------
 # Context retrieval & proactive suggestions (KIK-465)
@@ -226,6 +232,7 @@ def print_suggestions(
     symbol: str = "",
     sector: str = "",
     context_summary: str = "",
+    health_data: dict | None = None,
 ) -> None:
     """Print proactive suggestions at script end.
 
@@ -233,7 +240,9 @@ def print_suggestions(
         symbol: Current symbol in focus.
         sector: Current sector in focus.
         context_summary: Execution result summary for context-aware suggestions.
+        health_data: Health check result dict (optional, for action item extraction).
     """
+    suggestions: list[dict] = []
     try:
         from src.core.proactive_engine import format_suggestions, get_suggestions
 
@@ -254,3 +263,52 @@ def print_suggestions(
             print(output)
     except Exception:
         pass
+
+    # Action item processing (KIK-472)
+    _process_action_items(suggestions, health_data, context_summary)
+
+
+def _process_action_items(
+    suggestions: list[dict],
+    health_data: dict | None = None,
+    context_summary: str = "",
+) -> None:
+    """Process action items from suggestions and health data (KIK-472).
+
+    Calls action_item_bridge.process_action_items() and displays results.
+    Graceful degradation: no output on any failure.
+    """
+    try:
+        from src.core.action_item_bridge import process_action_items
+
+        results = process_action_items(
+            suggestions=suggestions,
+            health_data=health_data,
+        )
+        if not results:
+            return
+
+        lines = ["\n---", "📌 **アクションアイテム** (自動検出)\n"]
+        for r in results:
+            title = r.get("title", "")
+            symbol = r.get("symbol", "")
+            linear = r.get("linear_issue")
+            neo4j = r.get("neo4j_saved", False)
+
+            status_parts = []
+            if neo4j:
+                status_parts.append("Neo4j保存済")
+            if linear:
+                ident = linear.get("identifier", "")
+                url = linear.get("url", "")
+                if ident and url:
+                    status_parts.append(f"Linear: [{ident}]({url})")
+                elif ident:
+                    status_parts.append(f"Linear: {ident}")
+
+            status = " / ".join(status_parts) if status_parts else "検出済"
+            lines.append(f"- {title} ({status})")
+
+        print("\n".join(lines))
+    except Exception:
+        pass  # graceful degradation

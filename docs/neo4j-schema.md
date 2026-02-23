@@ -4,7 +4,7 @@
 
 ---
 
-## Node Types (21)
+## Node Types (22)
 
 ### Stock
 中心ノード。すべてのアクティビティがこのノードに接続される。
@@ -230,6 +230,22 @@ stock/business: positive/negative。industry: trend/growth_driver/risk/regulator
 | total_value_jpy | float | PF時価総額 (円) |
 | symbol_count | int | 対象銘柄数 |
 
+### ActionItem (KIK-472)
+アクションアイテム（プロアクティブ提案から自動検出）。TARGETS リレーションで対象銘柄に接続。Linear issue と紐付け可能。
+
+| Property | Type | Description |
+|:---|:---|:---|
+| id | string (UNIQUE) | `action_{date}_{trigger_type}_{symbol}` |
+| date | string | 検出日 (YYYY-MM-DD) |
+| trigger_type | string | トリガー種別 (exit/earnings/thesis_review/concern) |
+| title | string | アクションアイテムタイトル |
+| symbol | string | 対象銘柄シンボル |
+| urgency | string | 緊急度 (high/medium/low) |
+| status | string | ステータス (open/done) |
+| linear_issue_id | string | Linear issue ID |
+| linear_issue_url | string | Linear issue URL |
+| linear_identifier | string | Linear issue 識別子 (e.g. KIK-999) |
+
 ---
 
 ## Relationships
@@ -263,6 +279,8 @@ graph LR
     Portfolio -- HOLDS --> Stock
     StressTest -- STRESSED --> Stock
     Forecast -- FORECASTED --> Stock
+    ActionItem -- TARGETS --> Stock
+    HealthCheck -- TRIGGERED --> ActionItem
 ```
 
 | Relationship | From | To | Description |
@@ -293,7 +311,7 @@ graph LR
 
 ---
 
-## Constraints (21)
+## Constraints (22)
 
 ```cypher
 CREATE CONSTRAINT stock_symbol IF NOT EXISTS FOR (s:Stock) REQUIRE s.symbol IS UNIQUE
@@ -320,9 +338,11 @@ CREATE CONSTRAINT portfolio_name IF NOT EXISTS FOR (p:Portfolio) REQUIRE p.name 
 -- KIK-428 stress test / forecast
 CREATE CONSTRAINT stress_test_id IF NOT EXISTS FOR (st:StressTest) REQUIRE st.id IS UNIQUE
 CREATE CONSTRAINT forecast_id IF NOT EXISTS FOR (f:Forecast) REQUIRE f.id IS UNIQUE
+-- KIK-472 action items
+CREATE CONSTRAINT action_item_id IF NOT EXISTS FOR (a:ActionItem) REQUIRE a.id IS UNIQUE
 ```
 
-## Indexes (14)
+## Indexes (16)
 
 ```cypher
 CREATE INDEX stock_sector IF NOT EXISTS FOR (s:Stock) ON (s.sector)
@@ -341,6 +361,9 @@ CREATE INDEX indicator_date IF NOT EXISTS FOR (i:Indicator) ON (i.date)
 -- KIK-428 stress test / forecast
 CREATE INDEX stress_test_date IF NOT EXISTS FOR (st:StressTest) ON (st.date)
 CREATE INDEX forecast_date IF NOT EXISTS FOR (f:Forecast) ON (f.date)
+-- KIK-472 action items
+CREATE INDEX action_item_date IF NOT EXISTS FOR (a:ActionItem) ON (a.date)
+CREATE INDEX action_item_status IF NOT EXISTS FOR (a:ActionItem) ON (a.status)
 ```
 
 ## Vector Indexes (9) — KIK-420/428

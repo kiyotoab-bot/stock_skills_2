@@ -4,11 +4,11 @@
 
 CSV/JSON が master、Neo4j は検索・関連付け用の view（dual-write パターン）。詳細は `docs/neo4j-schema.md` 参照。
 
-**21 ノード:**
+**22 ノード:**
 Stock(中心), Screen, Report, Trade, HealthCheck, Note, Theme, Sector,
 Research, Watchlist, MarketContext, Portfolio,
 News, Sentiment, Catalyst, AnalystView, Indicator, UpcomingEvent, SectorRotation,
-StressTest, Forecast
+StressTest, Forecast, ActionItem
 
 **主要リレーション:**
 - `Screen-[SURFACED]->Stock` / `Report-[ANALYZED]->Stock` / `Trade-[BOUGHT|SOLD]->Stock`
@@ -18,6 +18,7 @@ StressTest, Forecast
 - `Research-[SUPERSEDES]->Research` (同一対象の新旧チェーン)
 - `MarketContext-[INCLUDES]->Indicator` / `MarketContext-[HAS_EVENT]->UpcomingEvent`
 - `Note-[ABOUT]->Stock` / `Stock-[IN_SECTOR]->Sector` / `Stock-[HAS_THEME]->Theme`
+- `ActionItem-[TARGETS]->Stock` / `HealthCheck-[TRIGGERED]->ActionItem` (KIK-472)
 
 **データの流れ:** スキル実行 → JSON/CSV保存(master) → Neo4j同期(view) → 次回 `get_context.py` で自動取得
 
