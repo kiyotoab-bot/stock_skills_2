@@ -706,6 +706,34 @@ class TestGraphDualWrite:
             symbol="7751.T", name="Canon", sector="",
         )
 
+    @patch("src.data.graph_store.tag_theme")
+    @patch("src.data.graph_store.merge_screen")
+    @patch("src.data.graph_store.merge_stock")
+    def test_screening_with_theme_calls_tag_theme(self, mock_stock, mock_screen, mock_tag, tmp_path):
+        """KIK-487: save_screening with theme should call tag_theme for each symbol."""
+        save_screening(
+            "value", "japan",
+            [{"symbol": "7203.T", "name": "Toyota", "sector": "Auto"},
+             {"symbol": "6758.T", "name": "Sony", "sector": "Tech"}],
+            theme="ai",
+            base_dir=str(tmp_path),
+        )
+        assert mock_tag.call_count == 2
+        mock_tag.assert_any_call("7203.T", "ai")
+        mock_tag.assert_any_call("6758.T", "ai")
+
+    @patch("src.data.graph_store.tag_theme")
+    @patch("src.data.graph_store.merge_screen")
+    @patch("src.data.graph_store.merge_stock")
+    def test_screening_without_theme_skips_tag(self, mock_stock, mock_screen, mock_tag, tmp_path):
+        """KIK-487: save_screening without theme should not call tag_theme."""
+        save_screening(
+            "value", "japan",
+            [{"symbol": "7203.T", "name": "Toyota"}],
+            base_dir=str(tmp_path),
+        )
+        mock_tag.assert_not_called()
+
     def test_market_context_graph_failure_still_saves(self, tmp_path):
         with patch("src.data.graph_store.merge_market_context_full", side_effect=Exception("Neo4j down")):
             context = {"indices": [{"name": "VIX", "price": 20.0}]}

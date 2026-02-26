@@ -150,6 +150,7 @@ def save_screening(
     region: str,
     results: list[dict],
     sector: str | None = None,
+    theme: str | None = None,
     base_dir: str = "data/history",
 ) -> str:
     """Save screening results to JSON.
@@ -168,6 +169,7 @@ def save_screening(
         "preset": preset,
         "region": region,
         "sector": sector,
+        "theme": theme,
         "count": len(results),
         "results": results,
         "_saved_at": now,
@@ -178,15 +180,17 @@ def save_screening(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399/420) -- graceful degradation
+    # Neo4j dual-write (KIK-399/420/487) -- graceful degradation
     symbols = [r.get("symbol") for r in results if r.get("symbol")]
 
     def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_screen, merge_stock
+        from src.data.graph_store import merge_screen, merge_stock, tag_theme
         for r in results:
             sym = r.get("symbol")
             if sym:
                 merge_stock(symbol=sym, name=r.get("name", ""), sector=r.get("sector", ""))
+                if theme:
+                    tag_theme(sym, theme)
         merge_screen(today, preset, region, len(results), symbols,
                      semantic_summary=sem_summary, embedding=emb)
 

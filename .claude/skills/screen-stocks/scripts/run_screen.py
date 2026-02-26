@@ -241,7 +241,7 @@ def run_trending_mode(args):
 
     if HAS_HISTORY and results:
         try:
-            save_screening(preset="trending", region=region_key, results=results)
+            save_screening(preset="trending", region=region_key, results=results, theme=args.theme)
         except Exception as e:
             print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
     print()
@@ -357,7 +357,7 @@ def run_auto_theme_mode(args):
 
             if HAS_HISTORY and results:
                 try:
-                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector, theme=theme_key)
                 except Exception as e:
                     print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
 
@@ -460,7 +460,7 @@ def run_query_mode(args):
             _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
-                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector, theme=args.theme)
                 except Exception as e:
                     print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
             print()
@@ -518,7 +518,7 @@ def run_query_mode(args):
             _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
-                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector, theme=args.theme)
                 except Exception as e:
                     print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         else:
@@ -542,7 +542,7 @@ def run_query_mode(args):
             _print_graphrag_context(results)
             if HAS_HISTORY and results:
                 try:
-                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector)
+                    save_screening(preset=args.preset, region=region_code, results=results, sector=args.sector, theme=args.theme)
                 except Exception as e:
                     print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
         print()
