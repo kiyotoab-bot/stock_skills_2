@@ -286,6 +286,8 @@ def merge_screen(
     driver = _get_driver()
     if driver is None:
         return False
+    if not symbols:
+        return False
     screen_id = f"screen_{screen_date}_{region}_{preset}"
     try:
         with driver.session() as session:
@@ -440,7 +442,11 @@ def merge_note(
     category: str = "",
     semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
-    """Create a Note node and ABOUT relationship to a stock."""
+    """Create a Note node and ABOUT relationship (KIK-491).
+
+    Links to Stock (if symbol), Portfolio (if category=portfolio),
+    or MarketContext (if category=market).
+    """
     if _get_mode() == "off":
         return False
     driver = _get_driver()
@@ -462,6 +468,23 @@ def merge_note(
                     "MERGE (s:Stock {symbol: $symbol}) "
                     "MERGE (n)-[:ABOUT]->(s)",
                     note_id=note_id, symbol=symbol,
+                )
+            elif category == "portfolio":
+                session.run(
+                    "MATCH (n:Note {id: $note_id}) "
+                    "MERGE (p:Portfolio {name: 'default'}) "
+                    "MERGE (n)-[:ABOUT]->(p)",
+                    note_id=note_id,
+                )
+            elif category == "market":
+                session.run(
+                    "MATCH (n:Note {id: $note_id}) "
+                    "WITH n "
+                    "OPTIONAL MATCH (mc:MarketContext) "
+                    "WITH n, mc ORDER BY mc.date DESC LIMIT 1 "
+                    "WHERE mc IS NOT NULL "
+                    "MERGE (n)-[:ABOUT]->(mc)",
+                    note_id=note_id,
                 )
             _set_embedding(session, "Note", note_id, semantic_summary, embedding)
         return True
@@ -508,10 +531,11 @@ def merge_research(
     summary: str = "",
     semantic_summary: str = "", embedding: list[float] | None = None,
 ) -> bool:
-    """Create a Research node and optionally RESEARCHED relationship to Stock.
+    """Create a Research node with context-appropriate relationship (KIK-491).
 
-    For stock/business types, target is treated as a symbol and linked to Stock.
-    For industry/market types, no Stock link is created.
+    For stock/business types, links to Stock via RESEARCHED.
+    For industry type, links to Sector via ANALYZES.
+    For market type, links to latest MarketContext via COMPLEMENTS.
     """
     if _get_mode() == "off":
         return False
@@ -534,6 +558,23 @@ def merge_research(
                     "MERGE (s:Stock {symbol: $symbol}) "
                     "MERGE (r)-[:RESEARCHED]->(s)",
                     research_id=research_id, symbol=target,
+                )
+            elif research_type == "industry":
+                session.run(
+                    "MATCH (r:Research {id: $research_id}) "
+                    "MERGE (sec:Sector {name: $sector}) "
+                    "MERGE (r)-[:ANALYZES]->(sec)",
+                    research_id=research_id, sector=target,
+                )
+            elif research_type == "market":
+                session.run(
+                    "MATCH (r:Research {id: $research_id}) "
+                    "WITH r "
+                    "OPTIONAL MATCH (mc:MarketContext) "
+                    "WITH r, mc ORDER BY mc.date DESC LIMIT 1 "
+                    "WHERE mc IS NOT NULL "
+                    "MERGE (r)-[:COMPLEMENTS]->(mc)",
+                    research_id=research_id,
                 )
             _set_embedding(session, "Research", research_id, semantic_summary, embedding)
         return True

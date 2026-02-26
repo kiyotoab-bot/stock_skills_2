@@ -133,14 +133,15 @@ class TestMergeScreen:
         assert session.run.call_count == 3
 
     def test_merge_screen_empty_symbols(self, gs_with_driver):
+        """KIK-491: empty symbols should skip Screen node creation."""
         gs, _, session = gs_with_driver
-        assert gs.merge_screen("2025-01-15", "alpha", "us", 0, []) is True
-        assert session.run.call_count == 1
+        assert gs.merge_screen("2025-01-15", "alpha", "us", 0, []) is False
+        assert session.run.call_count == 0
 
     def test_merge_screen_no_driver(self):
         import src.data.graph_store as gs
         with patch("src.data.graph_store._get_driver", return_value=None):
-            assert gs.merge_screen("2025-01-15", "value", "japan", 0, []) is False
+            assert gs.merge_screen("2025-01-15", "value", "japan", 2, ["7203.T", "AAPL"]) is False
 
 
 # ===================================================================
@@ -224,6 +225,28 @@ class TestMergeNote:
         ) is True
         assert session.run.call_count == 1  # Only MERGE note, no ABOUT
 
+    def test_merge_note_portfolio_category(self, gs_with_driver):
+        """KIK-491: portfolio category note links to Portfolio node."""
+        gs, _, session = gs_with_driver
+        assert gs.merge_note(
+            "note_2025-01-15_pf_abc123",
+            "2025-01-15", "review", "PF review",
+            category="portfolio",
+        ) is True
+        # 1 MERGE note + 1 ABOUT->Portfolio
+        assert session.run.call_count == 2
+
+    def test_merge_note_market_category(self, gs_with_driver):
+        """KIK-491: market category note links to MarketContext node."""
+        gs, _, session = gs_with_driver
+        assert gs.merge_note(
+            "note_2025-01-15_mkt_abc123",
+            "2025-01-15", "observation", "Market memo",
+            category="market",
+        ) is True
+        # 1 MERGE note + 1 ABOUT->MarketContext (OPTIONAL MATCH)
+        assert session.run.call_count == 2
+
 
 # ===================================================================
 # tag_theme tests
@@ -287,7 +310,7 @@ class TestGetStockHistory:
 class TestIdGeneration:
     def test_screen_id_format(self, gs_with_driver):
         gs, _, session = gs_with_driver
-        gs.merge_screen("2025-01-15", "value", "japan", 5, [])
+        gs.merge_screen("2025-01-15", "value", "japan", 5, ["7203.T"])
         cypher_call = session.run.call_args_list[0]
         kwargs = cypher_call[1]
         assert kwargs["id"] == "screen_2025-01-15_japan_value"
@@ -335,15 +358,18 @@ class TestMergeResearch:
         assert session.run.call_count == 2
 
     def test_merge_research_industry(self, gs_with_driver):
+        """KIK-491: industry research links to Sector node."""
         gs, _, session = gs_with_driver
         assert gs.merge_research("2025-01-15", "industry", "半導体", "Semiconductor trends") is True
-        # 1 MERGE research only (industry type does NOT link to Stock)
-        assert session.run.call_count == 1
+        # 1 MERGE research + 1 ANALYZES->Sector
+        assert session.run.call_count == 2
 
     def test_merge_research_market(self, gs_with_driver):
+        """KIK-491: market research links to MarketContext node."""
         gs, _, session = gs_with_driver
         assert gs.merge_research("2025-01-15", "market", "日経平均") is True
-        assert session.run.call_count == 1
+        # 1 MERGE research + 1 COMPLEMENTS->MarketContext
+        assert session.run.call_count == 2
 
     def test_merge_research_business(self, gs_with_driver):
         gs, _, session = gs_with_driver
