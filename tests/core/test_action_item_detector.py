@@ -1,8 +1,11 @@
-"""Tests for src/core/action_item_detector.py (KIK-472)."""
+"""Tests for src/core/action_item_detector.py (KIK-472, KIK-489)."""
 
 import pytest
 
-from src.core.action_item_detector import detect_action_items
+from src.core.action_item_detector import (
+    detect_action_items,
+    _extract_symbol_from_suggestion,
+)
 
 
 class TestDetectFromSuggestions:
@@ -155,3 +158,45 @@ class TestDetectFromHealthData:
         }
         items = detect_action_items([], health_data=health_data)
         assert items == []
+
+
+class TestExtractSymbol:
+    """Tests for _extract_symbol_from_suggestion (KIK-489)."""
+
+    def test_symbol_from_title_jp_suffix(self):
+        s = {"title": "7203.Tの投資テーゼを見直す", "reason": "", "command_hint": ""}
+        assert _extract_symbol_from_suggestion(s) == "7203.T"
+
+    def test_symbol_from_title_us(self):
+        s = {"title": "AAPLの懸念メモを再確認", "reason": "", "command_hint": ""}
+        assert _extract_symbol_from_suggestion(s) == "AAPL"
+
+    def test_symbol_from_reason(self):
+        """KIK-489: reason field should be searched."""
+        s = {"title": "警戒銘柄の対応検討", "reason": "EXIT判定 — 7203.T の撤退を推奨", "command_hint": ""}
+        assert _extract_symbol_from_suggestion(s) == "7203.T"
+
+    def test_symbol_from_command_hint_flag(self):
+        """KIK-489: --symbol flag in command_hint."""
+        s = {"title": "懸念メモを再確認", "reason": "", "command_hint": "investment-note list --symbol AAPL"}
+        assert _extract_symbol_from_suggestion(s) == "AAPL"
+
+    def test_symbol_from_command_hint_direct(self):
+        s = {"title": "レポート確認", "reason": "", "command_hint": "stock-report 7203.T"}
+        assert _extract_symbol_from_suggestion(s) == "7203.T"
+
+    def test_asean_symbol(self):
+        s = {"title": "BBL.BKのリスク確認", "reason": "", "command_hint": ""}
+        assert _extract_symbol_from_suggestion(s) == "BBL.BK"
+
+    def test_no_symbol_found(self):
+        s = {"title": "全体的な見直し", "reason": "ポートフォリオ全体", "command_hint": "portfolio health"}
+        assert _extract_symbol_from_suggestion(s) == ""
+
+    def test_empty_suggestion(self):
+        assert _extract_symbol_from_suggestion({}) == ""
+
+    def test_reason_us_symbol(self):
+        """KIK-489: US symbol in reason field."""
+        s = {"title": "懸念メモ再確認", "reason": "NVDA に懸念メモあり", "command_hint": ""}
+        assert _extract_symbol_from_suggestion(s) == "NVDA"
