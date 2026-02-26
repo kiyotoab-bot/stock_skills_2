@@ -144,6 +144,8 @@ CONTEXT_RECENT_HOURS=168    # これ以内 → RECENT / これ超 → STALE
 **条件**: Claude の回答に具体的な投資判断・見解・リスク評価が含まれる場合
 **記録されないもの**: 生データの羅列、ユーザーが既に記録済みの内容
 
+**KIK-503: target メモ→Linear issue 連携**: `type: target`（購入/売却予定）の投資メモ保存後、Linear issue 登録を促す。詳細は `intent-routing.md` の記録ドメインセクション参照
+
 ## Grokプロンプト文脈注入 (KIK-488)
 
 `src/data/grok_context.py` がNeo4jから投資家文脈（保有状態・前回レポート・テーゼ・懸念等）をコンパクトに抽出し、Grok APIプロンプトに注入する。
