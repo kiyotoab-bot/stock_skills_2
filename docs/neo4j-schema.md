@@ -257,7 +257,11 @@ graph LR
     Trade -- "BOUGHT / SOLD" --> Stock
     HealthCheck -- CHECKED --> Stock
     Note -- ABOUT --> Stock
+    Note -- ABOUT --> Portfolio
+    Note -- ABOUT --> MarketContext
     Research -- RESEARCHED --> Stock
+    Research -- ANALYZES --> Sector
+    Research -- COMPLEMENTS --> MarketContext
     Watchlist -- BOOKMARKED --> Stock
     Stock -- IN_SECTOR --> Sector
     Stock -- HAS_THEME --> Theme
@@ -290,10 +294,12 @@ graph LR
 | BOUGHT | Trade | Stock | 購入取引 |
 | SOLD | Trade | Stock | 売却取引 |
 | CHECKED | HealthCheck | Stock | ヘルスチェック対象 |
-| ABOUT | Note | Stock | メモの対象銘柄 |
+| ABOUT | Note | Stock/Portfolio/MarketContext | メモの対象（銘柄・PF・市況） (KIK-491) |
 | IN_SECTOR | Stock | Sector | セクター分類 |
 | HAS_THEME | Stock/Screen | Theme | テーマタグ |
-| RESEARCHED | Research | Stock | リサーチ対象 (stock/business タイプのみ) |
+| RESEARCHED | Research | Stock | リサーチ対象 (stock/business タイプ) |
+| ANALYZES | Research | Sector | 業界リサーチ対象 (industry タイプ) (KIK-491) |
+| COMPLEMENTS | Research | MarketContext | 市場リサーチの文脈 (market タイプ) (KIK-491) |
 | BOOKMARKED | Watchlist | Stock | ウォッチ対象 |
 | SUPERSEDES | Research | Research | 同じ対象の新旧リサーチチェーン (日付順) |
 | HAS_NEWS | Research | News | リサーチに紐づくニュース (KIK-413) |

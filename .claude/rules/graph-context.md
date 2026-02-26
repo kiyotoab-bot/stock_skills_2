@@ -17,7 +17,9 @@ StressTest, Forecast, ActionItem
 - `Research-[HAS_CATALYST]->Catalyst` / `Research-[HAS_ANALYST_VIEW]->AnalystView`
 - `Research-[SUPERSEDES]->Research` (同一対象の新旧チェーン)
 - `MarketContext-[INCLUDES]->Indicator` / `MarketContext-[HAS_EVENT]->UpcomingEvent`
-- `Note-[ABOUT]->Stock` / `Stock-[IN_SECTOR]->Sector` / `Stock-[HAS_THEME]->Theme`
+- `Note-[ABOUT]->Stock` / `Note-[ABOUT]->Portfolio` / `Note-[ABOUT]->MarketContext` (KIK-491)
+- `Research-[ANALYZES]->Sector` / `Research-[COMPLEMENTS]->MarketContext` (KIK-491)
+- `Stock-[IN_SECTOR]->Sector` / `Stock-[HAS_THEME]->Theme`
 - `ActionItem-[TARGETS]->Stock` / `HealthCheck-[TRIGGERED]->ActionItem` (KIK-472)
 
 **データの流れ:** スキル実行 → JSON/CSV保存(master) → Neo4j同期(view) → 次回 `get_context.py` で自動取得
