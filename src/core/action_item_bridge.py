@@ -38,6 +38,12 @@ def process_action_items(
     today = date.today().isoformat()
     results: list[dict] = []
 
+    # KIK-489: Derive HealthCheck source_node_id for TRIGGERED relationship
+    source_node_id = None
+    if health_data:
+        health_date = health_data.get("date", today)
+        source_node_id = f"health_{health_date}"
+
     for item in items:
         try:
             action_id = item.get("action_id", "")
@@ -60,7 +66,7 @@ def process_action_items(
             if _is_duplicate_neo4j(action_id):
                 continue
 
-            # 2. Save to Neo4j
+            # 2. Save to Neo4j (with TRIGGERED relationship from HealthCheck)
             neo4j_saved = _save_to_neo4j(
                 action_id=action_id,
                 action_date=today,
@@ -68,6 +74,7 @@ def process_action_items(
                 title=title,
                 symbol=symbol,
                 urgency=urgency,
+                source_node_id=source_node_id,
             )
             result_entry["neo4j_saved"] = neo4j_saved
 
@@ -107,8 +114,9 @@ def _save_to_neo4j(
     title: str,
     symbol: str,
     urgency: str,
+    source_node_id: str | None = None,
 ) -> bool:
-    """Save action item to Neo4j."""
+    """Save action item to Neo4j with optional TRIGGERED relationship (KIK-489)."""
     try:
         from src.data.graph_store import merge_action_item
         return merge_action_item(
@@ -118,6 +126,7 @@ def _save_to_neo4j(
             title=title,
             symbol=symbol,
             urgency=urgency,
+            source_node_id=source_node_id,
         )
     except Exception:
         return False

@@ -108,3 +108,43 @@ class TestProcessWithHealthData:
         assert len(results) == 1
         assert results[0]["symbol"] == "NVDA"
         assert results[0]["neo4j_saved"] is True
+
+    @patch("src.core.action_item_bridge._link_linear_to_neo4j")
+    @patch("src.core.action_item_bridge._create_linear_issue", return_value=None)
+    @patch("src.core.action_item_bridge._save_to_neo4j", return_value=True)
+    @patch("src.core.action_item_bridge._is_duplicate_neo4j", return_value=False)
+    def test_source_node_id_from_health_data(self, mock_dedup, mock_save, mock_linear, mock_link):
+        """KIK-489: source_node_id should be passed to _save_to_neo4j when health_data is present."""
+        health_data = {
+            "date": "2026-02-26",
+            "positions": [
+                {
+                    "symbol": "NVDA",
+                    "alert": {"level": "exit", "message": "EXIT判定"},
+                },
+            ]
+        }
+        results = process_action_items([], health_data=health_data)
+        assert len(results) == 1
+        call_kwargs = mock_save.call_args[1]
+        assert call_kwargs["source_node_id"] == "health_2026-02-26"
+
+    @patch("src.core.action_item_bridge._link_linear_to_neo4j")
+    @patch("src.core.action_item_bridge._create_linear_issue", return_value=None)
+    @patch("src.core.action_item_bridge._save_to_neo4j", return_value=True)
+    @patch("src.core.action_item_bridge._is_duplicate_neo4j", return_value=False)
+    def test_no_source_node_id_without_health_data(self, mock_dedup, mock_save, mock_linear, mock_link):
+        """KIK-489: source_node_id should be None when no health_data."""
+        suggestions = [
+            {
+                "emoji": "🚨",
+                "title": "警戒銘柄の対応検討",
+                "reason": "EXIT判定 — 7203.T の撤退を推奨",
+                "command_hint": "stock-report 7203.T",
+                "urgency": "high",
+            }
+        ]
+        results = process_action_items(suggestions)
+        assert len(results) == 1
+        call_kwargs = mock_save.call_args[1]
+        assert call_kwargs["source_node_id"] is None
