@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ, print_context, print_suggestions
+from scripts.common import try_import, HAS_HISTORY_STORE, HAS_GRAPH_QUERY as _HAS_GQ, HAS_GRAPH_STORE as _HAS_GS, print_context, print_suggestions
 from src.data.yahoo_client import get_stock_info, get_stock_detail
 from src.core.screening.indicators import calculate_value_score
 from src.core.common import is_etf
@@ -35,6 +35,37 @@ if HAS_GRAPH_QUERY:
 HAS_INDUSTRY_CONTEXT = _HAS_GQ
 if HAS_INDUSTRY_CONTEXT:
     from src.data.graph_query import get_industry_research_for_sector
+
+# KIK-487: Theme auto-tagging from industry
+HAS_GRAPH_STORE = _HAS_GS
+if HAS_GRAPH_STORE:
+    from src.data.graph_store import tag_theme
+
+HAS_THEME_LOOKUP, _tl = try_import("src.core.screening.query_builder", "load_themes")
+if HAS_THEME_LOOKUP:
+    _load_themes = _tl["load_themes"]
+
+
+def _infer_themes(industry: str) -> list[str]:
+    """Reverse-lookup themes from industry name (KIK-487).
+
+    Returns list of matching theme keys.
+    """
+    if not industry or not HAS_THEME_LOOKUP:
+        return []
+    try:
+        themes = _load_themes()
+    except Exception:
+        return []
+    industry_lower = industry.lower()
+    matched = []
+    for key, defn in themes.items():
+        industries = defn.get("industries", [])
+        for ind in industries:
+            if ind.lower() in industry_lower or industry_lower in ind.lower():
+                matched.append(key)
+                break
+    return matched
 
 
 def _print_etf_report(symbol: str, data: dict):
@@ -313,6 +344,15 @@ def main():
             history_save_report(symbol, data, score, verdict)
         except Exception as e:
             print(f"Warning: 履歴保存失敗: {e}", file=sys.stderr)
+
+    # KIK-487: Auto-tag themes based on industry
+    if HAS_GRAPH_STORE:
+        _industry = data.get("industry") or ""
+        for _theme_key in _infer_themes(_industry):
+            try:
+                tag_theme(symbol, _theme_key)
+            except Exception:
+                pass
 
     # Proactive suggestions (KIK-465)
     print_suggestions(symbol=symbol, context_summary=f"レポート生成: {symbol}")
