@@ -194,6 +194,33 @@ def load_themes() -> dict:
     return data.get("themes", {})
 
 
+def infer_themes(industry: str) -> list[str]:
+    """Reverse-lookup theme keys from an industry name (KIK-487/520).
+
+    Parameters
+    ----------
+    industry : str
+        Industry name (e.g. "Semiconductors", "Auto Manufacturers").
+
+    Returns
+    -------
+    list[str]
+        Matching theme keys (e.g. ["ai"], ["ev"]).
+    """
+    if not industry:
+        return []
+    themes = load_themes()
+    industry_lower = industry.lower()
+    matched = []
+    for key, defn in themes.items():
+        industries = defn.get("industries", [])
+        for ind in industries:
+            if ind.lower() in industry_lower or industry_lower in ind.lower():
+                matched.append(key)
+                break
+    return matched
+
+
 def _build_theme_condition(theme: str, themes: dict) -> EquityQuery:
     """Build an EquityQuery condition for theme filtering.
 
