@@ -14,18 +14,13 @@ class TestEmptyOutput:
         result = format_screening_summary(context)
         assert result == ""
 
-    def test_returns_empty_string_when_has_data_false_and_no_llm(self):
+    def test_returns_empty_string_when_has_data_false(self):
         context = {
             "has_data": False,
             "sector_research": {"Technology": {"summaries": [], "catalysts_pos": [], "catalysts_neg": []}},
         }
         result = format_screening_summary(context)
         assert result == ""
-
-    def test_returns_output_when_no_data_but_llm_text_provided(self):
-        context = {"has_data": False, "sector_research": {}, "symbol_notes": {}, "symbol_themes": {}}
-        result = format_screening_summary(context, llm_text="テスト サマリー")
-        assert "テスト サマリー" in result
 
 
 # ===================================================================
@@ -159,32 +154,27 @@ class TestSymbolThemesSection:
 
 
 # ===================================================================
-# LLM summary section
+# LLM summary removed (KIK-532: Claude Code LLM interprets structured data)
 # ===================================================================
 
-class TestLLMSummarySection:
-    def test_llm_text_shown_when_provided(self):
-        ctx = {"has_data": True, "sector_research": {}, "symbol_notes": {}, "symbol_themes": {}}
-        result = format_screening_summary(ctx, llm_text="これはAI統合サマリーです。")
-        assert "これはAI統合サマリーです。" in result
-        assert "AI統合サマリー" in result
-
-    def test_llm_text_not_shown_when_empty(self):
+class TestNoLLMSummarySection:
+    def test_no_llm_summary_in_output(self):
+        """After KIK-532, AI統合サマリー section no longer exists."""
         ctx = {
             "has_data": True,
             "sector_research": {"Technology": {"summaries": [], "catalysts_pos": ["x"], "catalysts_neg": []}},
             "symbol_notes": {},
             "symbol_themes": {},
         }
-        result = format_screening_summary(ctx, llm_text="")
+        result = format_screening_summary(ctx)
         assert "AI統合サマリー" not in result
 
-    def test_llm_text_whitespace_stripped(self):
+    def test_format_screening_summary_no_llm_text_param(self):
+        """format_screening_summary no longer accepts llm_text parameter."""
         ctx = {"has_data": True, "sector_research": {}, "symbol_notes": {}, "symbol_themes": {}}
-        result = format_screening_summary(ctx, llm_text="  サマリーテキスト  ")
-        assert "サマリーテキスト" in result
-        # Leading/trailing whitespace should be stripped
-        assert "  サマリーテキスト  " not in result
+        # Should work with only context parameter
+        result = format_screening_summary(ctx)
+        assert isinstance(result, str)
 
 
 # ===================================================================
@@ -205,5 +195,5 @@ class TestMarkdownStructure:
 
     def test_returns_string(self):
         ctx = {"has_data": True, "sector_research": {}, "symbol_notes": {}, "symbol_themes": {}}
-        result = format_screening_summary(ctx, llm_text="test")
+        result = format_screening_summary(ctx)
         assert isinstance(result, str)

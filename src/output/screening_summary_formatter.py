@@ -14,15 +14,15 @@ _NOTE_TYPE_JP = {
 }
 
 
-def format_screening_summary(context: dict, llm_text: str = "") -> str:
-    """Format GraphRAG context as markdown for screening output.
+def format_screening_summary(context: dict) -> str:
+    """Format GraphRAG context as markdown for screening output (KIK-452, KIK-532).
+
+    Outputs structured Neo4j data. Claude Code LLM interprets and synthesizes.
 
     Parameters
     ----------
     context : dict
         Output from get_screening_graph_context().
-    llm_text : str
-        Optional LLM-generated summary sentence(s). Empty string to omit.
 
     Returns
     -------
@@ -30,7 +30,7 @@ def format_screening_summary(context: dict, llm_text: str = "") -> str:
         Formatted markdown string. Empty string if nothing to show.
     """
     has_data = context.get("has_data", False)
-    if not has_data and not llm_text:
+    if not has_data:
         return ""
 
     lines = ["---", "### 📊 グラフコンテキスト（ナレッジグラフより）", ""]
@@ -73,11 +73,6 @@ def format_screening_summary(context: dict, llm_text: str = "") -> str:
                 lines.append(
                     f"**投資メモ（{symbol}）**: {note_type} — {content}{date_part}"
                 )
-        lines.append("")
-
-    # --- LLM summary ---
-    if llm_text:
-        lines.append(f"💡 **AI統合サマリー**: {llm_text.strip()}")
         lines.append("")
 
     return "\n".join(lines)

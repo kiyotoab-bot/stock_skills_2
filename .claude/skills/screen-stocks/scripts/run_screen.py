@@ -159,29 +159,12 @@ def _print_recurring_picks(results):
         pass
 
 
-def _build_graphrag_prompt(context: dict, symbols: list) -> str:
-    """Build LLM prompt from graph context for screening summary (KIK-452)."""
-    lines = [
-        "以下のナレッジグラフコンテキストをもとに、スクリーニング結果の"
-        "投資判断に役立つ簡潔なサマリーを1〜3文で日本語で生成してください。\n"
-    ]
-    for sector, data in context.get("sector_research", {}).items():
-        pos = "、".join(data.get("catalysts_pos", [])[:2])
-        neg = "、".join(data.get("catalysts_neg", [])[:2])
-        lines.append(
-            f"セクター {sector}: ポジ材料={pos or 'なし'}, ネガ材料={neg or 'なし'}"
-        )
-    for sym, notes in context.get("symbol_notes", {}).items():
-        for n in notes[:1]:
-            lines.append(
-                f"{sym}: {n.get('type', '')} - {n.get('content', '')[:60]}"
-            )
-    lines.append("\nサマリー（1〜3文）:")
-    return "\n".join(lines)
-
-
 def _print_graphrag_context(results):
-    """Print GraphRAG context from knowledge graph (KIK-452)."""
+    """Print GraphRAG context from knowledge graph (KIK-452, KIK-532).
+
+    Outputs structured Neo4j data for Claude Code to interpret.
+    Grok API call removed in KIK-532 — Claude Code LLM synthesizes context.
+    """
     if not HAS_SCREENING_CTX or not HAS_SCREENING_SUMMARY or not results:
         return
     try:
@@ -190,15 +173,7 @@ def _print_graphrag_context(results):
         context = get_screening_graph_context(symbols, sectors)
         if not context.get("has_data"):
             return
-        llm_text = ""
-        try:
-            from src.data import grok_client as gc
-            if gc.is_available():
-                prompt = _build_graphrag_prompt(context, symbols)
-                llm_text = gc.synthesize_text(prompt)
-        except Exception:
-            pass
-        summary = format_screening_summary(context, llm_text)
+        summary = format_screening_summary(context)
         if summary:
             print(summary)
     except Exception:
