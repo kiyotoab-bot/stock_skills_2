@@ -7,12 +7,13 @@ paths:
 
 # スクリーニング開発ルール
 
-## 4つのスクリーナーエンジン
+## 5つのスクリーナーエンジン
 
 - **QueryScreener（デフォルト）**: `build_query()` → `screen_stocks()` [EquityQuery bulk API] → `_normalize_quote()` → `calculate_value_score()` → ソート
 - **ValueScreener（Legacy）**: 銘柄リスト方式。`get_stock_info()` → `apply_filters()` → `calculate_value_score()`。japan/us/asean のみ
 - **PullbackScreener**: 3段パイプライン。EquityQuery → `detect_pullback_in_uptrend()` → value_score。"full"（完全一致）と"partial"（bounce_score>=30）の2種
 - **AlphaScreener**: 4段パイプライン。EquityQuery(割安足切り) → `compute_change_score()` → 押し目判定 → 2軸スコアリング
+- **MomentumScreener** (KIK-506): 2段パイプライン。EquityQuery → `detect_momentum_surge()` → surge_score ランキング。"stable"（継続上昇, 50MA +10-15%）と"surge"（急騰, 50MA +15%+）の2サブモード
 
 ## バリュースコア配分
 

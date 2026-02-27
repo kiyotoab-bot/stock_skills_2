@@ -92,6 +92,13 @@ presets:
       max_pbr: 1.5
       min_roe: 0.03
 
+  momentum:
+    description: "モメンタム（急騰・ブレイクアウト検出）"
+    mode: "momentum"
+    criteria:
+      min_52wk_change: 0.20
+      min_market_cap: 50000000000
+
   long-term:
     description: "長期投資適性（高ROE・EPS成長・高配当・安定企業）"
     criteria:

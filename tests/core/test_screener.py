@@ -153,12 +153,19 @@ class TestPullbackScreenerDefaults:
             "max_per": 20,
             "min_roe": 0.08,
             "min_revenue_growth": 0.05,
+            # KIK-506: stable uptrend filters
+            "min_52wk_change": 0.10,
+            "max_beta": 1.5,
         }
         assert PullbackScreener.DEFAULT_CRITERIA == expected
 
     def test_default_criteria_keys(self):
         """DEFAULT_CRITERIA should contain exactly the expected keys."""
-        expected_keys = {"max_per", "min_roe", "min_revenue_growth"}
+        expected_keys = {
+            "max_per", "min_roe", "min_revenue_growth",
+            # KIK-506
+            "min_52wk_change", "max_beta",
+        }
         assert set(PullbackScreener.DEFAULT_CRITERIA.keys()) == expected_keys
 
     def test_default_criteria_is_not_mutated_across_instances(self):

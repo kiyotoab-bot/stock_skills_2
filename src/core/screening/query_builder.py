@@ -54,6 +54,10 @@ _CRITERIA_FIELD_MAP: dict[str, tuple[str, str]] = {
     "min_quarterly_revenue_growth": ("quarterlyrevenuegrowth.quarterly",               "gt"),
     "max_psr":                       ("lastclosemarketcaptotalrevenue.lasttwelvemonths", "lt"),
     "min_gross_margin":              ("grossprofitmargin.lasttwelvemonths",              "gt"),
+    # KIK-506: pullback enhancement + momentum fields
+    "min_52wk_change":               ("fiftytwowkpercentchange",                        "gt"),
+    "max_beta":                      ("beta",                                           "lt"),
+    "min_avg_volume_3m":             ("avgdailyvol3m",                                  "gt"),
 }
 
 # ---------------------------------------------------------------------------

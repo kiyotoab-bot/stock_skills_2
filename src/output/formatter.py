@@ -380,6 +380,59 @@ def format_contrarian_markdown(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def format_momentum_markdown(results: list[dict]) -> str:
+    """Format momentum/surge screening results as a Markdown table (KIK-506).
+
+    Shows surge-level metrics: 50MA deviation, volume ratio, RSI, 52-week high proximity.
+    """
+    if not results:
+        return "モメンタム条件に合致する銘柄が見つかりませんでした。"
+
+    lines = [
+        "| 順位 | 銘柄 | 株価 | 50MA乖離 | 出来高比 | RSI | 52w高値比 | スコア | レベル |",
+        "|---:|:-----|-----:|-------:|-------:|----:|--------:|------:|:------:|",
+    ]
+
+    _SURGE_ICONS = {
+        "accelerating": "\U0001f7e2",  # green circle
+        "surging": "\U0001f7e1",       # yellow circle
+        "overheated": "\U0001f534",    # red circle
+        "none": "\u26aa",              # white circle
+    }
+
+    _SURGE_LABELS = {
+        "accelerating": "加速",
+        "surging": "急騰",
+        "overheated": "過熱",
+        "none": "-",
+    }
+
+    for rank, row in enumerate(results, start=1):
+        label = _build_label(row)
+
+        price = _fmt_float(row.get("price"), decimals=0) if row.get("price") is not None else "-"
+        ma50_dev = _fmt_pct(row.get("ma50_deviation"))
+        vol_ratio = _fmt_float(row.get("volume_ratio"), decimals=2)
+        rsi = _fmt_float(row.get("rsi"), decimals=1)
+        high_change = _fmt_pct(row.get("high_change_pct"))
+        score = _fmt_float(row.get("surge_score"), decimals=0)
+        level = row.get("surge_level", "none")
+        icon = _SURGE_ICONS.get(level, "")
+        level_label = _SURGE_LABELS.get(level, "-")
+        level_str = f"{icon}{level_label}"
+
+        lines.append(
+            f"| {rank} | {label} | {price} "
+            f"| {ma50_dev} | {vol_ratio} | {rsi} | {high_change} | {score} | {level_str} |"
+        )
+
+    lines.append("")
+    lines.append("**レベル**: \U0001f7e2加速(+10~15%)=エントリー好機 / \U0001f7e1急騰(+15~30%)=勢い継続 / \U0001f534過熱(+30%超)=\u26a0\ufe0f利確注意")
+
+    _append_annotation_footer(lines, results)
+    return "\n".join(lines)
+
+
 def format_auto_theme_header(themes: list[dict], skipped: list[dict] | None = None) -> str:
     """Format Grok trending themes header (KIK-440).
 

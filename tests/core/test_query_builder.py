@@ -260,6 +260,8 @@ class TestConstants:
             "min_quarterly_revenue_growth", "max_psr", "min_gross_margin",
             # KIK-437: small-cap-growth
             "max_market_cap",
+            # KIK-506: pullback enhancement + momentum
+            "min_52wk_change", "max_beta", "min_avg_volume_3m",
         }
         assert set(_CRITERIA_FIELD_MAP.keys()) == expected
 

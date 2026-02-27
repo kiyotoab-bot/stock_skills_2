@@ -47,6 +47,9 @@
 「売られすぎの株」        → /screen-stocks japan contrarian
 「逆張りで拾えそうな株」   → /screen-stocks japan contrarian
 「過剰に売られてる銘柄」   → /screen-stocks japan contrarian
+「急騰銘柄」              → /screen-stocks japan momentum
+「ブレイクアウト検出」    → /screen-stocks japan momentum
+「モメンタム銘柄」        → /screen-stocks japan momentum
 ```
 
 **KIK-452 GraphRAG コンテキスト**: スクリーニング結果の末尾に、Neo4j ナレッジグラフから取得したセクタートレンド・投資メモ・テーマ情報が自動表示される（Neo4j 接続時のみ）。Grok API 接続時は AI 統合サマリーも付加。Neo4j 未接続の場合はこのセクションは非表示となり、スクリーニング本体の動作には影響しない。
@@ -72,6 +75,7 @@
 | 爆発的成長、ハイグロース、利益不問の成長株、赤字成長株、PSR重視、売上急成長 | high-growth |
 | 小型成長株、マイクロキャップ、10倍株、小型グロース、テンバガー候補、小型急成長 | small-cap-growth |
 | 逆張り、売られすぎ、過剰反応、底打ち、リバウンド狙い、反発狙い | contrarian |
+| 急騰、ブレイクアウト、モメンタム、勢い、上昇トレンド強気 | momentum |
 | 指定なし | alpha |
 
 **KIK-439 関連（テーマスクリーニング）**:

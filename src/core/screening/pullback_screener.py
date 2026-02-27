@@ -22,6 +22,9 @@ class PullbackScreener:
         "max_per": 20,
         "min_roe": 0.08,
         "min_revenue_growth": 0.05,
+        # KIK-506: stable uptrend filters
+        "min_52wk_change": 0.10,  # 52-week return > +10%
+        "max_beta": 1.5,          # low-to-mid volatility
     }
 
     def __init__(self, yahoo_client):
@@ -81,6 +84,8 @@ class PullbackScreener:
             normalized = QueryScreener._normalize_quote(quote)
             # Also compute value_score for fallback scoring
             normalized["value_score"] = calculate_value_score(normalized)
+            # KIK-506: preserve 52-week high change for post-filter (no extra API call)
+            normalized["fifty_two_week_high_change_pct"] = quote.get("fiftyTwoWeekHighChangePercent")
             fundamentals.append(normalized)
 
         # ---------------------------------------------------------------
@@ -91,6 +96,11 @@ class PullbackScreener:
             symbol = stock.get("symbol")
             if not symbol:
                 continue
+
+            # KIK-506: post-filter — reject stocks far from 52-week high
+            high_change = stock.get("fifty_two_week_high_change_pct")
+            if high_change is not None and high_change < -0.15:
+                continue  # >15% below 52-week high → not a stable uptrend
 
             hist = self.yahoo_client.get_price_history(symbol)
             if hist is None or hist.empty:

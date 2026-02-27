@@ -221,3 +221,145 @@ def detect_pullback_in_uptrend(hist: pd.DataFrame) -> dict:
         "recent_high": round(recent_high, 2),
         "all_conditions": all_conditions,
     }
+
+
+def detect_momentum_surge(
+    hist: pd.DataFrame,
+    fifty_day_avg_change_pct: float | None = None,
+    fifty_two_week_high_change_pct: float | None = None,
+) -> dict:
+    """Detect momentum surge / breakout signals (KIK-506).
+
+    Parameters
+    ----------
+    hist : pd.DataFrame
+        Price history with Close and Volume columns.
+    fifty_day_avg_change_pct : float, optional
+        50-day MA deviation (from EquityQuery response). Computed from hist if None.
+    fifty_two_week_high_change_pct : float, optional
+        52-week high change pct (from EquityQuery response). Computed from hist if None.
+
+    Returns
+    -------
+    dict with keys:
+        ma50_deviation, ma200_deviation, volume_ratio, rsi, surge_level,
+        surge_score, near_high, new_high
+    """
+    default = {
+        "ma50_deviation": 0.0,
+        "ma200_deviation": 0.0,
+        "volume_ratio": float("nan"),
+        "rsi": float("nan"),
+        "surge_level": "none",
+        "surge_score": 0.0,
+        "near_high": False,
+        "new_high": False,
+    }
+
+    close = hist["Close"]
+    volume = hist["Volume"]
+
+    if len(close) < 50:
+        return default
+
+    # --- 50-day MA deviation ---
+    sma50 = close.rolling(window=50).mean()
+    current_price = float(close.iloc[-1])
+    current_sma50 = float(sma50.iloc[-1])
+
+    if fifty_day_avg_change_pct is not None:
+        ma50_deviation = fifty_day_avg_change_pct
+    else:
+        ma50_deviation = (current_price - current_sma50) / current_sma50 if current_sma50 > 0 else 0.0
+
+    # --- 200-day MA deviation ---
+    if len(close) >= 200:
+        sma200 = close.rolling(window=200).mean()
+        current_sma200 = float(sma200.iloc[-1])
+        ma200_deviation = (current_price - current_sma200) / current_sma200 if current_sma200 > 0 else 0.0
+        trend_aligned = current_sma50 > current_sma200
+    else:
+        ma200_deviation = 0.0
+        trend_aligned = False
+
+    # --- Volume ratio (5-day / 20-day) ---
+    vol_5 = volume.rolling(window=5).mean().iloc[-1]
+    vol_20 = volume.rolling(window=20).mean().iloc[-1]
+    volume_ratio = float(vol_5 / vol_20) if vol_20 > 0 else float("nan")
+
+    # --- RSI ---
+    rsi_series = compute_rsi(close, period=14)
+    current_rsi = float(rsi_series.iloc[-1])
+
+    # --- 52-week high proximity ---
+    if fifty_two_week_high_change_pct is not None:
+        high_change = fifty_two_week_high_change_pct
+    else:
+        if len(close) >= 252:
+            week52_high = float(close.iloc[-252:].max())
+        else:
+            week52_high = float(close.max())
+        high_change = (current_price - week52_high) / week52_high if week52_high > 0 else 0.0
+
+    near_high = high_change >= -0.05  # within 5% of 52-week high
+    new_high = high_change >= 0.0     # at or above 52-week high
+
+    # --- Surge score (100pt max) ---
+    score = 0.0
+
+    # 50MA deviation: 0-30pt
+    abs_dev = abs(ma50_deviation)
+    if abs_dev >= 0.30:
+        score += 30.0
+    elif abs_dev >= 0.20:
+        score += 25.0
+    elif abs_dev >= 0.10:
+        score += 15.0
+    elif abs_dev >= 0.05:
+        score += 8.0
+
+    # Volume ratio: 0-25pt
+    if not np.isnan(volume_ratio):
+        if volume_ratio >= 5.0:
+            score += 25.0
+        elif volume_ratio >= 2.0:
+            score += 20.0
+        elif volume_ratio >= 1.5:
+            score += 10.0
+
+    # 52-week high proximity: 0-20pt
+    if new_high:
+        score += 20.0
+    elif near_high:
+        score += 15.0
+
+    # RSI momentum: 0-15pt
+    if current_rsi >= 70:
+        score += 15.0
+    elif current_rsi >= 60:
+        score += 10.0
+
+    # Trend alignment (SMA50 > SMA200): 0-10pt
+    if trend_aligned:
+        score += 10.0
+
+    # --- Surge level classification ---
+    if ma50_deviation >= 0.30:
+        surge_level = "overheated"
+    elif ma50_deviation >= 0.15:
+        surge_level = "surging"
+    elif ma50_deviation >= 0.10:
+        surge_level = "accelerating"
+    else:
+        surge_level = "none"
+
+    return {
+        "ma50_deviation": round(ma50_deviation, 4),
+        "ma200_deviation": round(ma200_deviation, 4),
+        "volume_ratio": round(volume_ratio, 4) if not np.isnan(volume_ratio) else float("nan"),
+        "rsi": round(current_rsi, 2),
+        "surge_level": surge_level,
+        "surge_score": round(score, 2),
+        "near_high": near_high,
+        "new_high": new_high,
+    }
