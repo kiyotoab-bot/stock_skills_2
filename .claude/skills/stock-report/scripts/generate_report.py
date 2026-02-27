@@ -44,31 +44,12 @@ HAS_GRAPH_STORE = _HAS_GS
 if HAS_GRAPH_STORE:
     from src.data.graph_store import tag_theme
 
-HAS_THEME_LOOKUP, _tl = try_import("src.core.screening.query_builder", "load_themes")
+HAS_THEME_LOOKUP, _tl = try_import("src.core.screening.query_builder", "infer_themes")
 if HAS_THEME_LOOKUP:
-    _load_themes = _tl["load_themes"]
-
-
-def _infer_themes(industry: str) -> list[str]:
-    """Reverse-lookup themes from industry name (KIK-487).
-
-    Returns list of matching theme keys.
-    """
-    if not industry or not HAS_THEME_LOOKUP:
+    _infer_themes = _tl["infer_themes"]
+else:
+    def _infer_themes(industry: str) -> list[str]:
         return []
-    try:
-        themes = _load_themes()
-    except Exception:
-        return []
-    industry_lower = industry.lower()
-    matched = []
-    for key, defn in themes.items():
-        industries = defn.get("industries", [])
-        for ind in industries:
-            if ind.lower() in industry_lower or industry_lower in ind.lower():
-                matched.append(key)
-                break
-    return matched
 
 
 def _print_etf_report(symbol: str, data: dict):

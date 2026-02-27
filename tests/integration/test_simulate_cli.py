@@ -71,7 +71,7 @@ def _run_cmd_simulate(
         forecast_result = MOCK_FORECAST_RESULT
 
     # Import inside function so patches take effect
-    from src.output.portfolio_formatter import format_simulation  # noqa: F401
+    from src.output.simulate_formatter import format_simulation  # noqa: F401
 
     with patch(
         "src.core.return_estimate.estimate_portfolio_return",
