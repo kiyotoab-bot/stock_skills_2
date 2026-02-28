@@ -14,9 +14,9 @@ class USMarket(Market):
 
     # -- EquityQuery support ------------------------------------------------
 
-    def get_region(self) -> str:
-        """Return 'us' for yfinance EquityQuery."""
-        return "us"
+    def get_region(self) -> list[str]:
+        """Return ['us'] for yfinance EquityQuery."""
+        return ["us"]
 
     def get_exchanges(self) -> list[str]:
         """Return the two major US exchanges.

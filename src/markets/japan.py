@@ -15,9 +15,9 @@ class JapanMarket(Market):
 
     # -- EquityQuery support ------------------------------------------------
 
-    def get_region(self) -> str:
-        """Return 'jp' for yfinance EquityQuery."""
-        return "jp"
+    def get_region(self) -> list[str]:
+        """Return ['jp'] for yfinance EquityQuery."""
+        return ["jp"]
 
     def get_exchanges(self) -> list[str]:
         """Return JPX as the primary exchange.

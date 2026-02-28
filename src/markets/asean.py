@@ -60,19 +60,6 @@ class ASEANMarket(Market):
         """
         return ["SES", "SET", "KLS", "JKT", "PHP"]
 
-    def get_equity_query(self) -> dict:
-        """Return a base EquityQuery filter dict for ASEAN markets.
-
-        Overrides the base implementation to provide multi-region support.
-        The ``region`` key contains a list of region codes and ``exchanges``
-        contains the corresponding exchange codes.  The caller / EquityQuery
-        builder should OR these together.
-        """
-        return {
-            "region": self.get_region(),
-            "exchanges": self.get_exchanges(),
-        }
-
     # ------------------------------------------------------------------
     # Default symbols per country (fallback)
     # ------------------------------------------------------------------
