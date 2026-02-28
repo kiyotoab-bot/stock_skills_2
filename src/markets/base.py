@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Union
 
 import yaml
 
@@ -35,11 +34,11 @@ class Market(ABC):
         """
 
     @abstractmethod
-    def get_region(self) -> Union[str, list[str]]:
+    def get_region(self) -> list[str]:
         """Return the yfinance EquityQuery region code(s) for this market.
 
-        Single-region markets (e.g. Japan, US) return a ``str``.
-        Multi-region markets (e.g. ASEAN) return a ``list[str]``.
+        Always returns a list of region code strings, even for single-region
+        markets (e.g. Japan returns ``["jp"]``, ASEAN returns ``["sg", "th", ...]``).
         """
 
     @abstractmethod
@@ -71,8 +70,8 @@ class Market(ABC):
         Returns
         -------
         dict
-            ``{"region": ..., "exchanges": [...]}`` where *region* is a str
-            or list[str] and *exchanges* is a list of exchange codes.
+            ``{"region": [...], "exchanges": [...]}`` where *region* is a
+            list[str] and *exchanges* is a list of exchange codes.
         """
         return {
             "region": self.get_region(),
