@@ -994,6 +994,7 @@ Note manager -- dual-write to JSON files and Neo4j (KIK-397, KIK-429).
 
 - `save_note(symbol: Optional[str]=None, note_type: str='observation', content: str='', source: str='', category: Optional[str]=None, base_dir: str=_NOTES_DIR, trigger: Optional[str]=None, expected_action: Optional[str]=None) -> dict` — Save a note to JSON file and Neo4j.
 - `load_notes(symbol: Optional[str]=None, note_type: Optional[str]=None, category: Optional[str]=None, base_dir: str=_NOTES_DIR) -> list[dict]` — Load notes from JSON files.
+- `check_lesson_conflicts(new_lesson: dict, base_dir: str=_NOTES_DIR, similarity_threshold: float=0.5) -> list[dict]` — Check if a new lesson conflicts with existing lessons (KIK-564).
 - `delete_note(note_id: str, base_dir: str=_NOTES_DIR) -> bool` — Delete a note by ID from JSON files.
 
 ### src.data.screen_annotator

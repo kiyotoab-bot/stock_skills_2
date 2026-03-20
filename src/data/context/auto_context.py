@@ -511,27 +511,78 @@ def _load_lessons(symbol: Optional[str] = None) -> list[dict]:
 
 
 def _format_lesson_section(lessons: list[dict]) -> str:
-    """Format investment lessons as a markdown section for context injection."""
+    """Format investment lessons as a markdown section for context injection.
+
+    KIK-564: Detects potential contradictions between lessons and annotates with ⚠️.
+    """
     if not lessons:
         return ""
+
+    # KIK-564: Pre-compute conflict pairs
+    conflict_ids = _find_lesson_conflict_pairs(lessons)
+
     lines = ["", "## 投資lesson"]
     for les in lessons[:5]:
         symbol_part = f"[{les.get('symbol')}] " if les.get("symbol") else ""
         trigger = les.get("trigger", "")
         expected = les.get("expected_action", "")
         content = (les.get("content", "") or "")[:80]
+
+        # KIK-564: Conflict annotation
+        conflict_mark = ""
+        les_id = les.get("id", "")
+        if les_id in conflict_ids:
+            conflict_mark = "⚠️矛盾候補 "
+
         if trigger and expected:
-            lines.append(f"- {symbol_part}{trigger} → {expected}")
+            lines.append(f"- {conflict_mark}{symbol_part}{trigger} → {expected}")
         elif trigger:
-            lines.append(f"- {symbol_part}トリガー: {trigger} / {content}")
+            lines.append(f"- {conflict_mark}{symbol_part}トリガー: {trigger} / {content}")
         elif expected:
-            lines.append(f"- {symbol_part}次回: {expected} / {content}")
+            lines.append(f"- {conflict_mark}{symbol_part}次回: {expected} / {content}")
         else:
-            lines.append(f"- {symbol_part}{content}")
+            lines.append(f"- {conflict_mark}{symbol_part}{content}")
         date_str = les.get("date", "")
         if date_str:
             lines[-1] += f" ({date_str})"
+
+    if conflict_ids:
+        lines.append("")
+        lines.append("⚠️ 矛盾候補のlessonがあります。`lesson一覧` で確認・統合を検討してください。")
+
     return "\n".join(lines)
+
+
+def _find_lesson_conflict_pairs(lessons: list[dict]) -> set[str]:
+    """Find lesson IDs that have potential contradictions (KIK-564).
+
+    Uses keyword similarity on trigger+expected_action to detect pairs
+    with similar triggers but different actions.
+    """
+    conflict_ids: set[str] = set()
+    if len(lessons) < 2:
+        return conflict_ids
+
+    try:
+        from src.data.note_manager import _keyword_similarity
+    except ImportError:
+        return conflict_ids
+
+    for i, a in enumerate(lessons):
+        for b in lessons[i + 1:]:
+            a_trigger = (a.get("trigger") or "").strip()
+            b_trigger = (b.get("trigger") or "").strip()
+            if not a_trigger or not b_trigger:
+                continue
+            a_action = (a.get("expected_action") or "").strip()
+            b_action = (b.get("expected_action") or "").strip()
+            # Similar trigger but different action = potential conflict
+            trigger_sim = _keyword_similarity(a_trigger, b_trigger)
+            if trigger_sim > 0.3 and a_action != b_action and a_action and b_action:
+                conflict_ids.add(a.get("id", ""))
+                conflict_ids.add(b.get("id", ""))
+
+    return conflict_ids
 
 
 # ---------------------------------------------------------------------------
