@@ -120,7 +120,7 @@ def main():
                         help="カテゴリ (symbol未指定時に使用)")
     p_save.add_argument(
         "--type", default="observation",
-        choices=["thesis", "observation", "concern", "review", "target", "lesson", "journal"],
+        choices=["thesis", "observation", "concern", "review", "target", "lesson", "journal", "exit-rule"],
         help="メモタイプ",
     )
     p_save.add_argument("--content", required=True, help="メモ内容")
