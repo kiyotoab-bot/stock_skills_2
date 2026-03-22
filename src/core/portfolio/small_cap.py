@@ -1,14 +1,14 @@
-"""Small-cap classification and allocation rules (KIK-438).
+"""Small-cap classification and allocation rules (KIK-438/574).
 
 Provides region-aware market-cap classification and portfolio-level
 small-cap allocation checks.
+KIK-574: Thresholds loaded from config/thresholds.yaml with hardcoded fallback.
 """
 
-from src.core._thresholds import th
+from src.core._thresholds import th, get_thresholds
 
-# Region-specific small-cap thresholds (local currency).
-# Values match KIK-437 _SMALL_CAP_MARKET_CAP in screening presets.
-_SMALL_CAP_THRESHOLDS: dict[str, float] = {
+# Hardcoded fallback (used when YAML is missing or region not in YAML)
+_FALLBACK_THRESHOLDS: dict[str, float] = {
     "jp": 100_000_000_000,       # 1000億円
     "us": 1_000_000_000,         # $1B
     "sg": 2_000_000_000,         # SGD 2B
@@ -29,7 +29,26 @@ _SMALL_CAP_THRESHOLDS: dict[str, float] = {
     "in": 100_000_000_000,       # INR 100B
 }
 
-# Large-cap threshold = small-cap * multiplier
+
+def _get_small_cap_thresholds() -> dict[str, float]:
+    """Load small-cap thresholds from YAML, fall back to hardcoded."""
+    yaml_section = get_thresholds().get("small_cap", {})
+    if yaml_section:
+        result = dict(_FALLBACK_THRESHOLDS)
+        for region, val in yaml_section.items():
+            if region != "large_cap_multiplier" and isinstance(val, (int, float)):
+                result[region] = float(val)
+        return result
+    return dict(_FALLBACK_THRESHOLDS)
+
+
+def _get_large_cap_multiplier() -> float:
+    """Load large-cap multiplier from YAML, default 5."""
+    return float(th("small_cap", "large_cap_multiplier", 5))
+
+
+# Backward-compatible aliases (used by tests)
+_SMALL_CAP_THRESHOLDS = _FALLBACK_THRESHOLDS
 _LARGE_CAP_MULTIPLIER = 5
 
 
@@ -43,12 +62,13 @@ def classify_market_cap(market_cap: float | None, region_code: str) -> str:
     """
     if market_cap is None or market_cap <= 0:
         return "不明"
-    small_threshold = _SMALL_CAP_THRESHOLDS.get(region_code)
+    thresholds = _get_small_cap_thresholds()
+    small_threshold = thresholds.get(region_code)
     if small_threshold is None:
         return "不明"
     if market_cap <= small_threshold:
         return "小型"
-    if market_cap <= small_threshold * _LARGE_CAP_MULTIPLIER:
+    if market_cap <= small_threshold * _get_large_cap_multiplier():
         return "中型"
     return "大型"
 
