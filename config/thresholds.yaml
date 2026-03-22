@@ -20,6 +20,23 @@ health:
   small_cap_crit_pct: 0.35       # 小型株比率 > 35% で危険
   small_cap_cross_lookback: 30   # 小型株のクロスルックバック（通常60→30）
 
+# ---------------------------------------------------------------------------
+# Small-cap classification thresholds (KIK-438/574)
+# Region-specific small-cap market cap thresholds (local currency).
+# ---------------------------------------------------------------------------
+small_cap:
+  jp: 100000000000      # 1000億円
+  us: 1000000000        # $1B
+  sg: 2000000000        # SGD 2B
+  th: 30000000000       # THB 30B
+  my: 5000000000        # MYR 5B
+  id: 15000000000000    # IDR 15T
+  ph: 50000000000       # PHP 50B
+  hk: 10000000000       # HKD 10B
+  kr: 1000000000000     # KRW 1T
+  tw: 30000000000       # TWD 30B
+  large_cap_multiplier: 5   # 大型株 = 小型株閾値 × 5
+
   # Long-term suitability (KIK-371)
   lt_roe_high: 0.15
   lt_roe_low: 0.10

@@ -294,7 +294,7 @@ Portfolio compound interest simulation engine (KIK-366).
 
 ### src.core.portfolio.small_cap (KIK-438: 小型株アロケーション)
 
-Small-cap classification and allocation rules (KIK-438).
+Small-cap classification and allocation rules (KIK-438/574).
 
 - `classify_market_cap(market_cap: float | None, region_code: str) -> str` — Classify stock size from market cap and region code.
 - `check_small_cap_allocation(small_cap_weight: float) -> dict` — Check portfolio-level small-cap allocation.
