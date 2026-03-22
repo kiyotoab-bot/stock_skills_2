@@ -15,7 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.graph_store import _get_driver, is_available
-from src.data import embedding_client, summary_builder
+from src.data import embedding_client
+from src.data.context import summary_builder
 
 # All node types that have vector indexes
 NODE_TYPES = [

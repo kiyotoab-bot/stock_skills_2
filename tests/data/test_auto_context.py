@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.data.auto_context import (
+from src.data.context.auto_context import (
     _action_directive,
     _best_freshness,
     _check_bookmarked,
@@ -588,7 +588,7 @@ class TestResolveSymbol:
         """ティッカーパターンがあれば Neo4j 照会不要"""
         assert _resolve_symbol("7203.Tってどう？") == "7203.T"
 
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context.graph_store")
     def test_name_lookup_found(self, mock_gs):
         """企業名 → Neo4j 逆引きで見つかる"""
         mock_driver = MagicMock()
@@ -602,7 +602,7 @@ class TestResolveSymbol:
         result = _resolve_symbol("トヨタの状況は？")
         assert result == "7203.T"
 
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context.graph_store")
     def test_name_lookup_not_found(self, mock_gs):
         """企業名 → Neo4j に無い → None"""
         mock_driver = MagicMock()
@@ -615,7 +615,7 @@ class TestResolveSymbol:
         result = _resolve_symbol("謎の会社の状況は？")
         assert result is None
 
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context.graph_store")
     def test_neo4j_unavailable(self, mock_gs):
         """Neo4j 未接続 → None"""
         mock_gs._get_driver.return_value = None
@@ -628,7 +628,7 @@ class TestResolveSymbol:
 # ===================================================================
 
 class TestCheckBookmarked:
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context.graph_store")
     def test_bookmarked(self, mock_gs):
         mock_driver = MagicMock()
         mock_session = MagicMock()
@@ -639,7 +639,7 @@ class TestCheckBookmarked:
 
         assert _check_bookmarked("7203.T") is True
 
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context.graph_store")
     def test_not_bookmarked(self, mock_gs):
         mock_driver = MagicMock()
         mock_session = MagicMock()
@@ -650,7 +650,7 @@ class TestCheckBookmarked:
 
         assert _check_bookmarked("7203.T") is False
 
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context.graph_store")
     def test_neo4j_unavailable(self, mock_gs):
         mock_gs._get_driver.return_value = None
         assert _check_bookmarked("7203.T") is False
@@ -661,7 +661,7 @@ class TestCheckBookmarked:
 # ===================================================================
 
 class TestGetContext:
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_market_query(self, mock_gq):
         """市況クエリ → market-research 推奨"""
         mock_gq.get_recent_market_context.return_value = {
@@ -674,15 +674,15 @@ class TestGetContext:
         assert result["relationship"] == "市況"
         assert "日経225" in result["context_markdown"]
 
-    @patch("src.data.auto_context._vector_search", return_value=[])
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context._vector_search", return_value=[])
+    @patch("src.data.context.auto_context.graph_query")
     def test_market_query_no_data(self, mock_gq, mock_vs):
         """市況クエリ + データなし → None"""
         mock_gq.get_recent_market_context.return_value = None
         result = get_context("相場どう？")
         assert result is None
 
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_portfolio_query(self, mock_gq):
         """PFクエリ → health 推奨"""
         mock_gq.get_recent_market_context.return_value = {
@@ -693,8 +693,8 @@ class TestGetContext:
         assert result["recommended_skill"] == "health"
         assert result["relationship"] == "PF"
 
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_symbol_query_holding(self, mock_gs, mock_bookmark):
         """保有銘柄のクエリ → health 推奨"""
         mock_gs.is_available.return_value = True
@@ -709,8 +709,8 @@ class TestGetContext:
         assert result["recommended_skill"] == "health"
         assert result["relationship"] == "保有"
 
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_symbol_query_unknown(self, mock_gs, mock_bookmark):
         """未知銘柄 → report 推奨"""
         mock_gs.is_available.return_value = True
@@ -724,18 +724,18 @@ class TestGetContext:
         assert result["recommended_skill"] == "report"
         assert result["relationship"] == "未知"
 
-    @patch("src.data.auto_context._vector_search", return_value=[])
+    @patch("src.data.context.auto_context._vector_search", return_value=[])
     def test_no_symbol_detected(self, mock_vs):
         """シンボル検出できない → None (Neo4j 照会もスキップ)"""
         # _lookup_symbol_by_name will try Neo4j but it's not available
-        with patch("src.data.auto_context.graph_store") as mock_gs:
+        with patch("src.data.context.auto_context.graph_store") as mock_gs:
             mock_gs._get_driver.return_value = None
             result = get_context("今日はいい天気だ")
         assert result is None
 
-    @patch("src.data.auto_context._vector_search", return_value=[])
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._vector_search", return_value=[])
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_neo4j_unavailable(self, mock_gs, mock_bookmark, mock_vs):
         """Neo4j 未接続 → None"""
         mock_gs._get_driver.return_value = None  # for _resolve_symbol
@@ -745,8 +745,8 @@ class TestGetContext:
         # _extract_symbol finds the ticker, but is_available returns False
         assert result is None
 
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_bookmarked_stock(self, mock_gs, mock_bookmark):
         """ウォッチ中 → report + ウォッチ中"""
         mock_gs.is_available.return_value = True
@@ -759,8 +759,8 @@ class TestGetContext:
         assert result["recommended_skill"] == "report"
         assert result["relationship"] == "ウォッチ中"
 
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_context_includes_all_fields(self, mock_gs, mock_bookmark):
         """返り値に必要な全フィールドが含まれる"""
         mock_gs.is_available.return_value = True
@@ -791,7 +791,7 @@ class TestVectorSearch:
             result = _vector_search("test query")
         assert result == []
 
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_tei_available_returns_results(self, mock_gq):
         """TEI + Neo4j 正常 → ベクトル検索結果"""
         mock_gq.vector_search.return_value = [
@@ -805,7 +805,7 @@ class TestVectorSearch:
         assert len(result) == 1
         assert result[0]["label"] == "Report"
 
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_embedding_failure_returns_empty(self, mock_gq):
         """TEI is available but embedding fails → 空リスト"""
         with patch("src.data.embedding_client.is_available", return_value=True), \
@@ -936,8 +936,8 @@ class TestMergeContext:
 class TestGetContextWithVectors:
     """Integration tests for get_context() with vector search (KIK-420)."""
 
-    @patch("src.data.auto_context._vector_search")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._vector_search")
+    @patch("src.data.context.auto_context.graph_store")
     def test_no_symbol_with_vectors(self, mock_gs, mock_vs):
         """シンボルなし + ベクトル結果あり → ベクトルのみ返却"""
         mock_gs._get_driver.return_value = None  # no Neo4j for name lookup
@@ -951,9 +951,9 @@ class TestGetContextWithVectors:
         assert result["symbol"] == ""
         assert "関連する過去の記録" in result["context_markdown"]
 
-    @patch("src.data.auto_context._vector_search")
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._vector_search")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_symbol_with_vectors(self, mock_gs, mock_bm, mock_vs):
         """シンボルあり + ベクトル結果あり → 統合"""
         mock_gs.is_available.return_value = True
@@ -970,8 +970,8 @@ class TestGetContextWithVectors:
         assert result["symbol"] == "AAPL"
         assert "関連する過去の記録" in result["context_markdown"]
 
-    @patch("src.data.auto_context._vector_search")
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context._vector_search")
+    @patch("src.data.context.auto_context.graph_query")
     def test_market_query_with_vectors(self, mock_gq, mock_vs):
         """市況クエリ + ベクトル結果 → 統合"""
         mock_gq.get_recent_market_context.return_value = {
@@ -988,8 +988,8 @@ class TestGetContextWithVectors:
         assert "日経225" in result["context_markdown"]
         assert "関連する過去の記録" in result["context_markdown"]
 
-    @patch("src.data.auto_context._vector_search")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._vector_search")
+    @patch("src.data.context.auto_context.graph_store")
     def test_no_symbol_no_vectors(self, mock_gs, mock_vs):
         """シンボルなし + ベクトルなし → None"""
         mock_gs._get_driver.return_value = None
@@ -1106,9 +1106,9 @@ class TestLoadLessons:
 class TestGetContextWithLessons:
     """Integration test: get_context appends lesson section."""
 
-    @patch("src.data.auto_context._load_lessons")
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._load_lessons")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_lesson_appended_to_context(self, mock_gs, mock_bm, mock_lessons):
         """lesson セクションがコンテキストに追加されること."""
         mock_gs.is_available.return_value = True
@@ -1128,9 +1128,9 @@ class TestGetContextWithLessons:
         assert "高値掴み" in result["context_markdown"]
         assert "RSI確認" in result["context_markdown"]
 
-    @patch("src.data.auto_context._load_lessons")
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._load_lessons")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_no_lessons_no_section(self, mock_gs, mock_bm, mock_lessons):
         """lesson がない → セクション非表示."""
         mock_gs.is_available.return_value = True
@@ -1142,9 +1142,9 @@ class TestGetContextWithLessons:
         assert result is not None
         assert "## 投資lesson" not in result["context_markdown"]
 
-    @patch("src.data.auto_context._load_lessons", side_effect=Exception("fail"))
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._load_lessons", side_effect=Exception("fail"))
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_lesson_error_graceful_degradation(self, mock_gs, mock_bm, mock_les):
         """lesson ロードエラー → graceful degradation (セクションなし)."""
         mock_gs.is_available.return_value = True
@@ -1157,8 +1157,8 @@ class TestGetContextWithLessons:
 
     # --- KIK-554: PF/市況クエリでもlesson表示 ---
 
-    @patch("src.data.auto_context._load_lessons")
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context._load_lessons")
+    @patch("src.data.context.auto_context.graph_query")
     def test_lesson_appended_to_portfolio_query(self, mock_gq, mock_lessons):
         """PFクエリでもlessonが付与されること (KIK-554)."""
         mock_gq.get_recent_market_context.return_value = {"date": "2026-03-19"}
@@ -1174,8 +1174,8 @@ class TestGetContextWithLessons:
         assert "## 投資lesson" in result["context_markdown"]
         assert "購入直後の警告を鵜呑みにしない" in result["context_markdown"]
 
-    @patch("src.data.auto_context._load_lessons")
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context._load_lessons")
+    @patch("src.data.context.auto_context.graph_query")
     def test_lesson_appended_to_market_query(self, mock_gq, mock_lessons):
         """市況クエリでもlessonが付与されること (KIK-554)."""
         mock_gq.get_recent_market_context.return_value = {"date": "2026-03-19"}
@@ -1191,8 +1191,8 @@ class TestGetContextWithLessons:
         assert "## 投資lesson" in result["context_markdown"]
         assert "暴落時にパニック売りした" in result["context_markdown"]
 
-    @patch("src.data.auto_context._load_lessons")
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context._load_lessons")
+    @patch("src.data.context.auto_context.graph_query")
     def test_pf_query_no_lessons_no_section(self, mock_gq, mock_lessons):
         """PFクエリでlesson空 → セクション非表示."""
         mock_gq.get_recent_market_context.return_value = None
@@ -1203,9 +1203,9 @@ class TestGetContextWithLessons:
 
     # --- KIK-563: PFクエリで保有銘柄の重要メモ表示 ---
 
-    @patch("src.data.auto_context._load_lessons", return_value=[])
+    @patch("src.data.context.auto_context._load_lessons", return_value=[])
     @patch("src.data.graph_query.portfolio.get_holdings_notes")
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_pf_query_shows_holdings_notes(self, mock_gq, mock_notes, mock_les):
         """PFクエリで保有銘柄のNote(observation/concern/target)が表示される (KIK-563)."""
         mock_gq.get_recent_market_context.return_value = {"date": "2026-03-20"}
@@ -1223,9 +1223,9 @@ class TestGetContextWithLessons:
         assert "追加購入計画の停止" in md
         assert "[NVDA] thesis" in md
 
-    @patch("src.data.auto_context._load_lessons", return_value=[])
+    @patch("src.data.context.auto_context._load_lessons", return_value=[])
     @patch("src.data.graph_query.portfolio.get_holdings_notes")
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_pf_query_no_notes_no_section(self, mock_gq, mock_notes, mock_les):
         """保有銘柄にメモがない → セクション非表示."""
         mock_gq.get_recent_market_context.return_value = None
@@ -1234,9 +1234,9 @@ class TestGetContextWithLessons:
         assert result is not None
         assert "## 保有銘柄の重要メモ" not in result["context_markdown"]
 
-    @patch("src.data.auto_context._load_lessons", return_value=[])
+    @patch("src.data.context.auto_context._load_lessons", return_value=[])
     @patch("src.data.graph_query.portfolio.get_holdings_notes", side_effect=Exception("fail"))
-    @patch("src.data.auto_context.graph_query")
+    @patch("src.data.context.auto_context.graph_query")
     def test_pf_query_notes_error_graceful(self, mock_gq, mock_notes, mock_les):
         """Neo4j未接続時 → graceful degradation（メモセクションなし）."""
         mock_gq.get_recent_market_context.return_value = None

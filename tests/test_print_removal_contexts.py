@@ -19,7 +19,7 @@ class TestPrintRemovalContexts:
         fake_result = {"context_markdown": "### 7203.T\nスクリーニング出現: 3回"}
 
         with patch(
-            "src.data.auto_context.get_context", return_value=fake_result
+            "src.data.context.auto_context.get_context", return_value=fake_result
         ):
             print_removal_contexts(["7203.T"])
 
@@ -30,7 +30,7 @@ class TestPrintRemovalContexts:
 
     def test_no_neo4j(self, capsys):
         """ImportError from auto_context is silently caught."""
-        with patch.dict("sys.modules", {"src.data.auto_context": None}):
+        with patch.dict("sys.modules", {"src.data.context.auto_context": None}):
             print_removal_contexts(["AAPL"])
         # Graceful degradation — no output, no exception
         assert capsys.readouterr().out == ""
@@ -46,7 +46,7 @@ class TestPrintRemovalContexts:
             return results.get(sym)
 
         with patch(
-            "src.data.auto_context.get_context", side_effect=fake_get_context
+            "src.data.context.auto_context.get_context", side_effect=fake_get_context
         ):
             print_removal_contexts(["7203.T", "AAPL"])
 
@@ -58,7 +58,7 @@ class TestPrintRemovalContexts:
     def test_no_context_returned(self, capsys):
         """When get_context returns None, no output is produced."""
         with patch(
-            "src.data.auto_context.get_context", return_value=None
+            "src.data.context.auto_context.get_context", return_value=None
         ):
             print_removal_contexts(["UNKNOWN"])
         assert capsys.readouterr().out == ""
@@ -66,7 +66,7 @@ class TestPrintRemovalContexts:
     def test_exception_in_get_context(self, capsys):
         """Runtime error in get_context is silently caught."""
         with patch(
-            "src.data.auto_context.get_context",
+            "src.data.context.auto_context.get_context",
             side_effect=RuntimeError("DB down"),
         ):
             print_removal_contexts(["7203.T"])

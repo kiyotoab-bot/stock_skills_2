@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from statistics import median
 
-from src.data.history_store import load_history
+from src.data.history import load_history
 
 
 def _get_benchmark_return(yahoo_client_module, symbol: str, start_date: str) -> float | None:

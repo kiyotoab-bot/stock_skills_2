@@ -136,7 +136,7 @@ def save_report(
 
     # KIK-434: AI graph linking (graceful degradation)
     try:
-        from src.data.graph_linker import link_report
+        from src.data.graph_store.linker import link_report
         _rid = f"report_{today}_{symbol}"
         link_report(_rid, symbol, data.get("sector", ""), score, verdict)
     except Exception:
@@ -450,7 +450,7 @@ def save_research(
 
     # KIK-434: AI graph linking (graceful degradation)
     try:
-        from src.data.graph_linker import link_research
+        from src.data.graph_store.linker import link_research
         _rid = f"research_{today}_{research_type}_{_re.sub(r'[^a-zA-Z0-9]', '_', target)}"
         link_research(_rid, research_type, target, summary)
     except Exception:

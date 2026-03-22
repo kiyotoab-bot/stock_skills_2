@@ -289,7 +289,7 @@ class TestGraphQueryCommand:
         cmd = GraphQueryCommand()
         args = argparse.Namespace(query_words=["unknown"])
 
-        with patch("src.data.graph_nl_query.query", return_value=None):
+        with patch("src.data.graph_query.nl_query.query", return_value=None):
             cmd.run(args)
 
         output = capsys.readouterr().out
@@ -313,7 +313,7 @@ class TestGraphQueryCommand:
         cmd = GraphQueryCommand()
         args = argparse.Namespace(query_words=["7203.T", "前回レポート"])
 
-        with patch("src.data.graph_nl_query.query", return_value={"formatted": "## Toyota Report\nScore: 75"}):
+        with patch("src.data.graph_query.nl_query.query", return_value={"formatted": "## Toyota Report\nScore: 75"}):
             cmd.run(args)
 
         output = capsys.readouterr().out

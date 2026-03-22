@@ -18,7 +18,7 @@ class TestPrintContext:
         assert print_context("") is None
 
     def test_returns_none_when_auto_context_unavailable(self):
-        with patch.dict("sys.modules", {"src.data.auto_context": None}):
+        with patch.dict("sys.modules", {"src.data.context.auto_context": None}):
             assert print_context("test input") is None
 
     def test_returns_action_label_on_success(self):
@@ -31,7 +31,7 @@ class TestPrintContext:
             with patch.dict("sys.modules", {}):
                 mock_module = MagicMock()
                 mock_module.get_context.return_value = mock_result
-                with patch.dict("sys.modules", {"src.data.auto_context": mock_module}):
+                with patch.dict("sys.modules", {"src.data.context.auto_context": mock_module}):
                     result = print_context("report 7203.T")
                     assert result == "FRESH"
 
@@ -42,7 +42,7 @@ class TestPrintContext:
         }
         mock_module = MagicMock()
         mock_module.get_context.return_value = mock_result
-        with patch.dict("sys.modules", {"src.data.auto_context": mock_module}):
+        with patch.dict("sys.modules", {"src.data.context.auto_context": mock_module}):
             result = print_context("screen japan")
             assert result == "RECENT"
             captured = capsys.readouterr()
@@ -51,19 +51,19 @@ class TestPrintContext:
     def test_returns_none_when_no_context_markdown(self):
         mock_module = MagicMock()
         mock_module.get_context.return_value = {"context_markdown": "", "action_label": "NONE"}
-        with patch.dict("sys.modules", {"src.data.auto_context": mock_module}):
+        with patch.dict("sys.modules", {"src.data.context.auto_context": mock_module}):
             assert print_context("test") is None
 
     def test_returns_none_when_result_is_none(self):
         mock_module = MagicMock()
         mock_module.get_context.return_value = None
-        with patch.dict("sys.modules", {"src.data.auto_context": mock_module}):
+        with patch.dict("sys.modules", {"src.data.context.auto_context": mock_module}):
             assert print_context("test") is None
 
     def test_handles_exception_gracefully(self):
         mock_module = MagicMock()
         mock_module.get_context.side_effect = RuntimeError("Neo4j down")
-        with patch.dict("sys.modules", {"src.data.auto_context": mock_module}):
+        with patch.dict("sys.modules", {"src.data.context.auto_context": mock_module}):
             assert print_context("test") is None
 
     def test_timeout_value(self):

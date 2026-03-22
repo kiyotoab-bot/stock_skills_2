@@ -51,7 +51,7 @@ class TestGraphQueryRun:
         cmd = GraphQueryCommand()
         args = argparse.Namespace(query_words=["unknown"])
 
-        with patch("src.data.graph_nl_query.query", return_value=None):
+        with patch("src.data.graph_query.nl_query.query", return_value=None):
             cmd.run(args)
 
         output = capsys.readouterr().out
@@ -68,7 +68,7 @@ class TestGraphQueryRun:
         mock_result = {
             "formatted": "## 取引履歴\n- 2024-01-15: BOUGHT 100株 @2850"
         }
-        with patch("src.data.graph_nl_query.query", return_value=mock_result):
+        with patch("src.data.graph_query.nl_query.query", return_value=mock_result):
             cmd.run(args)
 
         output = capsys.readouterr().out

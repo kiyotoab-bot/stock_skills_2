@@ -33,7 +33,7 @@ if HAS_BUSINESS_FORMATTER: format_business_research = _bf["format_business_resea
 # Module availability from common.py (KIK-448)
 HAS_HISTORY = HAS_HISTORY_STORE
 if HAS_HISTORY:
-    from src.data.history_store import save_research, save_market_context
+    from src.data.history import save_research, save_market_context
 
 HAS_GRAPH_QUERY = _HAS_GQ
 if HAS_GRAPH_QUERY:

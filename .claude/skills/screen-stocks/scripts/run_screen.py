@@ -27,17 +27,17 @@ from src.markets.asean import ASEANMarket
 # Module availability from common.py (KIK-448); import specific functions when available
 HAS_HISTORY = HAS_HISTORY_STORE
 if HAS_HISTORY:
-    from src.data.history_store import save_screening
+    from src.data.history import save_screening
 
 HAS_GRAPH_QUERY = _HAS_GQ
 if HAS_GRAPH_QUERY:
     from src.data.graph_query import get_screening_frequency
 
-HAS_ANNOTATOR, _an = try_import("src.data.screen_annotator", "annotate_results")
+HAS_ANNOTATOR, _an = try_import("src.data.context.screen_annotator", "annotate_results")
 if HAS_ANNOTATOR: annotate_results = _an["annotate_results"]
 
 HAS_SCREENING_CTX, _sctx = try_import(
-    "src.data.screening_context", "get_screening_graph_context"
+    "src.data.context.screening_context", "get_screening_graph_context"
 )
 if HAS_SCREENING_CTX:
     get_screening_graph_context = _sctx["get_screening_graph_context"]

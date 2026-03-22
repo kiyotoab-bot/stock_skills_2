@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from src.core.portfolio.backtest import _get_benchmark_return, run_backtest
-from src.data.history_store import save_screening
+from src.data.history import save_screening
 
 
 # ===================================================================

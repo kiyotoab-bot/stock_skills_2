@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.data.graph_nl_query import (
+from src.data.graph_query.nl_query import (
     query,
     format_result,
     _extract_symbol,
@@ -50,7 +50,7 @@ class TestExtractSymbol:
 # ===================================================================
 
 class TestQuery:
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_prior_report_match(self, mock_gq):
         mock_gq.get_prior_report.return_value = {
             "date": "2026-02-17", "score": 75, "verdict": "割安",
@@ -61,13 +61,13 @@ class TestQuery:
         assert "割安" in result["formatted"]
         mock_gq.get_prior_report.assert_called_once_with("7203.T")
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_prior_report_not_found(self, mock_gq):
         mock_gq.get_prior_report.return_value = None
         result = query("7203.Tの以前のレポート")
         assert result is None
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_recurring_picks_match(self, mock_gq):
         mock_gq.get_recurring_picks.return_value = [
             {"symbol": "7203.T", "count": 5, "last_date": "2026-02-15"},
@@ -79,7 +79,7 @@ class TestQuery:
         assert "7203.T" in result["formatted"]
         assert "5" in result["formatted"]
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_recurring_picks_yoku_deru(self, mock_gq):
         """「よく出る」パターンもマッチすること."""
         mock_gq.get_recurring_picks.return_value = [
@@ -89,7 +89,7 @@ class TestQuery:
         assert result is not None
         assert result["query_type"] == "recurring_picks"
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_research_chain_match(self, mock_gq):
         mock_gq.get_research_chain.return_value = [
             {"date": "2026-02-17", "summary": "EV market growing"},
@@ -99,7 +99,7 @@ class TestQuery:
         assert result["query_type"] == "research_chain"
         assert "EV market growing" in result["formatted"]
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_market_context_match(self, mock_gq):
         mock_gq.get_recent_market_context.return_value = {
             "date": "2026-02-17",
@@ -110,7 +110,7 @@ class TestQuery:
         assert result["query_type"] == "market_context"
         assert "Nikkei 225" in result["formatted"]
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_trade_context_match(self, mock_gq):
         mock_gq.get_trade_context.return_value = {
             "trades": [{"date": "2026-01-15", "type": "buy", "shares": 100, "price": 2850}],
@@ -122,7 +122,7 @@ class TestQuery:
         assert "2850" in result["formatted"]
         assert "EV growth" in result["formatted"]
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_notes_match(self, mock_gq):
         mock_gq.get_trade_context.return_value = {
             "trades": [],
@@ -136,7 +136,7 @@ class TestQuery:
         result = query("今日の天気は？")
         assert result is None
 
-    @patch("src.data.graph_nl_query.graph_query")
+    @patch("src.data.graph_query.nl_query.graph_query")
     def test_no_symbol_for_report(self, mock_gq):
         """銘柄なしのレポート照会は None を返すこと."""
         result = query("前回レポート")

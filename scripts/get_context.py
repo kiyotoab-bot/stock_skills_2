@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.data.auto_context import get_context  # noqa: E402
+from src.data.context.auto_context import get_context  # noqa: E402
 
 
 def main():

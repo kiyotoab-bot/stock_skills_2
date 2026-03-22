@@ -10,7 +10,7 @@ def try_import(module_path: str, *names: str):
     """Import names from a module with graceful degradation.
 
     Args:
-        module_path: Dotted module path (e.g. "src.data.history_store")
+        module_path: Dotted module path (e.g. "src.data.history")
         *names: Names to import from the module
 
     Returns:
@@ -18,7 +18,7 @@ def try_import(module_path: str, *names: str):
                imports maps each name to the imported object or None.
 
     Example:
-        ok, imports = try_import("src.data.history_store", "save_screening")
+        ok, imports = try_import("src.data.history", "save_screening")
         save_screening = imports["save_screening"]
         if ok:
             save_screening(...)
@@ -43,7 +43,7 @@ def try_import(module_path: str, *names: str):
 # ---------------------------------------------------------------------------
 
 try:
-    import src.data.history_store as _history_store_mod  # noqa: F401
+    import src.data.history as _history_store_mod  # noqa: F401
     HAS_HISTORY_STORE = True
 except ImportError:
     HAS_HISTORY_STORE = False
@@ -81,7 +81,7 @@ def print_context(user_input: str) -> Optional[str]:
     if not user_input:
         return None
     try:
-        from src.data.auto_context import get_context
+        from src.data.context.auto_context import get_context
 
         old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(_CONTEXT_TIMEOUT)
@@ -110,7 +110,7 @@ def print_removal_contexts(symbols: list[str]) -> None:
     if not symbols:
         return
     try:
-        from src.data.auto_context import get_context
+        from src.data.context.auto_context import get_context
 
         old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(_CONTEXT_TIMEOUT)

@@ -19,7 +19,7 @@ def clear_env(monkeypatch):
 
 @pytest.fixture
 def linker():
-    from src.data.graph_linker import AIGraphLinker
+    from src.data.graph_store.linker import AIGraphLinker
     return AIGraphLinker()
 
 
@@ -147,17 +147,17 @@ class TestParseRelationships:
 
 class TestLinkHelpers:
     def test_link_research_no_api_key_returns_zero(self):
-        from src.data.graph_linker import link_research
+        from src.data.graph_store.linker import link_research
         count = link_research("research_2026-01-01_industry_AI", "industry", "AI", "要約")
         assert count == 0
 
     def test_link_note_no_symbol_returns_zero(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
-        from src.data.graph_linker import link_note
+        from src.data.graph_store.linker import link_note
         count = link_note("note_123", None, "observation", "内容")
         assert count == 0
 
     def test_link_report_no_api_key_returns_zero(self):
-        from src.data.graph_linker import link_report
+        from src.data.graph_store.linker import link_report
         count = link_report("report_2026-01-01_AAPL", "AAPL", "Technology", 72.5, "割安")
         assert count == 0

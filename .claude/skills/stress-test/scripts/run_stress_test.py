@@ -52,7 +52,7 @@ generate_recommendations = _rec["generate_recommendations"]
 # KIK-428: History auto-save — module availability from common.py (KIK-448)
 HAS_HISTORY = HAS_HISTORY_STORE
 if HAS_HISTORY:
-    from src.data.history_store import save_stress_test as _save_stress_test
+    from src.data.history import save_stress_test as _save_stress_test
 
 
 

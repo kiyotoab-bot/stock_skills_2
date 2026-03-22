@@ -28,7 +28,7 @@ class GraphQueryCommand(BaseSkillCommand):
         return ""
 
     def run(self, args):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
 
         user_input = " ".join(args.query_words)
         result = query(user_input)
