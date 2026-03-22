@@ -73,7 +73,7 @@ def save_report(
 
     # KIK-434: AI graph linking (graceful degradation)
     try:
-        from src.data.graph_linker import link_report
+        from src.data.graph_store.linker import link_report
         _rid = f"report_{today}_{symbol}"
         link_report(_rid, symbol, data.get("sector", ""), score, verdict)
     except Exception:
