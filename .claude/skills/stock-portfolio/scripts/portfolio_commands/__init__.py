@@ -51,7 +51,7 @@ _IMPORT_REGISTRY = [
     ("src.output.simulate_formatter", "SIMULATION_FORMATTER", [
         ("format_simulation", None),
     ]),
-    ("src.data.history_store", "HISTORY", [
+    ("src.data.history", "HISTORY", [
         ("save_trade", None), ("save_health", None), ("save_market_context", None),
         ("save_forecast", None),
     ]),

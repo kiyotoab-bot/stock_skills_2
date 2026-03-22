@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from src.data.grok_context import (
+from src.data.context.grok_context import (
     _truncate_context,
     get_stock_context,
     get_industry_context,

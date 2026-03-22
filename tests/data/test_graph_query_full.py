@@ -175,7 +175,7 @@ class TestNLQueryTemplates:
     """Test that new NL templates match and dispatch correctly."""
 
     def test_news_template(self):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
         with patch("src.data.graph_query.get_stock_news_history", return_value=[]) as mock:
             result = query("NVDAのニュース履歴を見せて")
             assert result is not None
@@ -183,7 +183,7 @@ class TestNLQueryTemplates:
             mock.assert_called_once_with("NVDA")
 
     def test_sentiment_template(self):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
         with patch("src.data.graph_query.get_sentiment_trend", return_value=[]) as mock:
             result = query("NVDAのセンチメント推移")
             assert result is not None
@@ -191,7 +191,7 @@ class TestNLQueryTemplates:
             mock.assert_called_once_with("NVDA")
 
     def test_catalyst_template(self):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
         with patch("src.data.graph_query.get_catalysts", return_value={"positive": [], "negative": []}) as mock:
             result = query("NVDAのカタリスト")
             assert result is not None
@@ -199,7 +199,7 @@ class TestNLQueryTemplates:
             mock.assert_called_once_with("NVDA")
 
     def test_report_trend_template(self):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
         with patch("src.data.graph_query.get_report_trend", return_value=[]) as mock:
             result = query("7203.TのPER推移")
             assert result is not None
@@ -207,7 +207,7 @@ class TestNLQueryTemplates:
             mock.assert_called_once_with("7203.T")
 
     def test_upcoming_events_template(self):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
         with patch("src.data.graph_query.get_upcoming_events", return_value=[]) as mock:
             result = query("今後のイベント")
             assert result is not None
@@ -215,7 +215,7 @@ class TestNLQueryTemplates:
             mock.assert_called_once()
 
     def test_indicator_template(self):
-        from src.data.graph_nl_query import query
+        from src.data.graph_query.nl_query import query
         with patch("src.data.graph_query.get_recent_market_context", return_value=None) as mock:
             result = query("マクロ指標の推移")
             # Returns None because get_recent_market_context returned None
@@ -228,7 +228,7 @@ class TestNLQueryTemplates:
 
 class TestFormatters:
     def test_fmt_stock_news(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         result = [
             {"date": "2025-01-15", "title": "NVDA beats expectations", "source": "grok"},
         ]
@@ -237,43 +237,43 @@ class TestFormatters:
         assert "NVDA beats expectations" in text
 
     def test_fmt_stock_news_empty(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         text = format_result("stock_news", [], {"symbol": "NVDA"})
         assert "見つかりませんでした" in text
 
     def test_fmt_sentiment_trend(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         result = [{"date": "2025-01-15", "source": "grok_x", "score": 0.7, "summary": "Bullish"}]
         text = format_result("sentiment_trend", result, {"symbol": "NVDA"})
         assert "0.7" in text
         assert "Bullish" in text
 
     def test_fmt_catalysts(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         result = {"positive": ["Strong demand"], "negative": ["Regulation"]}
         text = format_result("catalysts", result, {"symbol": "NVDA"})
         assert "ポジティブ" in text
         assert "Strong demand" in text
 
     def test_fmt_catalysts_empty(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         text = format_result("catalysts", {"positive": [], "negative": []}, {"symbol": "NVDA"})
         assert "見つかりませんでした" in text
 
     def test_fmt_report_trend(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         result = [{"date": "2025-01-15", "score": 72.5, "verdict": "割安", "price": 2850, "per": 8.5, "pbr": 0.9}]
         text = format_result("report_trend", result, {"symbol": "7203.T"})
         assert "72.5" in text
         assert "割安" in text
 
     def test_fmt_upcoming_events(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         result = [{"date": "2025-01-20", "text": "FOMC meeting"}]
         text = format_result("upcoming_events", result, {})
         assert "FOMC meeting" in text
 
     def test_fmt_upcoming_events_empty(self):
-        from src.data.graph_nl_query import format_result
+        from src.data.graph_query.nl_query import format_result
         text = format_result("upcoming_events", [], {})
         assert "見つかりませんでした" in text

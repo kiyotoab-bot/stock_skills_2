@@ -5,7 +5,7 @@ Verifies template-based summary generation for each node type.
 
 import pytest
 
-from src.data.summary_builder import (
+from src.data.context.summary_builder import (
     _trunc,
     build_screen_summary,
     build_report_summary,

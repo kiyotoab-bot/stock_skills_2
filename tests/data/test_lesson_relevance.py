@@ -150,10 +150,10 @@ class TestAppendLessonsWithInput:
         # VIX lesson should be first
         assert result[0]["trigger"] == "VIX上昇"
 
-    @patch("src.data.auto_context._load_lessons")
-    @patch("src.data.auto_context._load_community_lessons")
-    @patch("src.data.auto_context._check_bookmarked")
-    @patch("src.data.auto_context.graph_store")
+    @patch("src.data.context.auto_context._load_lessons")
+    @patch("src.data.context.auto_context._load_community_lessons")
+    @patch("src.data.context.auto_context._check_bookmarked")
+    @patch("src.data.context.auto_context.graph_store")
     def test_community_lesson_included(self, mock_gs, mock_bm, mock_comm, mock_load):
         from src.data.context.auto_context import get_context
 

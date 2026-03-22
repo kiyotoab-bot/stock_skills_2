@@ -23,7 +23,7 @@ if HAS_RETURN_STABILITY: assess_return_stability = _rs["assess_return_stability"
 # Module availability from common.py (KIK-448)
 HAS_HISTORY = HAS_HISTORY_STORE
 if HAS_HISTORY:
-    from src.data.history_store import save_report as history_save_report
+    from src.data.history import save_report as history_save_report
 
 HAS_VALUE_TRAP, _vt = try_import("src.core.health_check", "_detect_value_trap")
 if HAS_VALUE_TRAP: _detect_value_trap = _vt["_detect_value_trap"]

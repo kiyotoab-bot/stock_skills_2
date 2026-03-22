@@ -74,7 +74,8 @@ def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
     Returns (summary_text, embedding_vector). Both may be empty/None on failure.
     """
     try:
-        from src.data import summary_builder, embedding_client
+        from src.data import embedding_client
+        from src.data.context import summary_builder
     except ImportError:
         return ("", None)
 

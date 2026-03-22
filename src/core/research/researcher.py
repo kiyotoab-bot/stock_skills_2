@@ -29,7 +29,7 @@ except ImportError:
 
 # Grok context injection from Neo4j (KIK-488)
 try:
-    from src.data import grok_context
+    from src.data.context import grok_context
 
     HAS_GROK_CONTEXT = True
 except ImportError:

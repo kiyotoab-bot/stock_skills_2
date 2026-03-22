@@ -1,6 +1,6 @@
 """Storage port interfaces for history_store and note_manager abstraction (KIK-513).
 
-These Protocols match the public API of src.data.history_store and
+These Protocols match the public API of src.data.history and
 src.data.note_manager. Existing modules satisfy them structurally.
 """
 
@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 class HistoryStore(Protocol):
     """Persistent storage for screening/report/trade/health/research history.
 
-    Matches the public API of src.data.history_store.
+    Matches the public API of src.data.history.
     """
 
     def save_screening(

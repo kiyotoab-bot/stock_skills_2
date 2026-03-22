@@ -242,16 +242,16 @@ class TestBuildEmbeddingWarning:
     """Test that _build_embedding logs warning when TEI unavailable."""
 
     @patch("src.data.embedding_client.get_embedding")
-    @patch("src.data.summary_builder.build_screen_summary")
+    @patch("src.data.context.summary_builder.build_screen_summary")
     def test_warning_logged_when_tei_unavailable(self, mock_build, mock_get_emb, caplog):
         """When TEI returns None for embedding, a WARNING should be logged."""
-        from src.data.history_store import _build_embedding
+        from src.data.history import _build_embedding
 
         mock_build.return_value = "screen summary text"
         mock_get_emb.return_value = None
 
         import logging
-        with caplog.at_level(logging.WARNING, logger="src.data.history_store"):
+        with caplog.at_level(logging.WARNING, logger="src.data.history._helpers"):
             text, emb = _build_embedding(
                 "screen", date="2026-01-01", preset="alpha",
                 region="japan", top_symbols=["7203.T"],
@@ -263,16 +263,16 @@ class TestBuildEmbeddingWarning:
         assert "backfill_embeddings" in caplog.text
 
     @patch("src.data.embedding_client.get_embedding")
-    @patch("src.data.summary_builder.build_screen_summary")
+    @patch("src.data.context.summary_builder.build_screen_summary")
     def test_no_warning_when_embedding_succeeds(self, mock_build, mock_get_emb, caplog):
         """When embedding succeeds, no warning should be logged."""
-        from src.data.history_store import _build_embedding
+        from src.data.history import _build_embedding
 
         mock_build.return_value = "screen summary text"
         mock_get_emb.return_value = [0.1] * 384
 
         import logging
-        with caplog.at_level(logging.WARNING, logger="src.data.history_store"):
+        with caplog.at_level(logging.WARNING, logger="src.data.history._helpers"):
             text, emb = _build_embedding(
                 "screen", date="2026-01-01", preset="alpha",
                 region="japan", top_symbols=["7203.T"],
@@ -283,15 +283,15 @@ class TestBuildEmbeddingWarning:
         assert "TEI unavailable" not in caplog.text
 
     @patch("src.data.embedding_client.get_embedding")
-    @patch("src.data.summary_builder.build_screen_summary")
+    @patch("src.data.context.summary_builder.build_screen_summary")
     def test_no_warning_when_empty_summary(self, mock_build, mock_get_emb, caplog):
         """When summary is empty, no warning should be logged (no embedding attempted)."""
-        from src.data.history_store import _build_embedding
+        from src.data.history import _build_embedding
 
         mock_build.return_value = ""
 
         import logging
-        with caplog.at_level(logging.WARNING, logger="src.data.history_store"):
+        with caplog.at_level(logging.WARNING, logger="src.data.history._helpers"):
             text, emb = _build_embedding(
                 "screen", date="2026-01-01", preset="alpha",
                 region="japan", top_symbols=[],

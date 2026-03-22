@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from src.data.history_store import (
+from src.data.history import (
     _safe_filename,
     load_history,
     list_history_files,
@@ -635,8 +635,8 @@ class TestSaveMarketContext:
 class TestGraphDualWrite:
     """Verify that save_* functions call graph_store merge functions."""
 
-    @patch("src.data.history_store.merge_screen", create=True)
-    @patch("src.data.history_store.merge_stock", create=True)
+    @patch("src.data.history.merge_screen", create=True)
+    @patch("src.data.history.merge_stock", create=True)
     def test_screening_calls_graph(self, mock_stock, mock_screen, tmp_path):
         with patch.dict("sys.modules", {}):
             save_screening("value", "japan", [{"symbol": "7203.T", "name": "Toyota", "sector": "Auto"}], base_dir=str(tmp_path))

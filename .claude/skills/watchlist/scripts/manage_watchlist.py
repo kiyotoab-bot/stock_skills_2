@@ -36,7 +36,7 @@ def _save(name, symbols):
     # Sync to Neo4j (view) -- graceful degradation
     try:
         from src.data.graph_store import merge_watchlist, merge_stock
-        from src.data.history_store import _build_embedding
+        from src.data.history import _build_embedding
         for sym in symbols:
             merge_stock(symbol=sym)
         sem_summary, emb = _build_embedding(

@@ -36,7 +36,7 @@ def mock_driver():
 def ctx_with_driver(mock_driver):
     """Set up graph_store with a mock driver, return screening_context module."""
     import src.data.graph_store as gs
-    import src.data.screening_context as sc
+    import src.data.context.screening_context as sc
     driver, session = mock_driver
     gs._driver = driver
     return sc, driver, session
@@ -49,7 +49,7 @@ def ctx_with_driver(mock_driver):
 class TestGracefulDegradation:
     def test_returns_empty_when_neo4j_unavailable(self):
         """Neo4j unavailable (all graph_query helpers return empty) → has_data=False."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
         # Simulate Neo4j unavailable: all graph_query helpers return empty results
         # (which is what each function does when driver is None)
         with (
@@ -66,7 +66,7 @@ class TestGracefulDegradation:
 
     def test_returns_empty_for_empty_inputs(self):
         """Empty symbols and sectors → has_data=False."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
         with (
             patch("src.data.graph_query.get_industry_research_for_sector", return_value=[]),
             patch("src.data.graph_query.get_sector_catalysts", return_value={}),
@@ -79,7 +79,7 @@ class TestGracefulDegradation:
     def test_returns_empty_when_graph_query_import_fails(self):
         """If graph_query cannot be imported → empty result."""
         import sys
-        import src.data.screening_context as sc_mod
+        import src.data.context.screening_context as sc_mod
         original = sys.modules.pop("src.data.graph_query", None)
         try:
             # Reload screening_context without graph_query available
@@ -100,7 +100,7 @@ class TestGracefulDegradation:
 class TestSectorResearch:
     def test_sector_research_is_populated(self):
         """Sector with catalysts → sector_research entry and has_data=True."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
 
         research_data = [{"summary": "AI需要拡大", "date": "2026-02-18"}]
         catalysts_data = {
@@ -127,7 +127,7 @@ class TestSectorResearch:
 
     def test_empty_sector_is_skipped(self):
         """None or empty string sector is not queried."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
 
         with (
             patch("src.data.graph_query.get_industry_research_for_sector", return_value=[]) as mock_research,
@@ -143,7 +143,7 @@ class TestSectorResearch:
 
     def test_exception_in_sector_loop_is_ignored(self):
         """Exception for one sector does not abort; other sectors proceed."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
 
         def side_effect_research(sector, days):
             if sector == "BadSector":
@@ -172,7 +172,7 @@ class TestSectorResearch:
 class TestSymbolNotes:
     def test_symbol_notes_are_populated(self):
         """Notes returned from graph_query → symbol_notes and has_data=True."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
 
         notes_data = {
             "NVDA": [
@@ -194,7 +194,7 @@ class TestSymbolNotes:
 
     def test_symbol_notes_exception_is_ignored(self):
         """Exception in notes lookup does not abort."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
 
         with (
             patch("src.data.graph_query.get_industry_research_for_sector", return_value=[]),
@@ -214,7 +214,7 @@ class TestSymbolNotes:
 class TestSymbolThemes:
     def test_symbol_themes_are_populated(self):
         """Themes returned → symbol_themes and has_data=True."""
-        from src.data.screening_context import get_screening_graph_context
+        from src.data.context.screening_context import get_screening_graph_context
 
         themes_data = {"NVDA": ["AI", "半導体"]}
         with (

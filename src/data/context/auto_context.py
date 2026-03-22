@@ -59,7 +59,7 @@ def _check_bookmarked(symbol: str) -> bool:
     """Check if symbol is in any watchlist via Neo4j.
 
     Wraps skill_recommender._check_bookmarked with this module's graph_store
-    reference so that ``@patch("src.data.auto_context.graph_store")`` works.
+    reference so that ``@patch("src.data.context.auto_context.graph_store")`` works.
     """
     return _check_bookmarked_impl(symbol, _graph_store=graph_store)
 
@@ -68,7 +68,7 @@ def _vector_search(user_input: str) -> list[dict]:
     """Embed user input via TEI and run vector similarity search on Neo4j.
 
     Wraps vector_search._vector_search with this module's graph_query
-    reference so that ``@patch("src.data.auto_context.graph_query")`` works.
+    reference so that ``@patch("src.data.context.auto_context.graph_query")`` works.
     """
     return _vector_search_impl(user_input, _graph_query=graph_query)
 

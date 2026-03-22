@@ -9,5 +9,6 @@ __pycache__/
 .env
 .claude/skills/stock-portfolio/data/portfolio.csv
 .claude/worktrees/
+.claude/settings.local.json
 data/models/
 articles/

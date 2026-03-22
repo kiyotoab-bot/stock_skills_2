@@ -156,7 +156,7 @@ def save_note(
     # 2. Write to Neo4j (view) -- graceful degradation
     try:
         from src.data.graph_store import merge_note
-        from src.data.history_store import _build_embedding
+        from src.data.history import _build_embedding
         sem_summary, emb = _build_embedding(
             "note", symbol=symbol or "", note_type=note_type, content=content,
             trigger=note.get("trigger", ""),
@@ -192,7 +192,7 @@ def save_note(
 
     # KIK-434: AI graph linking (graceful degradation)
     try:
-        from src.data.graph_linker import link_note
+        from src.data.graph_store.linker import link_note
         if detected_symbols:
             for ds in detected_symbols:
                 link_note(note_id, ds, note_type, content)

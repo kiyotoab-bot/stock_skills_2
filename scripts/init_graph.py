@@ -50,10 +50,13 @@ from src.data.graph_store import (
 )
 
 # KIK-420: Optional embedding support (graceful degradation if TEI unavailable)
-HAS_EMBEDDING, _emb = try_import("src.data", "embedding_client", "summary_builder")
+HAS_EMBEDDING, _emb = try_import("src.data", "embedding_client")
 if HAS_EMBEDDING:
     embedding_client = _emb["embedding_client"]
-    summary_builder = _emb["summary_builder"]
+HAS_SUMMARY_BUILDER, _sb = try_import("src.data.context", "summary_builder")
+if HAS_SUMMARY_BUILDER:
+    summary_builder = _sb["summary_builder"]
+HAS_EMBEDDING = HAS_EMBEDDING and HAS_SUMMARY_BUILDER
 
 
 def _get_embedding(summary_text: str) -> "list[float] | None":

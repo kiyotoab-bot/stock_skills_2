@@ -818,7 +818,7 @@ class TestCheckLiquidityRisk:
 ```python
 # 共通フラグ: scripts/common.py で管理 (KIK-448)
 try:
-    from src.data.history_store import HistoryStore as _
+    from src.data.history import HistoryStore as _
     HAS_HISTORY_STORE = True
 except ImportError:
     HAS_HISTORY_STORE = False

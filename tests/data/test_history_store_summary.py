@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from src.data.history_store import _build_research_summary
+from src.data.history import _build_research_summary
 
 
 # ===================================================================
@@ -194,7 +194,7 @@ class TestSaveResearchSummaryIntegration:
              patch("src.data.graph_store.merge_stock"), \
              patch("src.data.graph_store.link_research_supersedes"):
 
-            from src.data.history_store import save_research
+            from src.data.history import save_research
 
             result = {
                 "name": "TEST CORP",

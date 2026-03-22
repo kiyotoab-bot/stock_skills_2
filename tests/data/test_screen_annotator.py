@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.screen_annotator import (
+from src.data.context.screen_annotator import (
     MARKER_CONCERN,
     MARKER_LESSON,
     MARKER_WATCH,
@@ -111,20 +111,20 @@ class TestGetRecentSells:
     def test_neo4j_unavailable_falls_to_json(self):
         """When Neo4j returns empty, falls back to JSON."""
         with patch("src.data.graph_query.get_recent_sells_batch", return_value={}):
-            with patch("src.data.screen_annotator._load_sells_from_json", return_value={"AAPL": "2025-02-01"}):
+            with patch("src.data.context.screen_annotator._load_sells_from_json", return_value={"AAPL": "2025-02-01"}):
                 result = get_recent_sells(days=90)
         assert result == {"AAPL": "2025-02-01"}
 
     def test_neo4j_exception_falls_to_json(self):
         """When Neo4j raises, falls back to JSON."""
         with patch("src.data.graph_query.get_recent_sells_batch", side_effect=Exception("No Neo4j")):
-            with patch("src.data.screen_annotator._load_sells_from_json", return_value={"AAPL": "2025-02-01"}):
+            with patch("src.data.context.screen_annotator._load_sells_from_json", return_value={"AAPL": "2025-02-01"}):
                 result = get_recent_sells(days=90)
         assert result == {"AAPL": "2025-02-01"}
 
     def test_empty_when_no_data(self):
         with patch("src.data.graph_query.get_recent_sells_batch", return_value={}):
-            with patch("src.data.screen_annotator._load_sells_from_json", return_value={}):
+            with patch("src.data.context.screen_annotator._load_sells_from_json", return_value={}):
                 result = get_recent_sells()
         assert result == {}
 
@@ -189,13 +189,13 @@ class TestGetNotesForSymbols:
             {"symbol": "AAPL", "type": "lesson", "content": "損切り遅い", "date": "2025-01-02"},
             {"symbol": "7203.T", "type": "thesis", "content": "テーゼ", "date": "2025-01-01"},
         ]
-        with patch("src.data.screen_annotator._load_notes_from_json") as mock_json:
+        with patch("src.data.context.screen_annotator._load_notes_from_json") as mock_json:
             mock_json.return_value = {
                 "7203.T": [{"type": "concern", "content": "利益減少", "date": "2025-01-01"}],
                 "AAPL": [{"type": "lesson", "content": "損切り遅い", "date": "2025-01-02"}],
             }
             with patch(
-                "src.data.screen_annotator.get_notes_for_symbols_batch",
+                "src.data.context.screen_annotator.get_notes_for_symbols_batch",
                 side_effect=Exception("No Neo4j"),
                 create=True,
             ):
@@ -237,8 +237,8 @@ class TestAnnotateResults:
             {"symbol": "7203.T", "name": "Toyota"},
             {"symbol": "AAPL", "name": "Apple"},
         ]
-        with patch("src.data.screen_annotator.get_recent_sells", return_value={"AAPL": "2025-02-01"}):
-            with patch("src.data.screen_annotator.get_notes_for_symbols", return_value={}):
+        with patch("src.data.context.screen_annotator.get_recent_sells", return_value={"AAPL": "2025-02-01"}):
+            with patch("src.data.context.screen_annotator.get_notes_for_symbols", return_value={}):
                 annotated, excluded = annotate_results(results)
         assert excluded == 1
         assert len(annotated) == 1
@@ -247,8 +247,8 @@ class TestAnnotateResults:
     def test_adds_note_markers(self):
         results = [{"symbol": "7203.T", "name": "Toyota"}]
         notes = {"7203.T": [{"type": "concern", "content": "利益減少", "date": "2025-01-01"}]}
-        with patch("src.data.screen_annotator.get_recent_sells", return_value={}):
-            with patch("src.data.screen_annotator.get_notes_for_symbols", return_value=notes):
+        with patch("src.data.context.screen_annotator.get_recent_sells", return_value={}):
+            with patch("src.data.context.screen_annotator.get_notes_for_symbols", return_value=notes):
                 annotated, excluded = annotate_results(results)
         assert excluded == 0
         assert MARKER_CONCERN in annotated[0]["_note_markers"]
@@ -260,16 +260,16 @@ class TestAnnotateResults:
 
     def test_graceful_degradation_on_sell_error(self):
         results = [{"symbol": "7203.T"}]
-        with patch("src.data.screen_annotator.get_recent_sells", side_effect=Exception("fail")):
-            with patch("src.data.screen_annotator.get_notes_for_symbols", return_value={}):
+        with patch("src.data.context.screen_annotator.get_recent_sells", side_effect=Exception("fail")):
+            with patch("src.data.context.screen_annotator.get_notes_for_symbols", return_value={}):
                 annotated, excluded = annotate_results(results)
         assert len(annotated) == 1
         assert excluded == 0
 
     def test_graceful_degradation_on_notes_error(self):
         results = [{"symbol": "7203.T"}]
-        with patch("src.data.screen_annotator.get_recent_sells", return_value={}):
-            with patch("src.data.screen_annotator.get_notes_for_symbols", side_effect=Exception("fail")):
+        with patch("src.data.context.screen_annotator.get_recent_sells", return_value={}):
+            with patch("src.data.context.screen_annotator.get_notes_for_symbols", side_effect=Exception("fail")):
                 annotated, excluded = annotate_results(results)
         assert len(annotated) == 1
         assert annotated[0]["_note_markers"] == ""
@@ -282,8 +282,8 @@ class TestAnnotateResults:
         ]
         sells = {"SOLD1": "2025-02-01"}
         notes = {"NOTED": [{"type": "lesson", "content": "学び", "date": "2025-01-01"}]}
-        with patch("src.data.screen_annotator.get_recent_sells", return_value=sells):
-            with patch("src.data.screen_annotator.get_notes_for_symbols", return_value=notes):
+        with patch("src.data.context.screen_annotator.get_recent_sells", return_value=sells):
+            with patch("src.data.context.screen_annotator.get_notes_for_symbols", return_value=notes):
                 annotated, excluded = annotate_results(results)
         assert excluded == 1
         assert len(annotated) == 2
