@@ -2,36 +2,11 @@
 
 from typing import Optional
 
-
-def _fmt_jpy(value: Optional[float]) -> str:
-    """Format a value as Japanese Yen with comma separators."""
-    if value is None:
-        return "-"
-    if value < 0:
-        return f"-\u00a5{abs(value):,.0f}"
-    return f"\u00a5{value:,.0f}"
-
-
-def _fmt_usd(value: Optional[float]) -> str:
-    """Format a value as US Dollar."""
-    if value is None:
-        return "-"
-    if value < 0:
-        return f"-${abs(value):,.2f}"
-    return f"${value:,.2f}"
-
-
-def _fmt_currency_value(value: Optional[float], currency: str = "JPY") -> str:
-    """Format a value in the appropriate currency format."""
-    if value is None:
-        return "-"
-    currency = (currency or "JPY").upper()
-    if currency == "JPY":
-        return _fmt_jpy(value)
-    elif currency == "USD":
-        return _fmt_usd(value)
-    else:
-        return f"{value:,.2f} {currency}"
+# Re-import canonical currency formatters from _format_helpers (KIK-572).
+# Private aliases kept for backward compatibility with existing callers.
+from src.output._format_helpers import fmt_jpy as _fmt_jpy  # noqa: F401
+from src.output._format_helpers import fmt_usd as _fmt_usd  # noqa: F401
+from src.output._format_helpers import fmt_currency_value as _fmt_currency_value  # noqa: F401
 
 
 def _pnl_indicator(value: Optional[float]) -> str:

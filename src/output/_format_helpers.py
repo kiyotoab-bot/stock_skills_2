@@ -3,6 +3,41 @@
 from typing import Optional
 
 
+# ---------------------------------------------------------------------------
+# Currency formatters (canonical location, moved from _portfolio_utils KIK-572)
+# ---------------------------------------------------------------------------
+
+def fmt_jpy(value: Optional[float]) -> str:
+    """Format a value as Japanese Yen with comma separators."""
+    if value is None:
+        return "-"
+    if value < 0:
+        return f"-\u00a5{abs(value):,.0f}"
+    return f"\u00a5{value:,.0f}"
+
+
+def fmt_usd(value: Optional[float]) -> str:
+    """Format a value as US Dollar."""
+    if value is None:
+        return "-"
+    if value < 0:
+        return f"-${abs(value):,.2f}"
+    return f"${value:,.2f}"
+
+
+def fmt_currency_value(value: Optional[float], currency: str = "JPY") -> str:
+    """Format a value in the appropriate currency format."""
+    if value is None:
+        return "-"
+    currency = (currency or "JPY").upper()
+    if currency == "JPY":
+        return fmt_jpy(value)
+    elif currency == "USD":
+        return fmt_usd(value)
+    else:
+        return f"{value:,.2f} {currency}"
+
+
 def fmt_pct(value: Optional[float]) -> str:
     """Format a decimal ratio as a percentage string (e.g. 0.035 -> '3.50%')."""
     if value is None:

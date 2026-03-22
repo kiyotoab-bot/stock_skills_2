@@ -233,13 +233,13 @@ class TestFormatFullStressReport:
             sensitivities=_make_sensitivities(),
             scenario_result=_make_scenario_result(),
         )
-        assert "### Step 1: ポートフォリオ概要" in output
-        assert "### Step 2: 集中度分析" in output
-        assert "### Step 3: ショック感応度" in output
-        assert "### Step 4-5: シナリオ因果連鎖分析" in output
-        assert "### Step 6: 定量結果" in output
-        assert "### Step 7: 過去事例" in output
-        assert "### Step 8: 総合判定" in output
+        assert "## Step 1: ポートフォリオ概要" in output
+        assert "## Step 2: 集中度分析" in output
+        assert "## Step 3: ショック感応度" in output
+        assert "## Step 4-5: シナリオ因果連鎖分析" in output
+        assert "## Step 6: 定量結果" in output
+        assert "## Step 7: 過去事例" in output
+        assert "## Step 8: 総合判定" in output
 
     def test_contains_portfolio_summary_data(self):
         """Report includes portfolio summary values."""
@@ -285,7 +285,7 @@ class TestFormatFullStressReport:
             high_correlation_pairs=_make_high_pairs(),
             factor_decomposition=_make_factor_results(),
         )
-        assert "### 相関分析" in output
+        assert "## 相関分析" in output
         assert "相関行列" in output
 
     def test_includes_var_section(self):
@@ -297,7 +297,7 @@ class TestFormatFullStressReport:
             scenario_result=_make_scenario_result(),
             var_result=_make_var_result(),
         )
-        assert "### リスク指標" in output
+        assert "## リスク指標" in output
         assert "VaR" in output
 
     def test_includes_recommendations_section(self):
@@ -309,7 +309,7 @@ class TestFormatFullStressReport:
             scenario_result=_make_scenario_result(),
             recommendations=_make_recommendations(),
         )
-        assert "### 推奨アクション（自動生成）" in output
+        assert "## 推奨アクション（自動生成）" in output
 
     def test_var_summary_in_judgment_table(self):
         """VaR summary should appear in the judgment table."""
@@ -335,9 +335,9 @@ class TestFormatFullStressReport:
             var_result=_make_var_result(),
             recommendations=_make_recommendations(),
         )
-        assert "### 相関分析" in output
-        assert "### リスク指標" in output
-        assert "### 推奨アクション（自動生成）" in output
+        assert "## 相関分析" in output
+        assert "## リスク指標" in output
+        assert "## 推奨アクション（自動生成）" in output
 
 
 # ---------------------------------------------------------------------------
@@ -350,23 +350,23 @@ class TestFormatConcentrationReport:
     def test_contains_heading(self):
         """Concentration report has the correct heading."""
         output = format_concentration_report(_make_concentration())
-        assert "### Step 2: 集中度分析" in output
+        assert "## Step 2: 集中度分析" in output
 
     def test_contains_sector_section(self):
         """Report includes sector breakdown."""
         output = format_concentration_report(_make_concentration())
-        assert "#### セクター配分" in output
+        assert "### セクター配分" in output
         assert "Consumer Cyclical" in output
 
     def test_contains_region_section(self):
         """Report includes region breakdown."""
         output = format_concentration_report(_make_concentration())
-        assert "#### 地域配分" in output
+        assert "### 地域配分" in output
 
     def test_contains_currency_section(self):
         """Report includes currency breakdown."""
         output = format_concentration_report(_make_concentration())
-        assert "#### 通貨配分" in output
+        assert "### 通貨配分" in output
 
     def test_contains_hhi_values(self):
         """Report includes HHI numeric values."""
@@ -384,7 +384,7 @@ class TestFormatSensitivityReport:
     def test_contains_heading(self):
         """Sensitivity report has the correct heading."""
         output = format_sensitivity_report(_make_sensitivities())
-        assert "### Step 3: ショック感応度" in output
+        assert "## Step 3: ショック感応度" in output
 
     def test_contains_table_headers(self):
         """Report includes the expected table headers."""
@@ -397,7 +397,7 @@ class TestFormatSensitivityReport:
     def test_contains_quadrant_matrix(self):
         """Report includes the 4-quadrant matrix."""
         output = format_sensitivity_report(_make_sensitivities())
-        assert "#### 4象限マトリクス" in output
+        assert "### 4象限マトリクス" in output
         assert "ファンダ弱" in output
         assert "ファンダ強" in output
 
@@ -427,19 +427,19 @@ class TestFormatScenarioReport:
     def test_contains_causal_chain(self):
         """Report includes the causal chain section."""
         output = format_scenario_report(_make_scenario_result())
-        assert "#### 因果連鎖" in output
+        assert "### 因果連鎖" in output
 
     def test_contains_stock_impacts_table(self):
         """Report includes the per-stock impact table."""
         output = format_scenario_report(_make_scenario_result())
-        assert "#### 銘柄別影響" in output
+        assert "### 銘柄別影響" in output
         assert "7203.T" in output
         assert "AAPL" in output
 
     def test_contains_quantitative_results(self):
         """Report includes the quantitative result section (Step 6)."""
         output = format_scenario_report(_make_scenario_result())
-        assert "### Step 6: 定量結果" in output
+        assert "## Step 6: 定量結果" in output
         assert "PF影響率" in output
         assert "判定" in output
 
@@ -453,17 +453,17 @@ class TestFormatCorrelationReport:
 
     def test_contains_heading(self):
         output = format_correlation_report(_make_correlation(), _make_high_pairs())
-        assert "### 相関分析" in output
+        assert "## 相関分析" in output
 
     def test_contains_matrix(self):
         output = format_correlation_report(_make_correlation(), _make_high_pairs())
-        assert "#### 相関行列" in output
+        assert "### 相関行列" in output
         assert "7203.T" in output
         assert "AAPL" in output
 
     def test_contains_high_pairs(self):
         output = format_correlation_report(_make_correlation(), _make_high_pairs())
-        assert "#### 高相関ペア" in output
+        assert "### 高相関ペア" in output
         assert "AAPL x D05.SI" in output
 
     def test_no_high_pairs_message(self):
@@ -474,7 +474,7 @@ class TestFormatCorrelationReport:
         output = format_correlation_report(
             _make_correlation(), _make_high_pairs(), _make_factor_results()
         )
-        assert "#### ファクター分解" in output
+        assert "### ファクター分解" in output
         assert "7203.T" in output
         assert "USD/JPY" in output
 
@@ -493,7 +493,7 @@ class TestFormatVarReport:
 
     def test_contains_heading(self):
         output = format_var_report(_make_var_result())
-        assert "### リスク指標" in output
+        assert "## リスク指標" in output
 
     def test_contains_var_values(self):
         output = format_var_report(_make_var_result())
@@ -529,7 +529,7 @@ class TestFormatRecommendationsReport:
 
     def test_contains_heading(self):
         output = format_recommendations_report(_make_recommendations())
-        assert "### 推奨アクション（自動生成）" in output
+        assert "## 推奨アクション（自動生成）" in output
 
     def test_contains_recommendations(self):
         output = format_recommendations_report(_make_recommendations())
