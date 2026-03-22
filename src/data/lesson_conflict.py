@@ -29,16 +29,29 @@ _TOKEN_RE = re.compile(
     re.UNICODE,
 )
 
+_CJK_CHAR_RE = re.compile(rf"[{_CJK_RANGES}]")
+
 
 def tokenize(text: str) -> list[str]:
     """Tokenize text into words, handling CJK characters.
 
-    For CJK text, splits into individual characters/character runs.
+    For CJK text, splits into bi-grams (2-character sliding window)
+    to enable partial matching (e.g., '損切り' matches '損切りする閾値').
     For Latin text, splits on word boundaries.
     """
     if not text:
         return []
-    return [t.lower() for t in _TOKEN_RE.findall(text) if len(t) >= 1]
+    tokens = []
+    for raw in _TOKEN_RE.findall(text):
+        t = raw.lower()
+        # CJK runs → keep original + bi-gram decomposition
+        if _CJK_CHAR_RE.search(t) and len(t) >= 2:
+            tokens.append(t)  # keep original for exact match
+            for i in range(len(t) - 1):
+                tokens.append(t[i : i + 2])
+        else:
+            tokens.append(t)
+    return tokens
 
 
 def keyword_similarity(text_a: str, text_b: str) -> float:
