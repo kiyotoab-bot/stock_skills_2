@@ -2,6 +2,8 @@
 
 from typing import Optional
 
+from src.output._format_helpers import fmt_currency_value as _fmt_currency_value
+
 
 def format_performance_review(
     data: dict,
@@ -63,8 +65,8 @@ def format_performance_review(
         pnl_rate = t.get("pnl_rate")
         currency = t.get("currency", "JPY")
 
-        cost_str = _fmt_price(cost_price, currency) if cost_price is not None else "-"
-        sell_str = _fmt_price(sell_price, currency) if sell_price is not None else "-"
+        cost_str = _fmt_currency_value(cost_price, currency) if cost_price is not None else "-"
+        sell_str = _fmt_currency_value(sell_price, currency) if sell_price is not None else "-"
         hold_str = f"{hold_days}日" if hold_days is not None else "-"
         pnl_str = _fmt_pnl(realized_pnl, currency) if realized_pnl is not None else "-"
         rate_str = _fmt_rate(pnl_rate) if pnl_rate is not None else "-"
@@ -106,12 +108,6 @@ def format_performance_review(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-def _fmt_price(price: float, currency: str) -> str:
-    if currency == "JPY":
-        return f"¥{price:,.0f}"
-    return f"${price:,.2f}"
-
 
 def _fmt_pnl(pnl: float, currency: str) -> str:
     sign = "+" if pnl >= 0 else ""
