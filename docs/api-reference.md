@@ -724,6 +724,8 @@ Ticker symbol utilities: currency/country inference from symbol suffixes.
 
 - `extract_symbol(text: str) -> Optional[str]` — Extract a ticker symbol from text (e.g. 7203.T, AAPL, D05.SI).
 - `extract_all_symbols(text: str) -> list[str]` — Extract all unique ticker symbols from text.
+- `get_lot_size(symbol: str) -> int` — Get minimum tradable lot size for a symbol.
+- `lot_cost(symbol: str, price: float) -> float` — Calculate the cost of 1 lot (minimum tradable unit).
 - `cash_currency(symbol: str) -> str` — Extract currency from cash symbol (e.g., 'JPY.CASH' -> 'JPY').
 - `infer_currency(symbol: str, info: dict | None=None) -> str` — Infer the currency from the ticker symbol suffix.
 - `infer_region_code(symbol: str) -> str` — Infer lowercase region code from ticker suffix (KIK-438).
@@ -742,6 +744,14 @@ Value trap detection (extracted from health_check.py, KIK-392).
 Auto graph context injection for user prompts (KIK-411/420/427).
 
 - `get_context(user_input: str) -> Optional[dict]` — Auto-detect symbol in user input and retrieve graph context.
+
+### src.data.context.constraint_extractor
+
+Constraint extraction from investment lessons for plan-check flow (KIK-596).
+
+- `classify_action_type(user_query: str) -> str` — Classify user query into an action type.
+- `extract_constraints(user_query: str, max_constraints: int=5) -> dict` — Extract constraints from investment lessons for the given user query.
+- `format_constraints_markdown(result: dict) -> str` — Format constraint extraction result as markdown.
 
 ### src.data.context.context_formatter
 

@@ -84,6 +84,55 @@ SUFFIX_TO_CURRENCY = {
 }
 
 
+# Suffix -> lot size (minimum tradable shares) mapping
+# US stocks (no suffix) = 1 share; most Asian markets = 100 shares
+SUFFIX_TO_LOT_SIZE: dict[str, int] = {
+    ".T": 100,       # Japan (単元株)
+    ".SI": 100,      # Singapore
+    ".BK": 100,      # Thailand
+    ".KL": 100,      # Malaysia
+    ".JK": 100,      # Indonesia
+    ".PS": 100,      # Philippines (varies by board lot)
+    ".HK": 100,      # Hong Kong (varies: 100/500/1000/2000)
+    ".KS": 1,        # South Korea
+    ".KQ": 1,        # South Korea
+    ".TW": 1000,     # Taiwan
+    ".TWO": 1000,    # Taiwan
+    ".SS": 100,      # China
+    ".SZ": 100,      # China
+    ".L": 1,         # United Kingdom
+    ".DE": 1,        # Germany
+    ".PA": 1,        # France
+    ".TO": 1,        # Canada
+    ".AX": 1,        # Australia
+    ".SA": 100,      # Brazil
+    ".NS": 1,        # India
+    ".BO": 1,        # India
+}
+
+
+def get_lot_size(symbol: str) -> int:
+    """Get minimum tradable lot size for a symbol.
+
+    Returns 1 for US stocks (no suffix), otherwise looks up the suffix.
+    """
+    if is_cash(symbol):
+        return 1
+    for suffix, lot in SUFFIX_TO_LOT_SIZE.items():
+        if symbol.upper().endswith(suffix.upper()):
+            return lot
+    # No suffix = US stock = 1 share
+    return 1
+
+
+def lot_cost(symbol: str, price: float) -> float:
+    """Calculate the cost of 1 lot (minimum tradable unit).
+
+    Example: 7751.T at ¥4,370 -> 100 * 4370 = ¥437,000
+    """
+    return get_lot_size(symbol) * price
+
+
 def cash_currency(symbol: str) -> str:
     """Extract currency from cash symbol (e.g., 'JPY.CASH' -> 'JPY')."""
     return symbol.upper().replace(".CASH", "")

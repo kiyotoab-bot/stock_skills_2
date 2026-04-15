@@ -8,6 +8,7 @@ from src.data.context.constraint_extractor import (
     format_constraints_markdown,
     _lesson_to_constraint,
     _build_enriched_query,
+    _build_lot_size_constraints,
 )
 
 
@@ -312,6 +313,59 @@ class TestExtractConstraints:
             # Higher relevance should come first
             scores = [c["relevance_score"] for c in result["constraints"]]
             assert scores == sorted(scores, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# _build_lot_size_constraints
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLotSizeConstraints:
+    """Lot size constraint auto-injection tests."""
+
+    def test_jp_stock_100_shares(self):
+        result = _build_lot_size_constraints(["7751.T"])
+        assert len(result) == 1
+        assert "100株単位" in result[0]["expected_action"]
+        assert result[0]["relevance_score"] == 1.0
+        assert result[0]["community"] == "システム制約"
+
+    def test_us_stock_no_constraint(self):
+        result = _build_lot_size_constraints(["AAPL"])
+        assert len(result) == 0  # US = 1 share, no constraint
+
+    def test_sg_stock_100_shares(self):
+        result = _build_lot_size_constraints(["D05.SI"])
+        assert len(result) == 1
+        assert "100株単位" in result[0]["expected_action"]
+
+    def test_mixed_symbols(self):
+        result = _build_lot_size_constraints(["7751.T", "AAPL", "D05.SI"])
+        assert len(result) == 2  # JP + SG, not US
+
+    def test_empty_symbols(self):
+        result = _build_lot_size_constraints([])
+        assert result == []
+
+    def test_lot_constraint_highest_priority(self, monkeypatch):
+        """Lot size constraints should appear first in the list."""
+        monkeypatch.setattr(
+            "src.data.context.constraint_extractor._load_lessons",
+            lambda: [
+                {
+                    "id": "les_001",
+                    "trigger": "入替提案時",
+                    "expected_action": "確認する",
+                    "content": "入替 通貨 教訓",
+                    "date": "2026-04-15",
+                },
+            ],
+        )
+        result = extract_constraints("7751.Tを入替えたい")
+        if result["constraints"]:
+            # System lot constraint should be first (score 1.0)
+            assert result["constraints"][0]["community"] == "システム制約"
+            assert result["constraints"][0]["relevance_score"] == 1.0
 
 
 # ---------------------------------------------------------------------------
