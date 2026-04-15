@@ -119,6 +119,10 @@ def extract_constraints(
         for score, les in relevant
     ]
 
+    # Auto-inject lot size constraints for detected symbols
+    lot_constraints = _build_lot_size_constraints(symbols)
+    constraints = lot_constraints + constraints
+
     return {
         "action_type": action_type,
         "symbols": symbols,
@@ -157,6 +161,38 @@ def format_constraints_markdown(result: dict) -> str:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _build_lot_size_constraints(symbols: list[str]) -> list[dict]:
+    """Auto-generate lot size constraints for detected symbols.
+
+    Injects structural knowledge about trading unit requirements
+    so the system never proposes impossible trades (e.g., 50 shares of JP stock).
+    """
+    try:
+        from src.core.ticker_utils import get_lot_size, infer_currency
+    except ImportError:
+        return []
+
+    constraints = []
+    for sym in symbols:
+        lot = get_lot_size(sym)
+        if lot <= 1:
+            continue  # US/UK stocks: 1 share, no constraint needed
+        currency = infer_currency(sym)
+        constraints.append({
+            "id": f"system_lot_size_{sym}",
+            "trigger": f"{sym}の売買提案時",
+            "expected_action": (
+                f"{sym}は{lot}株単位でしか売買できない。"
+                f"一部売却（{lot}株未満）は不可能。"
+                f"購入時は{lot}株×株価({currency})が予算内か確認すること"
+            ),
+            "source": f"【システム制約】{sym}の売買単位={lot}株",
+            "community": "システム制約",
+            "relevance_score": 1.0,  # Always highest priority
+        })
+    return constraints
 
 
 def _extract_symbols(user_query: str) -> list[str]:
