@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.core.health_check import check_etf_health
+from src.core.health.etf import check_etf_health
 
 
 class TestExpenseRatioEvaluation:
@@ -160,7 +160,7 @@ class TestETFHealthIntegration:
 
     def test_change_quality_etf_has_etf_health(self, etf_detail_data):
         """check_change_quality should include etf_health for ETFs."""
-        from src.core.health_check import check_change_quality
+        from src.core.health.quality import check_change_quality
 
         result = check_change_quality(etf_detail_data)
         assert result["is_etf"] is True
@@ -170,7 +170,7 @@ class TestETFHealthIntegration:
 
     def test_long_term_suitability_etf_has_etf_health(self, etf_detail_data):
         """check_long_term_suitability should include etf_health for ETFs."""
-        from src.core.health_check import check_long_term_suitability
+        from src.core.health.labels import check_long_term_suitability
 
         result = check_long_term_suitability(etf_detail_data)
         assert result["label"] == "対象外"
@@ -180,7 +180,7 @@ class TestETFHealthIntegration:
 
     def test_long_term_suitability_etf_score_reflects_etf_health(self, etf_detail_data):
         """ETF long-term score should use etf_health score instead of 0."""
-        from src.core.health_check import check_long_term_suitability
+        from src.core.health.labels import check_long_term_suitability
 
         result = check_long_term_suitability(etf_detail_data)
         # VGK: expense_ratio=0.0009 (ultra low: +25) + AUM=20B (large: +25) = 100
@@ -188,7 +188,7 @@ class TestETFHealthIntegration:
 
     def test_change_quality_stock_no_etf_health(self, stock_detail_data):
         """check_change_quality should NOT include etf_health for regular stocks."""
-        from src.core.health_check import check_change_quality
+        from src.core.health.quality import check_change_quality
 
         result = check_change_quality(stock_detail_data)
         assert result["is_etf"] is False
