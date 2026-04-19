@@ -44,12 +44,6 @@ examples:
   - intent: "VIXは？"
     agent: health-checker
 
-  - intent: "ウォッチリストに入れて"
-    agent: analyst
-
-  - intent: "メモしておいて"
-    agent: analyst
-
   - intent: "最新ニュース教えて"
     agent: researcher
 
@@ -61,7 +55,8 @@ examples:
     review: true
 
   - intent: "プランモードで"
-    agent: strategist
+    agents: [health-checker, analyst, researcher, strategist]
+    review: true
 
   # --- 複数エージェント連鎖 ---
   - intent: "今熱いテーマは？"

@@ -145,4 +145,3 @@ orchestration.yaml に基づく自律修正ループ。スクリーニング0件
 | config/exchanges.yaml | 60+ 地域の取引所・通貨・閾値定義 |
 | config/themes.yaml | テーマ定義（セクター・業種マッピング） |
 | config/thresholds.yaml | グローバル閾値 |
-| config/markets.yaml | マーケットデータ定義 |

@@ -99,6 +99,7 @@ GraphRAG コンテキストがある場合、以下を回答に織り込む:
 
 - `tools/grok.py` — Grok API（ニュース・センチメント・業界・市場・ビジネスモデル）
 - `tools/graphrag.py` — 過去のリサーチ履歴・lesson・保有状態
+- WebSearch — Grok API 未設定時のフォールバック（X センチメント非対応）
 
 ## 出力方針
 

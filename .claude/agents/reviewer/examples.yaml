@@ -22,11 +22,16 @@ examples:
     conclude: "各レビュアーの結果を統合して PASS/WARN/FAIL 判定"
     reasoning: "スクリーニング → データ品質とロジック整合性を並列チェック"
 
-  # --- 投資判断のレビュー ---
+  # --- 投資判断のレビュー（マルチLLM） ---
   - intent: "入替提案のレビュー"
     steps:
       - tool: graphrag.get_context
         params: { user_input: "入替提案レビュー" }
+      - tool: llm.call_llm
+        params: { provider: gpt, model: gpt-5.4, prompt: "<Strategistの出力> をリスク観点でレビューせよ", system_prompt: "投資判断のリスクレビュアー" }
+      - tool: llm.call_llm
+        params: { provider: gemini, model: gemini-3.1-pro-preview, prompt: "<Strategistの出力> の論理整合性をレビューせよ", system_prompt: "投資判断のロジックレビュアー" }
+      - code: "Claude（自身）でデータ正確性をレビュー"
     reviewers:
       - role: "ロジックレビュアー"
         checks:
