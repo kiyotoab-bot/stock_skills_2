@@ -32,6 +32,22 @@ APIキー未設定時は全て Claude（Claude Code 自体）で実行する。
 - 前回のレビュー結果
 - 保有状態・売買履歴
 
+**フォールバック（get_context が None の場合）:**
+Neo4j 未接続等で `get_context()` が None を返した場合、`tools/notes.py` の `load_notes()` でローカル（data/notes/）から直接読み込む:
+
+```python
+python3 -c "
+import sys; sys.path.insert(0, '.')
+from tools.notes import load_notes
+lessons = load_notes(note_type='lesson')
+for n in lessons:
+    print(f'[{n[\"date\"]}] {n[\"content\"][:200]}')
+    print('---')
+"
+```
+
+lesson が 0 件でない限り、レビューは必ず lesson を参照して実施する。
+
 ### 2. レビュー対象の受け取り
 
 SKILL.md（routing.yaml）経由で渡された他エージェントの出力を受け取る。

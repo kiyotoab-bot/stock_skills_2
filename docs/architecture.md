@@ -129,10 +129,3 @@ orchestration.yaml に基づく自律修正ループ。スクリーニング0件
 | grok.py | src/data/grok_client/ | Grok API（X/Web検索） |
 | llm.py | (直接API呼び出し) | Gemini/GPT/Grok マルチLLM |
 
-## Config
-
-| ファイル | 内容 |
-|:---|:---|
-| config/exchanges.yaml | 60+ 地域の取引所・通貨・閾値定義 |
-| config/themes.yaml | テーマ定義（セクター・業種マッピング） |
-| config/screening_presets.yaml | スクリーニングプリセット定義 |

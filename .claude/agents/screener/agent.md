@@ -76,9 +76,6 @@
 ## 使用ツール
 
 - `tools/yahoo_finance.py` — 株価・スクリーニングデータ取得
-- `config/screening_presets.yaml` — プリセット定義（閾値・条件）
-- `config/exchanges.yaml` — 地域定義（取引所・通貨・閾値）
-- `config/themes.yaml` — テーマ定義（セクター・業種マッピング）
 
 ## 並列実行（KIK-672/673）
 
@@ -101,6 +98,4 @@
 
 ## References
 
-- Few-shot: [examples.yaml](./examples.yaml)
-- Presets: [screening_presets.yaml](../../config/screening_presets.yaml)
-- Exchanges: [exchanges.yaml](../../config/exchanges.yaml)
+- Regions & Presets & Few-shot: [examples.yaml](./examples.yaml)

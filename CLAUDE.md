@@ -70,7 +70,7 @@ Data (src/data/)
   ticker_utils.py — ティッカー推論（通貨/地域マッピング）
   portfolio_io.py — PF CSV 読み書き
 
-Config: config/exchanges.yaml (60+ regions), config/themes.yaml
+Config: .claude/agents/screener/examples.yaml (regions, themes, presets, few-shot)
 Rules:  .claude/rules/ (development, workflow, testing)
 Docs:   docs/ (architecture, neo4j-schema, data-models)
 ```

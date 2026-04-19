@@ -107,6 +107,19 @@ Agent(logic-reviewer, prompt="Geminiでロジックレビュー: call_llm('gemin
 
 **二重実行防止**: 同一セッションで既に Reviewer が実行済みの場合はスキップする。
 
+### Reviewer 起動時の lesson 注入
+
+Reviewer を起動する前に `tools/notes.py` の `load_notes(note_type="lesson")` でローカルの lesson を取得し、prompt に含める。
+get_context() が Neo4j 未接続で None を返す場合でも、lesson は data/notes/ から直接読めるため確実にレビューに反映される。
+
+```
+# Reviewer の prompt に渡す情報
+1. agent.md + examples.yaml の内容
+2. レビュー対象（前段エージェントの出力全文）
+3. ユーザーの入力（元の意図）
+4. 過去の lesson 一覧（load_notes(note_type="lesson") で取得）
+```
+
 ## Direct Actions（記録系操作）
 
 routing.yaml で `action: direct` に分類される操作はエージェント不要。オーケストレーターが直接実行する。
