@@ -11,9 +11,25 @@ user_invocable: true
 ## Routing
 
 1. `routing.yaml` を参照し、ユーザーの意図に最も近い example からエージェントを選定する
-2. 単一エージェント（`agent`）→ そのエージェントを起動
-3. 複数エージェント（`agents`）→ 配列の順序で連鎖実行し、結果を統合
+2. 単一エージェント（`agent`）→ そのエージェントをサブエージェントとして起動
+3. 複数エージェント（`agents`）→ 配列の順序でサブエージェントを連鎖起動し、結果を統合
 4. 該当パターンなし → `agents` セクションの `role` と `triggers` から柔軟に判定
+
+## Execution
+
+エージェントは必ず **Agent ツールでサブエージェントとして起動**する。自分で agent.md を読んで直接実行してはならない。
+
+```
+Agent({
+  description: "<エージェント名>: <タスク概要>",
+  prompt: "<agent.md の内容> + <examples.yaml の内容> + <ユーザーの入力>"
+})
+```
+
+- サブエージェントの prompt に agent.md と examples.yaml の内容を含める
+- サブエージェントは自律的にツール（tools/）を使ってデータ取得・判断・出力する
+- 複数エージェント連鎖の場合、前のエージェントの結果を次のエージェントの prompt に渡す
+- 独立したエージェント（例: analyst + researcher）は並列起動する
 
 ## Post-Action
 
