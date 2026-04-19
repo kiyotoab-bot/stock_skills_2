@@ -120,6 +120,10 @@ examples:
     action: direct
     operation: note_delete
 
+  - intent: "syncして"
+    action: direct
+    operation: data_sync
+
   - intent: "データを同期して"
     action: direct
     operation: data_sync
