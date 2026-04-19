@@ -1,6 +1,6 @@
 # Neo4j Knowledge Graph Schema
 
-投資ナレッジグラフのスキーマリファレンス。`src/data/graph_store.py` が定義・管理する。
+投資ナレッジグラフのスキーマリファレンス。`src/data/graph_store/` が定義・管理する。
 
 ---
 

@@ -54,7 +54,7 @@ Tools (tools/)
   graphrag.py      — Neo4j ナレッジグラフ（src/data/graph_store/ + graph_query/ のファサード）
   grok.py          — Grok API 検索（src/data/grok_client/ のファサード）
   llm.py           — マルチLLM呼び出し（Gemini/GPT/Grok）
-  portfolio_io.py  — PF CSV 読み書き（src/core/portfolio/portfolio_io のファサード）
+  portfolio_io.py  — PF CSV 読み書き（src/data/portfolio_io のファサード）
   notes.py         — 投資メモ読み書き（src/data/note_manager のファサード）
   watchlist.py     — ウォッチリスト読み書き（JSON直接I/O）
 

@@ -82,7 +82,7 @@ Neo4j 未接続でも全機能が正常動作する（graceful degradation）。
 ## テスト
 
 ```bash
-python3 -m pytest tests/ -q   # 約2548テスト (~12秒)
+python3 -m pytest tests/ -q   # 約979テスト (~4秒)
 ```
 
 ## 免責事項

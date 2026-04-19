@@ -4,7 +4,7 @@
 
 ---
 
-## stock_info dict（28 フィールド）
+## stock_info dict（27 フィールド）
 
 `yahoo_client.get_stock_info(symbol)` が返す基本データ。JSON キャッシュ対象。
 
@@ -155,7 +155,7 @@ ETF の場合のみ有意な値を持つ。個別株では `None` が多い。
 
 ## 共通ユーティリティ
 
-### `finite_or_none(v)` (`src/core/common.py`)
+### `finite_or_none(v)` (`src/data/common.py`)
 
 Core モジュールで広く使われるヘルパー。NaN/Inf を `None` に変換し、安全に数値を取得する。
 
