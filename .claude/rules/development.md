@@ -30,9 +30,8 @@
 - データモデル定義: `docs/data-models.md` を参照
 
 ### コア層 (src/core/)
-- サブフォルダ構成（screening/, portfolio/, risk/, research/, health/）
-- 新モジュールは適切なサブフォルダに配置
-- import は直接パス（`src.core.screening.screener` 等）を使用
+- 最小限のユーティリティのみ: common.py, ticker_utils.py, portfolio/portfolio_io.py
+- 判断ロジックはエージェントが担う（src/core/ に追加しない）
 
 ## テスト
 
@@ -57,10 +56,10 @@
 - エージェント定義: agent.md は簡潔に、examples.yaml は20例程度
 
 ### 新モジュール配置
-- ドメインロジック → src/core/{screening,portfolio,risk,research,health}/
+- ツールファサード → tools/（データ操作のみ、判断しない）
+- エージェント定義 → .claude/agents/<name>/（agent.md + examples.yaml）
 - データ取得/保存 → src/data/{yahoo_client,graph_store,graph_query,history,context}/
-- ツールファサード → tools/
-- エージェント定義 → .claude/agents/<name>/
+- 共通ユーティリティ → src/core/（common.py, ticker_utils.py のみ）
 - テスト → tests/{core,data}/（src/ と1:1対応）
 
 ## ドキュメント構成

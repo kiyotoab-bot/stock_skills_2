@@ -64,7 +64,7 @@ Tools (tools/)
   ├─ grok.py          — Grok API（X/Web検索）
   └─ llm.py           — マルチLLM（Gemini/GPT/Grok）
 
-Core (src/core/) — screening, portfolio, risk, research
+Core (src/core/) — common, ticker_utils, portfolio/portfolio_io
 Data (src/data/) — yahoo_client, grok_client, graph_store, graph_query
 ```
 

@@ -63,9 +63,9 @@ def _normalize_ratio(value):
 | `per` | 0 < per < 1.0 | → `None` |
 | `roe` | < -1.0 or > 2.0 | → `None` |
 
-### エイリアス対応 (`indicators.py`)
+### エイリアス対応
 
-`calculate_value_score()` 等は yfinance 生キーと正規化済みキーの両方を受け付ける:
+yfinance 生キーと正規化済みキーの対応表:
 
 | 正規化キー | yfinance 生キー |
 |:---|:---|
