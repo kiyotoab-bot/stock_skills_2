@@ -120,6 +120,18 @@ examples:
     action: direct
     operation: note_delete
 
+  - intent: "現金は○○円"
+    action: direct
+    operation: cash_update
+
+  - intent: "キャッシュ残高"
+    action: direct
+    operation: cash_update
+
+  - intent: "ドルは$○○"
+    action: direct
+    operation: cash_update
+
   - intent: "syncして"
     action: direct
     operation: data_sync
