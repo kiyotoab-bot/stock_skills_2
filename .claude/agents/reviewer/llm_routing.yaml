@@ -49,7 +49,7 @@ available_models:
   grok:
     api_key_env: XAI_API_KEY
     models:
-      - model: grok-4-0709
-        cost: { input_per_m: 3.00, output_per_m: 15.00 }
+      - model: grok-4.20-0309-reasoning
+        cost: { input_per_m: 2.00, output_per_m: 6.00 }
       - model: grok-4-1-fast-reasoning
         cost: { input_per_m: 0.20, output_per_m: 0.50 }

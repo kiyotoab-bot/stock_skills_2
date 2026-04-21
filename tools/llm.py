@@ -3,6 +3,10 @@
 tools/ 層は API 呼び出しのみを担う。判断ロジックは含めない。
 Gemini / GPT / Grok を共通インターフェースで呼び出す。
 APIキー未設定時は None を返す（呼び出し元が Claude にフォールバック）。
+
+KIK-686: web_search / reasoning パラメータ追加。
+  - Gemini: google_search tool で Grounding（Google検索統合）
+  - GPT: reasoning_effort で推論深度を4段階制御 (none/low/medium/high)
 """
 
 import json
@@ -47,6 +51,8 @@ def call_llm(
     prompt: str,
     system_prompt: Optional[str] = None,
     timeout: int = 60,
+    web_search: bool = False,
+    reasoning: Optional[str] = None,
 ) -> Optional[str]:
     """LLM を呼び出してテキストを返す.
 
@@ -55,13 +61,21 @@ def call_llm(
     provider : str
         "gemini" | "gpt" | "grok"
     model : str
-        モデル名（例: "gemini-3.1-pro", "gpt-5.4", "grok-4"）
+        モデル名（例: "gemini-3-flash-preview", "gpt-5.4", "grok-4.20-0309-reasoning"）
     prompt : str
         ユーザープロンプト
     system_prompt : str, optional
         システムプロンプト
     timeout : int
         リクエストタイムアウト秒数（デフォルト 60）
+    web_search : bool
+        True で Web 検索を有効化 (KIK-686)。
+        - Gemini: Google Search Grounding（検索結果トークンは入力課金対象外）
+        - GPT/Grok: 現時点では未対応（将来の Responses API 移行で対応予定）
+    reasoning : str, optional
+        GPT のみ: 推論深度を制御 (KIK-686)。
+        "none" | "low" | "medium" | "high"
+        None の場合はモデルデフォルト。
 
     Returns
     -------
@@ -75,13 +89,25 @@ def call_llm(
     if not api_key:
         return None
 
+    # Validate provider-specific params
+    if web_search and provider != "gemini":
+        print(f"[llm] WARN: web_search not supported for {provider}, ignoring", file=sys.stderr)
+        web_search = False
+    _VALID_REASONING = {"none", "low", "medium", "high"}
+    if reasoning is not None and reasoning not in _VALID_REASONING:
+        print(f"[llm] WARN: invalid reasoning '{reasoning}', using model default", file=sys.stderr)
+        reasoning = None
+    if reasoning is not None and provider != "gpt":
+        reasoning = None  # silently ignore for non-GPT
+
     t0 = time.time()
     try:
         if provider == "gemini":
-            result = _call_gemini(api_key, model, prompt, system_prompt, timeout)
+            result = _call_gemini(api_key, model, prompt, system_prompt, timeout, web_search)
         elif provider == "gpt":
             result = _call_openai_compatible(
                 api_key, _ENDPOINTS["gpt"], model, prompt, system_prompt, timeout,
+                reasoning=reasoning,
             )
         elif provider == "grok":
             result = _call_openai_compatible(
@@ -91,16 +117,26 @@ def call_llm(
             return None
     except (requests.RequestException, KeyError, json.JSONDecodeError) as exc:
         elapsed = time.time() - t0
+        # Sanitize error to avoid leaking API keys in URLs
+        exc_str = str(exc)
+        if "key=" in exc_str.lower() or "bearer" in exc_str.lower():
+            exc_str = f"{type(exc).__name__} [details redacted]"
         print(
-            f"[llm] FAIL {provider}/{model} ({elapsed:.1f}s): {type(exc).__name__}: {exc}",
+            f"[llm] FAIL {provider}/{model} ({elapsed:.1f}s): {exc_str}",
             file=sys.stderr,
         )
         return None
 
     elapsed = time.time() - t0
     length = len(result) if result else 0
+    tags = []
+    if web_search and provider == "gemini":
+        tags.append("+grounding")
+    if reasoning and provider == "gpt":
+        tags.append(f"+reasoning={reasoning}")
+    tag_str = "".join(tags)
     print(
-        f"[llm] OK {provider}/{model} ({elapsed:.1f}s, {length} chars)",
+        f"[llm] OK {provider}/{model}{tag_str} ({elapsed:.1f}s, {length} chars)",
         file=sys.stderr,
     )
     return result
@@ -130,6 +166,7 @@ def _call_openai_compatible(
     prompt: str,
     system_prompt: Optional[str],
     timeout: int,
+    reasoning: Optional[str] = None,
 ) -> Optional[str]:
     """OpenAI 互換 API（GPT / Grok）を呼び出す."""
     messages = []
@@ -137,13 +174,17 @@ def _call_openai_compatible(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
+    payload: dict = {"model": model, "messages": messages}
+    if reasoning is not None:
+        payload["reasoning_effort"] = reasoning
+
     response = requests.post(
         endpoint,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        json={"model": model, "messages": messages},
+        json=payload,
         timeout=timeout,
     )
     response.raise_for_status()
@@ -158,6 +199,7 @@ def _call_gemini(
     prompt: str,
     system_prompt: Optional[str],
     timeout: int,
+    web_search: bool = False,
 ) -> Optional[str]:
     """Google Gemini API を呼び出す."""
     url = _ENDPOINTS["gemini"].format(model=model)
@@ -167,6 +209,8 @@ def _call_gemini(
     }
     if system_prompt:
         payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+    if web_search:
+        payload["tools"] = [{"google_search": {}}]
 
     response = requests.post(
         url,
@@ -178,7 +222,15 @@ def _call_gemini(
     response.raise_for_status()
 
     data = response.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+    # Grounding 時は複数 parts が返る場合がある — テキスト部分だけ結合
+    try:
+        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        if not parts:
+            return None
+        texts = [p.get("text", "") for p in parts if p.get("text")]
+        return "\n".join(texts) if texts else None
+    except (IndexError, TypeError):
+        return None
 
 
 __all__ = [
