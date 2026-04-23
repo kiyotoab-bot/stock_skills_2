@@ -17,6 +17,9 @@ agents:
   strategist:
     role: 投資判断・入替提案・ワークフロー設計
     triggers: [入替, リバランス, 改善, 調整, プラン, 戦略, どうすべき, 乗り換え, スワップ]
+  risk-assessor:
+    role: 市場リスク状態判定（risk-on/neutral/risk-off）+ PFバランス目標提示
+    triggers: [リスク判定, リスクオン, リスクオフ, 押し目, 買われすぎ, 売られすぎ, 市況判定]
   reviewer:
     role: 品質・矛盾・リスク・反論チェック（動的LLM選択）
     triggers: []  # 自動挿入: 投資判断を伴う出力時
@@ -61,6 +64,15 @@ examples:
   # --- 複数エージェント連鎖 ---
   - intent: "今熱いテーマは？"
     agents: [researcher, screener]
+
+  - intent: "リスク判定して"
+    agent: risk-assessor
+
+  - intent: "今はリスクオン？"
+    agent: risk-assessor
+
+  - intent: "押し目買いの判定"
+    agent: risk-assessor
 
   - intent: "市況チェック"
     agents: [health-checker, researcher]

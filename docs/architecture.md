@@ -27,6 +27,7 @@ graph TD
         RES["Researcher<br/>ニュース・センチメント"]
         HC["Health Checker<br/>PFの事実・数値"]
         STR["Strategist<br/>投資判断・レコメンド"]
+        RA["Risk Assessor<br/>市場リスク判定"]
         REV["Reviewer<br/>品質・リスクチェック"]
     end
 
@@ -118,6 +119,7 @@ orchestration.yaml に基づく自律修正ループ。スクリーニング0件
 | Researcher | ニュース・センチメント・業界動向 | grok, graphrag | Grok |
 | Health Checker | PFの事実・数値（判断しない） | yahoo_finance, graphrag | Claude |
 | Strategist | 投資判断・レコメンド | yahoo_finance, graphrag | Claude |
+| Risk Assessor | 市場リスク判定（risk-on/neutral/risk-off） | yahoo_finance, WebSearch | Claude |
 | Reviewer | 品質・矛盾・リスクチェック | llm, graphrag | GPT+Gemini+Claude |
 
 ## Tool Summary

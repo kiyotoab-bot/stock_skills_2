@@ -47,6 +47,7 @@ Agents (.claude/agents/)
   researcher/   — ニュース・センチメント・業界動向
   health-checker/ — PFの事実・数値（判断しない）
   strategist/   — 投資判断・レコメンド
+  risk-assessor/ — 市場リスク判定（risk-on/neutral/risk-off）
   reviewer/     — 品質・矛盾・リスクチェック（マルチLLM）
 
 Tools (tools/)

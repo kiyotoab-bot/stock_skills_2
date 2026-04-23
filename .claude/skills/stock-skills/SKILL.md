@@ -1,6 +1,6 @@
 ---
 name: stock-skills
-description: 投資アシスタント。自然言語の意図を判定し、6エージェント(screener/analyst/health-checker/researcher/strategist/reviewer)に振り分ける。
+description: 投資アシスタント。自然言語の意図を判定し、7エージェント(screener/analyst/health-checker/researcher/strategist/risk-assessor/reviewer)に振り分ける。
 user_invocable: true
 ---
 
