@@ -353,7 +353,7 @@ def test_deepthink_swarm() -> dict:
         else:
             details.append(f"[x] Grok search: 未設定（graceful degradation）")
 
-        # 基準5: SKILL.md に2層モデルの記述があるか
+        # 基準5: SKILL.md に2層モデル・統合結論・サマリーの記述があるか
         skill_path = PROJECT_ROOT / ".claude" / "skills" / "deepthink" / "SKILL.md"
         skill_content = skill_path.read_text()
         checks = {
@@ -362,6 +362,9 @@ def test_deepthink_swarm() -> dict:
             "適性マトリクス": "適性マトリクス" in skill_content,
             "ハード制約": "ハード制約" in skill_content,
             "4-Swarm": "4-Swarm" in skill_content,
+            "エグゼクティブサマリー": "エグゼクティブサマリー" in skill_content,
+            "統合結論": "統合結論" in skill_content or "議論の統合" in skill_content,
+            "採用/却下": "採用" in skill_content,
         }
         for label, found in checks.items():
             details.append(f"[{'x' if found else 'o'}] SKILL.md {label}: {'あり' if found else 'なし'}")

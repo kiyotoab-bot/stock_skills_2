@@ -69,7 +69,7 @@ scenarios:
 
   - id: e2e_007
     name: "DeepThink 4-Swarm E2E"
-    input: "イラン停戦したらPFはどうなる？（DeepThink）"
+    input: "ポートフォリオを改善したい（DeepThink）"
     expected_agent: "deepthink"
     eval_criteria:
       - "deepthink_limits.yaml が正しい値（max_agent_spawns>=20, max_llm_calls>=25）"
@@ -77,5 +77,6 @@ scenarios:
       - "Grok search 関数が利用可能（または graceful degradation）"
       - "SKILL.md に2層モデル（インフラ層+推論層）の記述がある"
       - "適性マトリクス・ハード制約の定義がある"
+      - "SKILL.md にエグゼクティブサマリー・統合結論のフォーマットがある"
       - "llm_capabilities.yaml に全プロバイダ定義がある"
     timeout_sec: 120
