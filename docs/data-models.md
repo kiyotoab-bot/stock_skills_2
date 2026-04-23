@@ -153,6 +153,29 @@ ETF の場合のみ有意な値を持つ。個別株では `None` が多い。
 
 ---
 
+## portfolio.csv（12 カラム）
+
+`src/data/portfolio_io.py` が読み書きする保有銘柄データ。
+
+| カラム | 型 | 説明 |
+|:---|:---|:---|
+| `symbol` | str | ティッカーシンボル（7203.T, AMZN 等） |
+| `shares` | int | 保有株数 |
+| `cost_price` | float | 平均取得単価 |
+| `cost_currency` | str | 取得通貨（JPY, USD, SGD, IDR） |
+| `purchase_date` | str | 取得日（YYYY-MM-DD） |
+| `memo` | str | メモ |
+| `next_earnings` | str | 直近決算日（YYYY-MM-DD）。ETF は空欄 (KIK-683) |
+| `div_yield` | float? | 配当利回り（%）。None = 未設定 (KIK-694) |
+| `buyback_yield` | float? | 自社株買い利回り（%）(KIK-694) |
+| `total_return` | float? | 総還元率（%）= div_yield + buyback_yield (KIK-694) |
+| `beta` | float? | ベータ値 (KIK-694) |
+| `role` | str | PF内の役割（長期インカム/グロース/ヘッジ等）(KIK-694) |
+
+**更新頻度**: div_yield は四半期決算後、buyback_yield は年次 or 発表時、beta は月次、role は変更時のみ。
+
+---
+
 ## 共通ユーティリティ
 
 ### `finite_or_none(v)` (`src/data/common.py`)

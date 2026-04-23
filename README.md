@@ -59,13 +59,14 @@ Orchestrator (.claude/skills/stock-skills/)
   ├─ routing.yaml      — エージェント選択 few-shot
   └─ orchestration.yaml — リトライ・エスカレーション
 
-Agents (.claude/agents/)
-  ├─ screener/      — 銘柄探し（region/preset/theme を自律決定）
-  ├─ analyst/       — バリュエーション・割安度・ETF評価
-  ├─ researcher/    — ニュース・センチメント・業界・市況
+Agents (.claude/agents/) — 7名
+  ├─ screener/       — 銘柄探し（region/preset/theme を自律決定）
+  ├─ analyst/        — バリュエーション・割安度・ETF評価
+  ├─ researcher/     — ニュース・センチメント・業界・市況
   ├─ health-checker/ — PFの事実・数値（判断しない）
-  ├─ strategist/    — 投資判断・レコメンド（他エージェントの結果を統合）
-  └─ reviewer/      — 品質・リスクチェック（GPT+Gemini+Claude 並列レビュー）
+  ├─ strategist/     — 投資判断・レコメンド（他エージェントの結果を統合）
+  ├─ risk-assessor/  — 市場リスク判定（risk-on/neutral/risk-off）
+  └─ reviewer/       — 品質・リスクチェック（GPT+Gemini+Claude 並列レビュー）
 
 Tools (tools/)
   ├─ yahoo_finance.py — 株価・ファンダメンタルズ
