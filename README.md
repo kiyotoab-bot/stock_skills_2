@@ -91,8 +91,24 @@ Neo4j 未接続でも全機能が正常動作する（graceful degradation）。
 ## テスト
 
 ```bash
-python3 -m pytest tests/ -q   # 約979テスト (~4秒)
+# ユニットテスト
+python3 -m pytest tests/ -q           # 約979テスト (~4秒)
+
+# E2E テスト（実際の API を叩いてエージェント動作を検証）
+python3 tests/e2e/run_e2e.py          # 全6シナリオ実行
+python3 tests/e2e/run_e2e.py e2e_001  # 特定シナリオのみ
 ```
+
+### E2E テストシナリオ
+
+| ID | エージェント | 入力例 | 検証内容 |
+|:---|:---|:---|:---|
+| e2e_001 | Screener | いい日本株ある？ | EquityQuery、銘柄リスト、region |
+| e2e_002 | Analyst | 7203.Tってどう？ | PER/PBR/ROE、価格履歴 |
+| e2e_003 | Health Checker | PF大丈夫？ | 15銘柄、thesis/observation、還元率 |
+| e2e_004 | Researcher | 最新ニュース | Grok API、センチメント、GraphRAG |
+| e2e_005 | Risk Assessor | リスク判定して | VIX/金利/WTI、RSI計算 |
+| e2e_006 | HC + Strategist | PF改善したい | lesson、thesis、what-if |
 
 ## v1 からの移行
 

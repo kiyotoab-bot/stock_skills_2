@@ -22,8 +22,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# テスト
+# ユニットテスト
 python3 -m pytest tests/ -q
+
+# E2E テスト（実際の API でエージェント動作検証）
+python3 tests/e2e/run_e2e.py
 
 # 依存インストール
 pip install -r requirements.txt
@@ -74,6 +77,7 @@ Data (src/data/)
 Config: .claude/agents/screener/examples.yaml (regions, themes, presets, few-shot)
 Rules:  .claude/rules/ (development, workflow, testing)
 Docs:   docs/ (architecture, neo4j-schema, data-models)
+Tests:  tests/ (unit), tests/e2e/ (E2E agent scenarios)
 ```
 
 ## Post-Implementation Rule
