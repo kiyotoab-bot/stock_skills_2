@@ -36,8 +36,32 @@ def _load_config() -> dict:
     return _CONFIG
 
 
+def _reset_config() -> None:
+    """Reset cached config (for testing)."""
+    global _CONFIG
+    _CONFIG = None
+
+
 def _clamp(value: float, lo: float = 0.0, hi: float = 10.0) -> float:
     return max(lo, min(hi, value))
+
+
+def _normalize_de(value) -> float | None:
+    """Normalize D/E to percentage form.
+
+    yfinance returns D/E as percentage (e.g., 105.0 = 105%) per docs/data-models.md.
+    Some sources may return as ratio (e.g., 1.05). We detect and convert.
+    """
+    if value is None:
+        return None
+    de = safe_float(value)
+    if de == 0:
+        return 0.0
+    # Heuristic: ratio form is typically < 10 (D/E 1000% is rare but possible)
+    # data-models.md defines percentage form as standard
+    if 0 < de < 10.0:
+        return de * 100.0
+    return de
 
 
 # ---------------------------------------------------------------------------
@@ -253,13 +277,10 @@ def score_durability(info: dict, detail: dict | None = None) -> dict:
         elif total_debt == 0 or total_debt is None:
             a_score = 10.0  # no debt
 
-    # D/E penalty on A
-    de = info.get("debt_to_equity")
+    # D/E penalty on A (using normalized D/E)
+    de_val = _normalize_de(info.get("debt_to_equity"))
     de_penalty_applied = None
-    if de is not None:
-        de_val = safe_float(de)
-        if 0 < de_val < 5.0:
-            de_val *= 100  # ratio → percentage
+    if de_val is not None:
         if de_val > de_cfg.get("level2", 200):
             a_score = min(a_score, 3.0)
             de_penalty_applied = ">200%"
@@ -329,13 +350,9 @@ def score_durability(info: dict, detail: dict | None = None) -> dict:
 
     # D/E hard cap: >250% → durability total ≤ 3
     hard_cap = de_cfg.get("hard_cap", 250)
-    if de is not None:
-        de_val = safe_float(de)
-        if 0 < de_val < 5.0:
-            de_val *= 100
-        if de_val > hard_cap:
-            raw = min(raw, 3.0)
-            de_penalty_applied = f">{hard_cap}% hard cap"
+    if de_val is not None and de_val > hard_cap:
+        raw = min(raw, 3.0)
+        de_penalty_applied = f">{hard_cap}% hard cap"
 
     score = _clamp(raw)
 
@@ -377,6 +394,45 @@ def _classify_quadrant(
     return "保有継続"
 
 
+def _compute_total(
+    info: dict,
+    detail: dict | None,
+    portfolio_entry: dict | None = None,
+    growth_overrides: dict | None = None,
+) -> dict:
+    """Shared scoring pipeline: durability → return (cap) → growth → total → quadrant."""
+    cfg = _load_config()
+
+    dur_result = score_durability(info, detail)
+    ret_result = score_return(info, portfolio_entry=portfolio_entry,
+                              durability_score=dur_result["score"])
+    growth_result = score_growth(info, detail, overrides=growth_overrides)
+
+    tw = cfg["weights"]["total"]
+    total = (tw["durability"] * dur_result["score"] +
+             tw["growth"] * growth_result["score"] +
+             tw["return"] * ret_result["score"])
+    total = round(_clamp(total), 1)
+
+    quadrant = _classify_quadrant(
+        total, ret_result["score"], growth_result["score"],
+        dur_result["score"], ret_result["capped"], cfg,
+    )
+
+    return {
+        "return": ret_result["score"],
+        "growth": growth_result["score"],
+        "durability": dur_result["score"],
+        "total": total,
+        "quadrant": quadrant,
+        "components": {
+            "return_detail": ret_result,
+            "growth_detail": growth_result,
+            "durability_detail": dur_result,
+        },
+    }
+
+
 def score_quality(symbol: str) -> dict:
     """Compute 3-axis quality score for a single symbol.
 
@@ -393,36 +449,9 @@ def score_quality(symbol: str) -> dict:
     if detail and is_etf(detail):
         return {"symbol": symbol, "score": None, "note": "ETF: 別枠"}
 
-    cfg = _load_config()
-
-    dur_result = score_durability(info, detail)
-    ret_result = score_return(info, durability_score=dur_result["score"])
-    growth_result = score_growth(info, detail)
-
-    tw = cfg["weights"]["total"]
-    total = (tw["durability"] * dur_result["score"] +
-             tw["growth"] * growth_result["score"] +
-             tw["return"] * ret_result["score"])
-    total = round(_clamp(total), 1)
-
-    quadrant = _classify_quadrant(
-        total, ret_result["score"], growth_result["score"],
-        dur_result["score"], ret_result["capped"], cfg,
-    )
-
-    return {
-        "symbol": symbol,
-        "return": ret_result["score"],
-        "growth": growth_result["score"],
-        "durability": dur_result["score"],
-        "total": total,
-        "quadrant": quadrant,
-        "components": {
-            "return_detail": ret_result,
-            "growth_detail": growth_result,
-            "durability_detail": dur_result,
-        },
-    }
+    result = _compute_total(info, detail)
+    result["symbol"] = symbol
+    return result
 
 
 def score_portfolio() -> list[dict]:
@@ -446,36 +475,16 @@ def score_portfolio() -> list[dict]:
             results.append({"symbol": symbol, "score": None, "note": "ETF: 別枠"})
             continue
 
-        cfg = _load_config()
-
-        dur_result = score_durability(info, detail)
-        ret_result = score_return(info, portfolio_entry=pos,
-                                  durability_score=dur_result["score"])
-        growth_result = score_growth(
+        result = _compute_total(
             info, detail,
-            overrides={"buyback_yield": safe_float(pos.get("buyback_yield"))},
+            portfolio_entry=pos,
+            growth_overrides={"buyback_yield": safe_float(pos.get("buyback_yield"))},
         )
-
-        tw = cfg["weights"]["total"]
-        total = (tw["durability"] * dur_result["score"] +
-                 tw["growth"] * growth_result["score"] +
-                 tw["return"] * ret_result["score"])
-        total = round(_clamp(total), 1)
-
-        quadrant = _classify_quadrant(
-            total, ret_result["score"], growth_result["score"],
-            dur_result["score"], ret_result["capped"], cfg,
-        )
-
-        results.append({
-            "symbol": symbol,
-            "return": ret_result["score"],
-            "growth": growth_result["score"],
-            "durability": dur_result["score"],
-            "total": total,
-            "quadrant": quadrant,
-            "role": pos.get("role", ""),
-        })
+        result["symbol"] = symbol
+        result["role"] = pos.get("role", "")
+        # Remove detailed components for portfolio-level output
+        result.pop("components", None)
+        results.append(result)
 
     results.sort(key=lambda r: r.get("total", -1), reverse=True)
     return results
