@@ -68,6 +68,7 @@ parallel_execution:
 # few-shot だけでは LLM が省略する可能性があるため、orchestration で強制する。
 # ---------------------------------------------------------------------------
 thesis_check:
+  run_before: auto_review  # thesis_check → auto_review の順で実行
   trigger:
     - agent_includes: health-checker
     - agent_includes: strategist

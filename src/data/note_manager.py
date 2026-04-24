@@ -124,14 +124,20 @@ def save_note(
             note["take_profit"] = take_profit
 
     # KIK-715: thesis management structured fields
+    _VALID_THESIS_STATUS = {"active", "attention", "review_needed"}
     if note_type == "thesis":
-        if key_kpis:
+        if key_kpis is not None:
             note["key_kpis"] = key_kpis
-        if sell_triggers:
+        if sell_triggers is not None:
             note["sell_triggers"] = sell_triggers
-        if hold_conditions:
+        if hold_conditions is not None:
             note["hold_conditions"] = hold_conditions
-        if thesis_status:
+        if thesis_status is not None:
+            if thesis_status not in _VALID_THESIS_STATUS:
+                raise ValueError(
+                    f"Invalid thesis_status: {thesis_status}. "
+                    f"Must be one of {_VALID_THESIS_STATUS}"
+                )
             note["thesis_status"] = thesis_status
         if conviction_override is not None:
             note["conviction_override"] = conviction_override
