@@ -1,0 +1,49 @@
+# ETF定番リスト (KIK-725)
+# Strategist/Screener が PF不足因子の補完候補として参照する
+# yfinance EquityQuery では ETF を取得できないため、定番リストで補完
+
+# --- 高配当・インカム ---
+dividend:
+  - { symbol: JEPI, name: "JPMorgan Equity Premium Income", category: "covered-call", region: us }
+  - { symbol: SCHD, name: "Schwab US Dividend Equity", category: "dividend-growth", region: us }
+  - { symbol: VYM, name: "Vanguard High Dividend Yield", category: "high-dividend", region: us }
+  - { symbol: HDV, name: "iShares Core High Dividend", category: "high-dividend", region: us }
+  - { symbol: 1489.T, name: "NF日経高配当50", category: "high-dividend", region: jp }
+  - { symbol: 2559.T, name: "MAXIS全世界株式", category: "global-equity", region: jp }
+
+# --- 債券・ヘッジ ---
+bond:
+  - { symbol: AGG, name: "iShares Core US Aggregate Bond", category: "aggregate-bond", region: us }
+  - { symbol: BND, name: "Vanguard Total Bond Market", category: "aggregate-bond", region: us }
+  - { symbol: TLT, name: "iShares 20+ Year Treasury Bond", category: "long-treasury", region: us }
+  - { symbol: SHV, name: "iShares Short Treasury Bond", category: "short-treasury", region: us }
+  - { symbol: BNDX, name: "Vanguard Total International Bond", category: "intl-bond", region: us }
+
+# --- セクター ---
+sector:
+  - { symbol: XLK, name: "Technology Select Sector SPDR", category: "technology", region: us }
+  - { symbol: XLV, name: "Health Care Select Sector SPDR", category: "healthcare", region: us }
+  - { symbol: XLE, name: "Energy Select Sector SPDR", category: "energy", region: us }
+  - { symbol: XLF, name: "Financial Select Sector SPDR", category: "financial", region: us }
+  - { symbol: XLI, name: "Industrial Select Sector SPDR", category: "industrial", region: us }
+  - { symbol: XLRE, name: "Real Estate Select Sector SPDR", category: "real-estate", region: us }
+
+# --- コモディティ・ヘッジ ---
+commodity:
+  - { symbol: GLDM, name: "SPDR Gold MiniShares", category: "gold", region: us }
+  - { symbol: IAU, name: "iShares Gold Trust", category: "gold", region: us }
+  - { symbol: SLV, name: "iShares Silver Trust", category: "silver", region: us }
+
+# --- グローバル・地域 ---
+global:
+  - { symbol: VT, name: "Vanguard Total World Stock", category: "global-equity", region: us }
+  - { symbol: VTI, name: "Vanguard Total Stock Market", category: "us-total", region: us }
+  - { symbol: VXUS, name: "Vanguard Total International Stock", category: "ex-us", region: us }
+  - { symbol: VWO, name: "Vanguard FTSE Emerging Markets", category: "emerging", region: us }
+  - { symbol: 1343.T, name: "NF東証REIT指数", category: "j-reit", region: jp }
+
+# --- 小型株 ---
+small_cap:
+  - { symbol: VB, name: "Vanguard Small-Cap", category: "us-small", region: us }
+  - { symbol: IJR, name: "iShares Core S&P Small-Cap", category: "us-small", region: us }
+  - { symbol: VBK, name: "Vanguard Small-Cap Growth", category: "us-small-growth", region: us }

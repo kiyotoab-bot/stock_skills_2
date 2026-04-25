@@ -179,9 +179,16 @@ examples:
     reasoning: "売上成長率重視。赤字でも可。PSRで過大評価をフィルタ"
 
   - intent: "小型成長株"
-    params: { region: japan, preset: small-cap-growth, min_revenue_growth: 0.20, max_psr: 15 }
+    params: { region: japan, preset: small-cap-growth, min_revenue_growth: 0.20, max_psr: 15, sort_field: "revenue_growth", sort_asc: false, max_market_cap: 100000000000 }
     scoring: "売上成長(40)+ROE(20)+PSR(20)+マージン改善(20)=100点"
-    reasoning: "テンバガー候補。時価総額1000億円以下"
+    quality_filter: { preset_weight: "growth", min_durability: 4 }
+    reasoning: "テンバガー候補。時価総額1000億円以下。ソートは売上成長率降順（大型偏重を回避）。品質スコアはgrowth重視配分"
+
+  - intent: "米国の小型成長株"
+    params: { region: us, preset: small-cap-growth, min_revenue_growth: 0.20, max_psr: 20, sort_field: "revenue_growth", sort_asc: false, max_market_cap: 10000000000 }
+    scoring: "売上成長(40)+ROE(20)+PSR(20)+マージン改善(20)=100点"
+    quality_filter: { preset_weight: "growth", min_durability: 4 }
+    reasoning: "米国小型株。時価総額$10B以下。PSR上限を日本より緩め"
 
   # === クオリティ系 ===
   - intent: "高品質な銘柄"
@@ -291,6 +298,38 @@ examples:
   - intent: "リセッション耐性のある株"
     params: { region: us, preset: quality, sector: "Consumer Defensive" }
     reasoning: "景気後退懸念 → ディフェンシブセクター × クオリティ"
+
+  # === 無名株発見（discovery）(KIK-725) ===
+  - intent: "無名な成長株を発掘して"
+    mode: discovery
+    params: { region: us }
+    quality_filter: { preset_weight: "growth", min_durability: 4 }
+    reasoning: |
+      Grok API (search_market) で「急成長中の小型株」「IPO後1-2年の注目株」を検索。
+      候補ティッカーを get_stock_info + get_stock_detail で定量検証。
+      検証失敗（データなし/ファンダ不良）は候補除外。
+      score_quality(preset_weight="growth") で3軸スコア付与。Top3を提示。
+      Grok API未設定時は WebSearch にフォールバック。
+
+  - intent: "穴場の株教えて"
+    mode: discovery
+    params: { region: japan }
+    reasoning: "discoveryモード。日本市場で無名成長株を発掘"
+
+  # === ETF提案 (KIK-725) ===
+  - intent: "おすすめのETFは？"
+    mode: etf
+    params: { purpose: "auto" }
+    reasoning: |
+      config/etf_universe.yaml を Read して定番ETFリストを取得。
+      PFの不足因子（allocation.yaml照合）に基づき、補完ETFを提案。
+      get_stock_info + get_stock_detail で経費率・AUM・利回りを取得。
+      purpose: auto → PF診断から自動判定。dividend/bond/sector/commodity も指定可。
+
+  - intent: "債券ETFどれがいい？"
+    mode: etf
+    params: { purpose: "bond" }
+    reasoning: "ヘッジ枠の補強。AGG/BND/TLT等から経費率・デュレーション・利回りで比較"
 
 # スコアリング配分の原則
 scoring_principles:

@@ -29,6 +29,20 @@ weights:
     return: 0.20        # 結果指標
 
 # ---------------------------------------------------------------------------
+# Preset連動の総合重みオーバーライド (KIK-725)
+# score_quality(preset_weight=...) で動的に切り替え
+# 全presetで durability ≥ 0.30 を維持（地雷回避ガードレール）
+# ---------------------------------------------------------------------------
+preset_overrides:
+  growth:
+    total: { durability: 0.35, growth: 0.50, return: 0.15 }
+    description: "成長重視。小型グロース/discovery/high-growth 用"
+  income:
+    total: { durability: 0.45, growth: 0.20, return: 0.35 }
+    description: "還元重視。high-dividend/shareholder-return/long-term 用"
+  # default (上記 total セクション) は value/quality/alpha 等に適用
+
+# ---------------------------------------------------------------------------
 # 閾値・ペナルティ
 # ---------------------------------------------------------------------------
 thresholds:

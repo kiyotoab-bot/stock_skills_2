@@ -425,8 +425,16 @@ def _compute_total(
     detail: dict | None,
     portfolio_entry: dict | None = None,
     growth_overrides: dict | None = None,
+    preset_weight: str | None = None,
 ) -> dict:
-    """Shared scoring pipeline: durability → return (cap) → growth → total → quadrant."""
+    """Shared scoring pipeline: durability → return (cap) → growth → total → quadrant.
+
+    Parameters
+    ----------
+    preset_weight : str, optional
+        "growth" or "income" to override total weights (KIK-725).
+        None uses default weights from scoring.yaml.
+    """
     cfg = _load_config()
 
     # KIK-711: Auto-estimate buyback_yield if not provided in overrides
@@ -441,7 +449,13 @@ def _compute_total(
                               durability_score=dur_result["score"])
     growth_result = score_growth(info, detail, overrides=growth_overrides)
 
+    # KIK-725: Preset-dependent total weights
     tw = cfg["weights"]["total"]
+    if preset_weight and "preset_overrides" in cfg:
+        override = cfg["preset_overrides"].get(preset_weight, {})
+        if "total" in override:
+            tw = override["total"]
+
     total = (tw["durability"] * dur_result["score"] +
              tw["growth"] * growth_result["score"] +
              tw["return"] * ret_result["score"])
@@ -466,10 +480,16 @@ def _compute_total(
     }
 
 
-def score_quality(symbol: str) -> dict:
+def score_quality(symbol: str, preset_weight: str | None = None) -> dict:
     """Compute 3-axis quality score for a single symbol.
 
     Calls get_stock_info() and get_stock_detail() internally.
+
+    Parameters
+    ----------
+    preset_weight : str, optional
+        "growth" or "income" to override total weights (KIK-725).
+        None uses default weights.
     """
     from src.data.yahoo_client import get_stock_info, get_stock_detail
 
@@ -482,8 +502,9 @@ def score_quality(symbol: str) -> dict:
     if detail and is_etf(detail):
         return {"symbol": symbol, "score": None, "note": "ETF: 別枠"}
 
-    result = _compute_total(info, detail)
+    result = _compute_total(info, detail, preset_weight=preset_weight)
     result["symbol"] = symbol
+    result["preset_weight"] = preset_weight
     return result
 
 

@@ -47,6 +47,16 @@ geography:
     warn: 50
     limit: 60
 
+# --- 規模別制約 (KIK-725) ---
+cap_size:
+  small_cap:
+    warn: 5               # % — PF全体に占める小型株比率
+    limit: 10
+  single_stock_small: 3    # % — 小型株1銘柄あたりの上限
+  definition:
+    small_cap_threshold_jpy: 100000000000   # 1000億円以下 = 小型
+    small_cap_threshold_usd: 1000000000     # $1B以下 = 小型
+
 # --- 乖離判定の3段階 ---
 deviation_levels:
   green: "warn未満 — 正常"

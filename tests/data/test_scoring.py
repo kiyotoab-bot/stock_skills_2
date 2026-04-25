@@ -435,3 +435,55 @@ class TestGrowthEAutoEstimate:
         result = _compute_total(info, detail)
         e_score = result["components"]["growth_detail"]["E"]
         assert e_score > 2.0  # auto-estimated, not default 2.0
+
+
+class TestPresetWeightOverride:
+    """KIK-725: Preset-dependent total weight override."""
+
+    def test_growth_preset_favors_growth(self):
+        """Growth preset should weight growth axis higher than default."""
+        from src.data.scoring import _compute_total
+        info = _make_info(earnings_growth=0.30, revenue_growth=0.25, dividend_yield=0.0)
+        detail = _make_detail()
+
+        default = _compute_total(info, detail)
+        growth_w = _compute_total(info, detail, preset_weight="growth")
+
+        # Same component scores, different total weights
+        assert default["growth"] == growth_w["growth"]
+        assert default["durability"] == growth_w["durability"]
+        # Growth preset total should be higher for growth-heavy stock
+        assert growth_w["total"] >= default["total"]
+
+    def test_income_preset_favors_return(self):
+        """Income preset should weight return axis higher than default."""
+        from src.data.scoring import _compute_total
+        info = _make_info(dividend_yield=0.05, earnings_growth=0.02, revenue_growth=0.02)
+        detail = _make_detail()
+
+        default = _compute_total(info, detail)
+        income_w = _compute_total(info, detail, preset_weight="income")
+
+        assert default["return"] == income_w["return"]
+        # Income preset should give higher total for high-dividend stock
+        assert income_w["total"] >= default["total"]
+
+    def test_unknown_preset_uses_default(self):
+        """Unknown preset_weight should fall back to default weights."""
+        from src.data.scoring import _compute_total
+        info = _make_info()
+        detail = _make_detail()
+
+        default = _compute_total(info, detail)
+        unknown = _compute_total(info, detail, preset_weight="nonexistent")
+
+        assert default["total"] == unknown["total"]
+
+    def test_durability_floor_maintained(self):
+        """All preset overrides must keep durability >= 0.30."""
+        cfg = _load_config()
+        overrides = cfg.get("preset_overrides", {})
+        for name, override in overrides.items():
+            tw = override.get("total", {})
+            dur_weight = tw.get("durability", 0.45)
+            assert dur_weight >= 0.30, f"Preset '{name}' has durability={dur_weight} < 0.30"
