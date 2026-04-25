@@ -173,7 +173,7 @@ Step 7: screener（条件付き — strategist指定のテーマ×地域でTop3+
   ⚠️ screener は「探す」だけ。「買う」判断は別。
   strategist の「やらないチェック」は「今月は買わない」であり「探さない」ではない。
   → やらないチェック該当でも screener は起動し、候補をウォッチリスト候補として提示する。
-  ↓ risk-off + 逆張りなし → Step 6 スキップ（ただし Step 7 は起動検討）
+  ↓ risk-off + 逆張りなし → Step 6 スキップ。Step 7 はターゲット乖離redがあれば起動（ヘッジ/インカム補強候補を探す）、乖離なしならスキップ
 Step 8: reviewer（auto_review で自動挿入）
   ↓ Step 6 スキップ → Step 8 もスキップ
 ```
