@@ -15,6 +15,75 @@ user_invocable: true
 3. 複数エージェント（`agents`）→ 配列の順序でサブエージェントを連鎖起動し、結果を統合
 4. 該当パターンなし → `agents` セクションの `role` と `triggers` から柔軟に判定
 
+## Intent Clarification
+
+Routing後、Execution前に実行する。ユーザーの意図を正しく汲み取れているかを確認する仕組み。
+
+### 文脈補完の優先順位
+
+`routing.yaml` の `required_context` で定義された必須パラメータを、以下の順序で解決する:
+
+1. **input_text** — ユーザーの入力テキストから直接抽出（「米国の高配当」→ region=us, theme=高配当）
+2. **prior_output** — 直前エージェントの出力（「その株を分析して」→ symbol=直前銘柄）
+3. **portfolio** — `data/portfolio.csv` の保有銘柄・地域構成から推測
+4. **memory** — ユーザーの過去のフィードバック・傾向
+5. **聞き返す** — 上記で解決できない場合のみ
+
+### 解決ルール
+
+- `optional: true` のキーは未解決でも `default` を適用し即実行する
+- `optional: false` のキーが未解決の場合のみ、**最大1回** 聞き返す
+- 複数の未解決キーがあっても、1メッセージにまとめて聞く
+
+### 聞き返しフォーマット
+
+推測を必ず付記し、Yes/No で答えられる形式にする:
+
+```
+曖昧+文脈なし:
+  「日本株のバリュー系でスクリーニングしますね？（米国やテーマ指定があれば教えてください）」
+
+曖昧+文脈あり（推測実行、質問なし）:
+  → 直前のPF診断で日本株偏重と判明 → 米国・欧州株で自動スクリーニング
+
+対象不明（optional: false）:
+  「どの銘柄を分析しますか？」
+```
+
+### 聞かないケース
+
+- 入力が明確（「7203.T分析して」「PF大丈夫？」）→ 即実行
+- `required_context: []`（health-checker, risk-assessor, reviewer）→ 即実行
+- `mode: routine-*`（朝サマリー/日次/週次）→ 定型なので即実行
+
+### ヘッダー表示
+
+`routing.yaml` の `header` フィールドがある複数エージェント連鎖は、1行ヘッダーを表示してから即実行する（承認は不要）。`header` がない `agents` パターンは `[A → B → C] ～を実行します` の形式で自動生成する。
+
+**ヘッダー記法:**
+- `→` = 連鎖（A の結果を B に渡す）
+- `+` = 並列（A と B を同時実行）
+- `mode: routine-*` のパターンはヘッダーを表示しない（定型なので不要）
+
+### Progressive表示
+
+**agents が3つ以上**の連鎖には `progressive: true` を付与する。各Agent完了後に中間出力を表示する:
+
+```
+--- [1/3: risk-assessor 完了] ---
+verdict: risk-on, ...
+🔍 health-checker 実行中...
+```
+
+**付与基準:**
+- 2エージェント以下 → 不要（短時間で完了）
+- 3エージェント以上 → `progressive: true`（中間出力でUX向上）
+- `mode: routine-*` → SKILL.md の「プログレッシブ表示（週次）」セクションで別途制御
+
+### context_rules との関係
+
+`routing.yaml` の `context_rules` は銘柄の省略補完など **具体的なヒューリスティック** を定義する。Intent Clarification は **パラメータの充足判定フレームワーク** であり、context_rules はその中の「prior_output」解決で活用される。両者は補完関係にあり、重複ではない。
+
 ## Execution
 
 エージェントは必ず **Agent ツールでサブエージェントとして起動**する。自分で agent.md を読んで直接実行してはならない。
