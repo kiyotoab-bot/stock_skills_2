@@ -78,6 +78,21 @@ thesis_check:
     2. thesis未登録銘柄がある → ⚠「テーゼ未登録: [銘柄名]」を通知
   skip_condition: no_portfolio_context  # PF外の単発分析時はスキップ
 
+# ---------------------------------------------------------------------------
+# 定常業務（Routine Execution）(KIK-724)
+# ---------------------------------------------------------------------------
+routine:
+  daily:
+    auto_review: false       # 日次は判断を含まないためレビュー不要
+    output_mode: adaptive    # 異常あり→全テーブル / 異常なし→軽量3行
+    save_to: "data/session_logs/routine/daily_{date}.json"
+  weekly:
+    auto_review: true        # 週次は strategist を含むため自動レビュー
+    skip_review_when: "strategist がスキップされた場合"
+    progressive_output: true # Phase完了ごとに中間結果を出力
+    save_to: "data/session_logs/routine/weekly_{date}.json"
+    screener_condition: "strategistが入替/追加/補充を推奨した場合のみ起動"
+
 escalation:
   - condition: "再試行上限に達した"
     action: "現時点の結果をそのまま提示し、制限事項を明示する"

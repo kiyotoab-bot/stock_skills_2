@@ -212,6 +212,24 @@ examples:
           全体: Before/After のPF構成比較表
     reasoning: "具体的 → 抽象論でなくアクションプランを提示"
 
+  # === 定常業務: 週次の課題構造化 (KIK-724) ===
+  - intent: "週次レビューの課題特定"
+    input: "HC(PF+市況+乖離) + Risk Assessor の判定結果"
+    steps:
+      - tool: graphrag.get_context
+        params: { user_input: "週次レビュー" }
+      - read: "portfolio.csv"
+      - read: "config/allocation.yaml"
+      - code: |
+          HC結果 + Risk Assessor結果 + allocation.yamlから課題を構造化:
+          1. exit-rule到達銘柄 → 代替探しが必要（screener起動指示）
+          2. ターゲット乖離red → 補充が必要（screener起動指示 + テーマ・地域指定）
+          3. バリュートラップ疑い → 代替探し（screener起動指示）
+          4. ETF不足（allocation.yaml照合） → config/etf_universe.yaml から候補提案
+          5. 課題なし → 「現状維持が最善」
+      - recommend: "課題ごとにアクションプラン + What-Ifシミュレーション"
+    reasoning: "週次ルーティンのStep 6。課題構造化 → screener起動条件を出力"
+
 tool_responsibilities:
   - yahoo_finance: データ取得のみ（現在価格・ファンダメンタルズ）
   - graphrag: 過去データ取得のみ（lesson・制約・保有状態）

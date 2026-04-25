@@ -42,6 +42,28 @@ examples:
           0件 → 「📋 未実行の予定はありません」
     reasoning: "targetノートの内容を一覧表示。判断・レコメンドはしない"
 
+  # === 定常業務: 日次 (KIK-724) ===
+  - intent: "定常業務"
+    mode: routine-daily
+    steps:
+      - tool: morning_summary.detect_alerts
+        note: "異常検知（朝サマリーと同じロジック）"
+      - read: "portfolio.csv"
+      - tool: yahoo_finance.get_stock_info
+        params: { symbols: "全保有銘柄 + ^VIX" }
+      - tool: yahoo_finance.get_price_history
+        params: { symbols: "全保有銘柄", period: "1mo" }
+      - code: "各銘柄のRSI, SMA50/200, 損益率を計算"
+      - read: "config/allocation.yaml"
+        note: "ターゲット乖離チェック（KIK-685）"
+      - tool: notes.load_notes
+        params: { note_type: "target" }
+        note: "WLアラート + targetリマインド"
+      - output: |
+          異常あり → 全テーブル（PF概況+アラート+市況+乖離+WL）
+          異常なし → 軽量3行（評価額+変動+一言）
+    reasoning: "日次ルーティン。HC担当分。市況+researcherは並列で別Agent起動される"
+
   # === PFヘルスチェック ===
   - intent: "PF大丈夫？"
     steps:

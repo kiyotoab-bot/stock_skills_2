@@ -10,7 +10,7 @@ agents:
     triggers: [レポート, 分析, 割安度, 還元率, バリュートラップ]
   health-checker:
     role: PFの事実・数値を出す（判断・レコメンドはしない）
-    triggers: [PF, ポートフォリオ, 損益, ヘルスチェック, ストレステスト, VIX, 金利, 期待リターン, 構造, 偏り, 市況チェック, おはよう, 朝サマリー, モーニング, TODO, 予定, target]
+    triggers: [PF, ポートフォリオ, 損益, ヘルスチェック, ストレステスト, VIX, 金利, 期待リターン, 構造, 偏り, 市況チェック, おはよう, 朝サマリー, モーニング, TODO, 予定, target, 定常業務, まとめてチェック, 日次チェック, ルーティン]
   researcher:
     role: ニュース・Xセンチメント・業界/市場動向・ビジネスモデル調査
     triggers: [ニュース, リサーチ, 深掘り, 業界, マーケット, 市況, センチメント, ビジネスモデル, 動向]
@@ -58,6 +58,41 @@ examples:
 
   - intent: "予定を確認"
     agent: health-checker
+
+  # --- 定常業務: 日次 (KIK-724) ---
+  - intent: "定常業務"
+    mode: routine-daily
+    agents: [health-checker, researcher]
+    note: "detect_alerts→HC(PF)→HC(市況)+researcher並列→ターゲット乖離+WLアラート。3-4分"
+
+  - intent: "まとめてチェック"
+    mode: routine-daily
+    agents: [health-checker, researcher]
+
+  - intent: "日次チェック"
+    mode: routine-daily
+    agents: [health-checker, researcher]
+
+  - intent: "ルーティン"
+    mode: routine-daily
+    agents: [health-checker, researcher]
+
+  # --- 定常業務: 週次 (KIK-724) ---
+  - intent: "フルチェック"
+    mode: routine-weekly
+    agents: [health-checker, researcher, risk-assessor, strategist, screener, reviewer]
+    review: true
+    note: "日次+risk-assessor→strategist→条件付きscreener→reviewer。8-13分"
+
+  - intent: "週次レビュー"
+    mode: routine-weekly
+    agents: [health-checker, researcher, risk-assessor, strategist, screener, reviewer]
+    review: true
+
+  - intent: "しっかり見たい"
+    mode: routine-weekly
+    agents: [health-checker, researcher, risk-assessor, strategist, screener, reviewer]
+    review: true
 
   - intent: "最新ニュース教えて"
     agent: researcher

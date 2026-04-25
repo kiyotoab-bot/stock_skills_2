@@ -120,6 +120,82 @@ Agent(logic-reviewer, prompt="Geminiでロジックレビュー: call_llm('gemin
 
 テーマが1つだけ、またはレビューが軽量な場合は、従来通り1つのサブエージェントに任せてよい。並列化は複数の独立タスクがある場合のみ適用する。
 
+### 定常業務（Routine Execution）（KIK-724）
+
+routing.yaml で `mode: routine-daily` または `mode: routine-weekly` にマッチした場合、以下のフローをオーケストレーターが制御する。
+
+#### レベル判定
+
+| レベル | トリガー | 所要時間 |
+|:---|:---|:---|
+| daily | 定常業務, まとめてチェック, 日次チェック, ルーティン | 3-4分 |
+| weekly | フルチェック, 週次レビュー, しっかり見たい | 8-13分 |
+| デフォルト（未指定時） | daily | — |
+
+#### 日次フロー（routine-daily）
+
+```
+Step 1: detect_alerts（異常検知）
+  ↓ CRITICAL 銘柄を Step 2 に注入
+Step 2: HC — PFヘルスチェック（損益・RSI・クロス）
+Step 3a: HC — 市況定量        ─┐ 並列（Agent同時発行）
+Step 3b: researcher — ニュース ─┘
+Step 4: HC — ターゲット乖離（config/allocation.yaml照合）+ WLアラート
+```
+
+- Step 3a/3b はオーケストレーターが Agent を同時発行して並列化する
+- Step 4 で全 green の場合、ターゲット乖離セクションを省略する
+- **出力分岐**: 異常あり → 全テーブル / 異常なし → 軽量3行（評価額+変動+一言）
+
+#### 週次フロー（routine-weekly）
+
+```
+[日次 Step 1-4]
+  ↓
+Step 5: risk-assessor（フルリスク判定 — 12ステップ全実行）
+  ↓
+Step 6: strategist（課題特定 + アクションプラン）
+  ↓ 課題あり（exit-rule/乖離red/バリュートラップ）
+Step 7: screener（条件付き — strategist指定のテーマ×地域でTop3+3軸スコア）
+  ↓ risk-off + 逆張りなし → Step 6,7 スキップ
+Step 8: reviewer（auto_review で自動挿入）
+  ↓ Step 6 スキップ → Step 8 もスキップ
+```
+
+- Step 7 のスクリーニングは、strategist が課題を特定した場合のみ起動
+- 課題なし → 「現状維持が最善」と出力し、Step 7 をスキップ
+- 週次の Step 4 ターゲット乖離は全 green でも表示する（網羅的に見る目的）
+
+#### プログレッシブ表示（週次）
+
+Phase 完了ごとに中間結果を出力し、体感の待ち時間を短縮する:
+
+```
+[Step 1-4完了 ~3min] → 日次データ先行表示
+[Step 5完了 ~5min]   → リスク判定結果表示
+[Step 6-7完了 ~8min] → アクションプラン+候補表示
+[Step 8完了 ~10min]  → レビュー結果表示
+```
+
+#### 朝サマリーとの違い
+
+| | 朝サマリー | 日次チェック | 週次レビュー |
+|:---|:---|:---|:---|
+| 所要時間 | 30秒 | 3-4分 | 8-13分 |
+| 異常検知 | detect_alerts のみ | + HC全銘柄 | + HC全銘柄 |
+| PF損益 | なし | 全銘柄テーブル | 全銘柄テーブル |
+| 市況 | なし | 主要6指標+ニュース | 主要6指標+ニュース |
+| 乖離チェック | なし | yellow/red のみ | 全項目 |
+| リスク判定 | なし | なし | フル(12ステップ) |
+| アクション提案 | なし | なし | What-If付き |
+| スクリーニング | なし | なし | 条件付きTop3 |
+| レビュー | なし | なし | 自動レビュー |
+
+#### データ保存
+
+結果は `data/session_logs/routine/` に自動保存する:
+- `daily_YYYYMMDD.json` / `weekly_YYYYMMDD.json`
+
 ### Reviewer 自動挿入（KIK-659）
 
 エージェント実行後、`orchestration.yaml` の `auto_review` ルールに従い Reviewer の要否を **自動判定** する。
