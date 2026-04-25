@@ -5,24 +5,44 @@ agents:
   screener:
     role: 銘柄探し・スクリーニング実行
     triggers: [探す, スクリーニング, いい株, おすすめ, 割安, 高配当, テーマ, トレンド, 成長株, 品質, 質の高い, クオリティ, 持続性, 還元, 堅い, 優良, 小型株, テンバガー, 穴場, 発掘, 無名, ETF, 債券ETF, セクターETF]
+    required_context:
+      - key: region
+        optional: true
+        default: japan
+      - key: theme
+        optional: true
   analyst:
     role: 銘柄分析・バリュエーション評価（個別株・ETF）
     triggers: [レポート, 分析, 割安度, 還元率, バリュートラップ]
+    required_context:
+      - key: symbol
+        optional: false
   health-checker:
     role: PFの事実・数値を出す（判断・レコメンドはしない）
     triggers: [PF, ポートフォリオ, 損益, ヘルスチェック, ストレステスト, VIX, 金利, 期待リターン, 構造, 偏り, 市況チェック, おはよう, 朝サマリー, モーニング, TODO, 予定, target, 定常業務, まとめてチェック, 日次チェック, ルーティン]
+    required_context: []
   researcher:
     role: ニュース・Xセンチメント・業界/市場動向・ビジネスモデル調査
     triggers: [ニュース, リサーチ, 深掘り, 業界, マーケット, 市況, センチメント, ビジネスモデル, 動向]
+    required_context:
+      - key: topic_or_symbol
+        optional: true
+        default: market_overview
   strategist:
     role: 投資判断・入替提案・ワークフロー設計・売却判断
     triggers: [入替, リバランス, 改善, 調整, プラン, 戦略, どうすべき, 乗り換え, スワップ, 売却, 損切り, 利確, 手放す, 撤退, 売るべき, 売り時]
+    required_context:
+      - key: target_scope
+        optional: true
+        default: portfolio
   risk-assessor:
     role: 市場リスク状態判定（risk-on/neutral/risk-off）+ PFバランス目標提示
     triggers: [リスク判定, リスクオン, リスクオフ, 押し目, 買われすぎ, 売られすぎ, 市況判定]
+    required_context: []
   reviewer:
     role: 品質・矛盾・リスク・反論チェック（動的LLM選択）
     triggers: []  # 自動挿入: 投資判断を伴う出力時
+    required_context: []
 
 examples:
   # --- 単一エージェント ---
@@ -39,6 +59,7 @@ examples:
   # risk-on → トレンドフォロー、risk-off → 割安/逆張り、neutral → 見送り
   - intent: "グロース株を探して"
     agents: [risk-assessor, screener]
+    header: "[risk-assessor → screener] リスク判定 → スクリーニング"
     note: "risk-assessor の判定結果を screener に渡す。normal→mode=momentum+sector_signal、risk-off→スクリーニング見送り（買わない）"
 
   - intent: "トヨタってどう？"
@@ -106,11 +127,14 @@ examples:
 
   - intent: "プランモードで"
     agents: [health-checker, analyst, researcher, strategist]
+    header: "[HC → analyst → researcher → strategist] PF確認 → 分析 → リサーチ → 戦略立案"
+    progressive: true
     review: true
 
   # --- 複数エージェント連鎖 ---
   - intent: "今熱いテーマは？"
     agents: [researcher, screener]
+    header: "[researcher → screener] テーマリサーチ → スクリーニング"
 
   - intent: "リスク判定して"
     agent: risk-assessor
@@ -123,31 +147,41 @@ examples:
 
   - intent: "市況チェック"
     agents: [health-checker, researcher]
+    header: "[HC + researcher] 市況定量 + ニュース"
 
   - intent: "PFを改善したい"
     agents: [health-checker, strategist]
+    header: "[HC → strategist] PF数値確認 → 改善提案"
     review: true
 
   # --- 売却判断（risk-assessor → health-checker → strategist の3連鎖） ---
   - intent: "この株売るべき？"
     agents: [risk-assessor, health-checker, strategist]
+    header: "[risk → HC → strategist] リスク判定 → 数値確認 → 売却判断"
+    progressive: true
     review: true
     note: "risk-assessorで市場リスク判定→health-checkerで数値事実→strategistでcheck_exit_rule照合+What-If比較"
 
   - intent: "損切りすべき？"
     agents: [risk-assessor, health-checker, strategist]
+    header: "[risk → HC → strategist] リスク判定 → 数値確認 → 損切り判断"
+    progressive: true
     review: true
 
   - intent: "利確すべき？"
     agents: [risk-assessor, health-checker, strategist]
+    header: "[risk → HC → strategist] リスク判定 → 数値確認 → 利確判断"
+    progressive: true
     review: true
 
   - intent: "リスク確認して代わりを探して"
     agents: [health-checker, screener]
+    header: "[HC → screener] リスク確認 → 代替候補探索"
     review: true
 
   - intent: "半導体を調べて有望な銘柄を探して"
     agents: [researcher, screener]
+    header: "[researcher → screener] 業界リサーチ → 銘柄探索"
 
   - intent: "トヨタを調べてメモして"
     agent: analyst
