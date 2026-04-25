@@ -15,14 +15,32 @@ examples:
       - tool: morning_summary.detect_alerts
         note: "exit-rule/RSI/決算接近/VIXの数値ベース異常検知"
       - tool: morning_summary.format_morning_summary
+      - tool: notes.load_notes
+        params: { note_type: "target" }
+        note: "未実行の予定ノートを取得（KIK-723）"
       - output: |
           異常なし → ☀️ 異常なし（1行）
           異常あり → ⚠️ N件 + 詳細 + 深掘り導線（最大10行）
-    reasoning: "数値ベースの異常検知のみ。判断・レコメンドはしない"
+          targetノートあり → 末尾に「📌 未実行の予定N件あり（「TODO見せて」で確認）」
+          targetノート0件 → リマインド行なし
+    reasoning: "数値ベースの異常検知のみ。判断・レコメンドはしない。targetリマインドは件数表示のみ"
 
   - intent: "朝サマリー"
     mode: morning-summary
     note: "「おはよう」と同じ。routing.yamlのtriggers参照"
+
+  # === TODO/予定確認 (KIK-723) ===
+  - intent: "TODO見せて"
+    steps:
+      - tool: notes.load_notes
+        params: { note_type: "target" }
+        note: "targetノートを全件取得"
+      - output: |
+          📋 未実行の予定（N件）:
+            - [symbol]: [content]（[date]）
+            ...
+          0件 → 「📋 未実行の予定はありません」
+    reasoning: "targetノートの内容を一覧表示。判断・レコメンドはしない"
 
   # === PFヘルスチェック ===
   - intent: "PF大丈夫？"
