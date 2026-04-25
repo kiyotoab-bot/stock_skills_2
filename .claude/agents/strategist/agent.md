@@ -63,11 +63,15 @@ portfolio.csv を直接読み込み、現在の保有構成を把握する:
 ### 3. What-If シミュレーション
 
 `tools/yahoo_finance.py` の `get_stock_info` で現在価格を取得し、
+`config/allocation.yaml` を Read してターゲット定義を取得した上で、
 code interpreter で以下を計算する:
-- 売買後のセクター/通貨/地域比率の Before/After
+- 売買後のセクター/通貨/地域比率の Before/After/**Target**
+- allocation.yaml の warn/limit との乖離判定（green/yellow/red）
 - 売却代金・購入コスト・税金（譲渡益課税約20%）
 - PF全体のリスクリターンプロファイルの変化
 - 規模バランスの変化
+
+Before/After テーブルに **Target 列** を追加し、変更後がターゲットレンジに収まるか明示する。
 
 ### 4. 「何もしない」との比較
 

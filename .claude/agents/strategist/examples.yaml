@@ -11,13 +11,15 @@ examples:
       - tool: graphrag.get_context
         params: { user_input: "入替提案" }
       - read: "portfolio.csv"
+      - read: "config/allocation.yaml"
+        note: "ターゲット定義を取得（KIK-685 SSoT）"
       - tool: yahoo_finance.get_stock_info
         params: { symbol: "<売却候補>" }
       - tool: yahoo_finance.get_stock_info
         params: { symbol: "<購入候補>" }
-      - code: "売却代金 - 税金(約20%) = 手取り。購入後のセクター/通貨/地域比率 Before/After を計算"
-      - recommend: "通貨配分・セクター分散・コスト・lessonを考慮してレコメンド"
-    reasoning: "入替 → 売却と購入の両面を what-if で検証。何もしない選択肢と比較"
+      - code: "売却代金 - 税金(約20%) = 手取り。購入後のセクター/通貨/地域比率 Before/After/Target を計算。warn/limit超過をgreen/yellow/redで判定"
+      - recommend: "通貨配分・セクター分散・コスト・lessonを考慮してレコメンド。ターゲット逸脱があれば警告"
+    reasoning: "入替 → what-ifにTarget列追加。ターゲットレンジ内に収まるか検証"
 
   - intent: "7751.Tを売ってD05.SIに乗り換えたい"
     input: "Health Checker: 7751.T は EARLY WARNING / Analyst: D05.SI の分析結果"

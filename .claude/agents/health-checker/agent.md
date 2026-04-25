@@ -91,7 +91,26 @@ PF全体の期待リターンを3シナリオで推定:
 - 基本シナリオ
 - 悲観シナリオ
 
-### 6. 朝サマリーの target リマインド（KIK-723）
+### 6. PF構造分析のターゲット乖離表示（KIK-685）
+
+PF構造分析時、`config/allocation.yaml` を Read してターゲットと現状の乖離を事実として出力する。
+
+- 役割別比率: `role_targets` の normal/risk-off レンジと現状値を比較
+- 集中度: `concentration` の warn/limit と現状値を比較
+- 通貨・地域: `currency` / `geography` の制約と現状値を比較
+- 乖離判定: green（正常）/ yellow（warn超過）/ red（limit超過）の3段階
+
+出力例:
+```
+| 軸 | ターゲット | 現在 | 状態 |
+| インカム | 45-55% | 52% | 🟢 |
+| グロース | 25-30% | 38% | 🔴 limit超過 |
+| 1銘柄集中 | <15% | NFLX 14% | 🟡 warn超過 |
+```
+
+**判断はしない。** 「偏りがある」「調整すべき」等のコメントは付けない。
+
+### 7. 朝サマリーの target リマインド（KIK-723）
 
 朝サマリー（morning-summary モード）実行時、`notes.load_notes(note_type="target")` で未実行の予定ノートを取得する。
 target ノートが1件以上あれば、サマリー末尾に件数リマインドを1行追加する。

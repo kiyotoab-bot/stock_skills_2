@@ -88,13 +88,19 @@ examples:
           数値のみ
     reasoning: "損失額を金額と%の両方で提示。ヘッジ提案はしない"
 
-  # === PF構造分析 ===
+  # === PF構造分析 (KIK-685: ターゲット乖離表示) ===
   - intent: "セクター偏ってない？"
     steps:
       - read: "portfolio.csv"
-      - code: "各セクター/地域/通貨/規模の比率を計算"
-      - output: "比率の事実を提示。数値のみ"
-    reasoning: "比率を出すだけ。偏りの判断はしない"
+      - read: "config/allocation.yaml"
+        note: "ターゲット定義を取得（KIK-685 SSoT）"
+      - code: "各セクター/地域/通貨/規模の比率を計算。allocation.yamlのwarn/limitと比較し3段階(green/yellow/red)判定"
+      - output: |
+          比率の事実を提示。数値のみ。ターゲット列と乖離状態を追加:
+          | 軸 | ターゲット | 現在 | 状態 |
+          | セクター集中 | <30% | Tech 17% | 🟢 |
+          | USD比率 | <60% | 58% | 🟡 warn超過 |
+    reasoning: "比率+ターゲット乖離を出すだけ。偏りの判断はしない"
 
   # === 複数指標が矛盾するケース ===
   - intent: "テクニカルとファンダが矛盾してる銘柄は？"

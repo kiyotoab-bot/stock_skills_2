@@ -47,24 +47,9 @@ contrarian_rules:
   oversold: "F&G < 25 AND VIX > 30 → 押し目買いの好機"
   priority: "逆張りシグナルは通常判定を修正する。risk-on判定でも買われすぎならキャッシュ積み増し"
 
-# 2段階 × レンジ制（4LLMスワム承認済み 2026-04-24）
-# レンジ内なら何もしない。逸脱時のみ調整。
-pf_targets:
-  normal:
-    income: "45-55%"
-    growth: "25-30%"
-    hedge: "5%"
-    cash: "15-20%"
-  risk_off:
-    income: "50-55%"
-    growth: "10-20%"
-    hedge: "5-10%"
-    cash: "25-35%"
-  trigger_to_risk_off:
-    - "リスク判定スコア -3以下"
-    - "VIX > 25"
-    - "強制ルール発動（VIX>40, F&G<10, WTI>$110）"
-  jepi_classification: "ハイブリッド。保有比率を50:50でインカム+グロースに分割カウント"
+# PFターゲット定義は config/allocation.yaml を SSoT とする (KIK-685)
+# role_targets / concentration / currency / geography は全て allocation.yaml から Read して取得
+pf_targets_source: "config/allocation.yaml"
 
 examples:
   # === 典型的な risk-on ===
