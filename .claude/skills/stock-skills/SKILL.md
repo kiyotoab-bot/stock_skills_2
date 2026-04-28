@@ -143,6 +143,42 @@ Pattern C: 連鎖 (≥2) または routine   (agents配列が複数 / progressiv
 3. 複数エージェント（`agents`）→ 配列の順序でサブエージェントを連鎖起動し、結果を統合
 4. 該当パターンなし → `agents` セクションの `role` と `triggers` から柔軟に判定
 
+## Session Start State Reconcile (KIK-738/739 後追い)
+
+**⚠️ MUST: PF / cash / holdings / 取引タイミング について発言する前に必ず**
+**`tools.session_state.reconcile_session_state()` を 1 行で呼んで disk 状態を確認する。**
+
+「おはよう」「朝の挨拶」「PF どう？」「現状」など軽量な質問でも、AI の memory
+(前 session の todo や plan) を**唯一のソース**にしない。ユーザーは AI なしで取引できる
+ので、disk の方が常に新しい。
+
+```python
+from tools.session_state import reconcile_session_state
+
+state = reconcile_session_state()              # disk 最新を一括 reconcile
+for w in state["warnings"]:
+    print(f"⚠ {w}")                            # cash 古い・直近 note 無し等
+# 以降、state["portfolio"] / state["cash_balance"] /
+#       state["recent_notes"] / state["recent_trades"] を**そのまま**根拠に発言する
+```
+
+`reconcile_session_state()` の戻り値:
+- `portfolio` : 現保有 (CSV master)
+- `cash_balance` : 現金残高 (JSON、欠落時は None)
+- `cash_missing` : True なら cash_balance.json 自体が無い
+- `cash_stale` : True なら cash_balance.json の date が `cash_stale_days` (default 3) 超 — 取引と乖離の可能性
+- `recent_notes` : 直近 7 日以内の note (newer-first)
+- `recent_trades` : 直近 7 日以内の trade JSON ファイル名
+- `warnings` : 人向け警告 (上記の真偽値を文字列化したもの)
+
+これを怠ると 2026-04-29 セッションのような事故が再発:
+朝に Plan I の「未実行 todo」を表示 → 実は既に 4/27 実行済 / journal にも記録済 / portfolio.csv も
+更新済だったのに AI が memory だけで判断。lesson `2026-04-29 session 開始時の PF state 再確認義務`
+が永続ルールとして該当。
+
+実装は `tools/session_state.py` (薄いファサード) と `src/data/session_state.py` (本体)。
+KIK-735 preflight と同じ「SKILL.md は call site のみ、ロジックは tools/」パターン。
+
 ## Intent Clarification
 
 Routing後、Execution前に実行する。ユーザーの意図を正しく汲み取れているかを確認する仕組み。
@@ -209,6 +245,42 @@ Output &amp; Visibility v1 の Layer 2 仕様に統合された。
 `routing.yaml` の `context_rules` は銘柄の省略補完など **具体的なヒューリスティック** を定義する。Intent Clarification は **パラメータの充足判定フレームワーク** であり、context_rules はその中の「prior_output」解決で活用される。両者は補完関係にあり、重複ではない。
 
 ## Execution
+
+### Hook 順序 (orchestrator が自律的に踏む段階)
+
+```
+ユーザー prompt 受信
+  └─ ① Routing 判定 (routing.yaml) — pattern A/B/C 含む
+  └─ ② [PF系のみ] reconcile_session_state() — KIK-738 後追い hard gate (本セクション)
+  └─ ③ Layer 1 ヘッダ表示
+  └─ ④ Agent 起動 (or direct action)
+       └─ DeepThink Step 0 で preflight (KIK-735) / Step 1 で filter_relevant_lessons (KIK-736/738)
+       └─ Step 5 で verify_lesson_cited + Layer 5 Cited Sources (KIK-739)
+```
+
+### ⚠️ MUST: PF/cash/holdings 言及時は Agent 起動前に reconcile_session_state を呼ぶ
+
+```python
+from tools.session_state import reconcile_session_state
+
+state = reconcile_session_state()
+for w in state["warnings"]:
+    print(f"⚠ {w}")        # cash_missing / cash_stale / 直近 note 無し 等
+# 以降、state["portfolio"] / state["cash_balance"] /
+#       state["recent_notes"] / state["recent_trades"] を**そのまま**根拠に発言する
+```
+
+#### 発動条件 (どの prompt で呼ぶか)
+
+`routing.yaml` の `pf_state_required: true` フラグを持つルーティングは必ず呼ぶ。
+**フラグ未設定でも安全側のキーワード判定で発動**する:
+
+> 「ポートフォリオ」「保有」「現金」「Cash」「holdings」「PF」「pf」
+> 「売買」「売却」「購入」「入替」「リバランス」「conviction」「target」
+> 「おはよう」「朝の挨拶」「今日」「現状」(=session 開始系)
+
+これらが含まれない**純粋な情報照会**(例: ETF universe 質問・単純な相場指数確認) では省略可。
+判断に迷ったら**呼ぶ側に倒す** (false positive のコストは数百ms 程度、false negative は事故再発)。
 
 エージェントは必ず **Agent ツールでサブエージェントとして起動**する。自分で agent.md を読んで直接実行してはならない。
 
