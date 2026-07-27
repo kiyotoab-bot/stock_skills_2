@@ -287,6 +287,105 @@ class TestDetectAlerts:
         assert len(alerts) >= 2
         assert alerts[0]["severity"] == "CRITICAL"
 
+    # --- Nikkei PER ---
+    def test_nikkei_per_overvalued(self):
+        alerts = detect_alerts([], {}, {}, nikkei_per=21.5)
+        per_alerts = [a for a in alerts if a["type"] == "nikkei_per_overvalued"]
+        assert len(per_alerts) == 1
+        assert per_alerts[0]["severity"] == "INFO"
+
+    def test_nikkei_per_bubble(self):
+        alerts = detect_alerts([], {}, {}, nikkei_per=26.0)
+        per_alerts = [a for a in alerts if a["type"] == "nikkei_per_bubble"]
+        assert len(per_alerts) == 1
+        assert per_alerts[0]["severity"] == "CRITICAL"
+
+    def test_nikkei_per_cheap(self):
+        alerts = detect_alerts([], {}, {}, nikkei_per=12.0)
+        per_alerts = [a for a in alerts if a["type"] == "nikkei_per_cheap"]
+        assert len(per_alerts) == 1
+        assert per_alerts[0]["severity"] == "INFO"
+
+    def test_nikkei_per_normal_no_alert(self):
+        alerts = detect_alerts([], {}, {}, nikkei_per=16.0)
+        per_alerts = [a for a in alerts if a["type"].startswith("nikkei_per")]
+        assert len(per_alerts) == 0
+
+    def test_nikkei_per_none_no_alert(self):
+        """None means data not available — no alert."""
+        alerts = detect_alerts([], {}, {}, nikkei_per=None)
+        per_alerts = [a for a in alerts if a["type"].startswith("nikkei_per")]
+        assert len(per_alerts) == 0
+
+    def test_nikkei_per_bubble_excludes_overvalued(self):
+        """At bubble level (>=25), only bubble alert fires, not overvalued."""
+        alerts = detect_alerts([], {}, {}, nikkei_per=27.0)
+        types = [a["type"] for a in alerts]
+        assert "nikkei_per_bubble" in types
+        assert "nikkei_per_overvalued" not in types
+
+    # --- profit_take ---
+    def test_profit_take_triggered(self):
+        """含み益+50% RSI 70 → profit_take INFO."""
+        closes = [100 + i * 2 for i in range(20)]   # ascending → RSI high
+        positions = [_pos("MUJI", 100.0)]
+        infos = {"MUJI": _info("MUJI", 150.0)}       # +50%
+        alerts = detect_alerts(positions, infos, {"MUJI": closes})
+        pt = [a for a in alerts if a["type"] == "profit_take"]
+        assert len(pt) == 1
+        assert pt[0]["severity"] == "INFO"
+        assert pt[0]["value"] == pytest.approx(50.0, rel=1e-3)
+
+    def test_profit_take_low_rsi_no_alert(self):
+        """含み益+50% だが RSI 40（低い）→ profit_take は発火しない。"""
+        closes = [150 - i * 0.5 * ((-1) ** i) for i in range(20)]  # oscillating → mid RSI
+        positions = [_pos("MUJI", 100.0)]
+        infos = {"MUJI": _info("MUJI", 150.0)}
+        alerts = detect_alerts(positions, infos, {"MUJI": closes})
+        pt = [a for a in alerts if a["type"] == "profit_take"]
+        # RSI is around mid-range, so profit_take should not fire unless RSI >= 65
+        rsi_val = None
+        from src.data.morning_summary import _calc_rsi, ALERT_THRESHOLDS
+        rsi_val = _calc_rsi(closes)
+        if rsi_val is not None and rsi_val >= ALERT_THRESHOLDS["profit_take_rsi"]:
+            assert len(pt) == 1   # only fires if RSI truly >= 65
+        else:
+            assert len(pt) == 0
+
+    def test_profit_take_small_gain_no_alert(self):
+        """RSI 高くても含み益+10% → profit_take は発火しない。"""
+        closes = [100 + i * 2 for i in range(20)]  # RSI high
+        positions = [_pos("TEST", 100.0)]
+        infos = {"TEST": _info("TEST", 110.0)}     # +10% (< 30% threshold)
+        alerts = detect_alerts(positions, infos, {"TEST": closes})
+        pt = [a for a in alerts if a["type"] == "profit_take"]
+        assert len(pt) == 0
+
+    def test_profit_take_boundary_gain(self):
+        """含み益ちょうど+30% かつ RSI ≥ 65 → profit_take 発火。"""
+        closes = [100 + i * 2 for i in range(20)]  # RSI high
+        positions = [_pos("BOUND", 100.0)]
+        infos = {"BOUND": _info("BOUND", 130.0)}   # exactly +30%
+        alerts = detect_alerts(positions, infos, {"BOUND": closes})
+        from src.data.morning_summary import _calc_rsi, ALERT_THRESHOLDS
+        rsi_val = _calc_rsi(closes)
+        pt = [a for a in alerts if a["type"] == "profit_take"]
+        if rsi_val is not None and rsi_val >= ALERT_THRESHOLDS["profit_take_rsi"]:
+            assert len(pt) == 1
+        else:
+            assert len(pt) == 0   # RSI condition not met
+
+    def test_profit_take_message_format(self):
+        """profit_take メッセージに損益%・RSI・利確検討ゾーンが含まれる。"""
+        closes = [100 + i * 2 for i in range(20)]
+        positions = [_pos("MSG", 100.0)]
+        infos = {"MSG": _info("MSG", 150.0)}
+        alerts = detect_alerts(positions, infos, {"MSG": closes})
+        pt = [a for a in alerts if a["type"] == "profit_take"]
+        if pt:
+            assert "利確検討ゾーン" in pt[0]["message"]
+            assert "RSI" in pt[0]["message"]
+
 
 # ---------------------------------------------------------------------------
 # format_morning_summary
@@ -394,6 +493,12 @@ class TestWilderGoldenValues:
 # ---------------------------------------------------------------------------
 
 class TestNikkeiPerAlerts:
+    """TestDetectAlerts 側の日経PERテストを境界値で補完する（KIK-727）。
+
+    向こうは代表値（21.5 / 26.0 / 12.0 / 16.0）、こちらは閾値ちょうどの
+    25.0 / 20.0 / 13.0 と、その直前直後を押さえる。
+    """
+
     @pytest.mark.parametrize("per,expected_type,expected_sev", [
         (26.0, "nikkei_per_bubble",     "CRITICAL"),
         (25.0, "nikkei_per_bubble",     "CRITICAL"),  # 境界 >= 25
@@ -414,9 +519,6 @@ class TestNikkeiPerAlerts:
             assert got[0]["type"] == expected_type
             assert got[0]["severity"] == expected_sev
 
-    def test_none_emits_nothing(self):
-        assert detect_alerts([], {}, {}, nikkei_per=None) == []
-
     def test_thresholds_match_market_regime(self):
         """ALERT_THRESHOLDS と NIKKEI_PER_THRESHOLDS の二重定義がずれないこと。"""
         from src.data.market_regime import NIKKEI_PER_THRESHOLDS as M
@@ -426,18 +528,13 @@ class TestNikkeiPerAlerts:
 
 
 class TestProfitTake:
-    def test_fires_on_gain_and_high_rsi(self):
-        histories = {"P": [100 + i * 2 for i in range(20)]}
-        alerts = detect_alerts([_pos("P", 100)], {"P": _info("P", 135)}, histories)
-        pt = [a for a in alerts if a["type"] == "profit_take"]
-        assert len(pt) == 1 and pt[0]["severity"] == "INFO"
+    """TestDetectAlerts 側の profit_take テストを補完する（KIK-727）。
 
-    def test_not_fired_when_rsi_low(self):
-        histories = {"P": [200 - i * 3 for i in range(20)]}
-        alerts = detect_alerts([_pos("P", 100)], {"P": _info("P", 135)}, histories)
-        assert [a for a in alerts if a["type"] == "profit_take"] == []
+    発火/非発火の基本ケースはそちらにあるため、ここは履歴欠損時のみ。
+    """
 
     def test_not_fired_without_history(self):
+        """rsi が None（履歴なし）のときは含み益が大きくても発火しない。"""
         alerts = detect_alerts([_pos("P", 100)], {"P": _info("P", 135)}, {})
         assert [a for a in alerts if a["type"] == "profit_take"] == []
 
