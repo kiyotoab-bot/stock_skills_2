@@ -1,4 +1,4 @@
-data/
+/data/
 __pycache__/
 *.pyc
 .venv/
@@ -9,6 +9,6 @@ __pycache__/
 .claude/settings.local.json
 data/models/
 articles/
-config/
+/config/
 .DS_Store
 .mcp.json
