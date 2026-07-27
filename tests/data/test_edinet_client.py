@@ -6,6 +6,33 @@ import pytest
 
 pytestmark = pytest.mark.no_auto_mock
 
+
+@pytest.fixture(autouse=True)
+def _isolated_company_map(tmp_path, monkeypatch):
+    """会社名マップをテストごとに隔離する (KIK-727)。
+
+    ``_company._CACHE_FILE`` は相対パスの実ファイル (``data/cache/``) を指して
+    おり、``observe()`` → ``_save_map()`` がリポジトリの本番キャッシュに直接
+    書いていた。実際に「テスト投資顧問」「テスト有価証券」等の架空データが
+    実キャッシュへ混入し、以後の ``lookup()`` がそれを返す状態になっていた。
+    conftest の ``_block_external_io`` は ``pytestmark = no_auto_mock`` により
+    このファイルでは効かないため、ここで明示的に隔離する。
+    """
+    import src.data.edinet_client._company as cm
+    from src.data.edinet_client._cache import clear
+
+    monkeypatch.setattr(cm, "_CACHE_FILE", tmp_path / "edinet_company_map.json")
+    monkeypatch.setattr(
+        cm, "_FALLBACK_FILE", tmp_path / "edinet_company_map_fallback.json"
+    )
+    monkeypatch.setattr(cm, "_learned_map", {})
+    monkeypatch.setattr(cm, "_map_loaded", True)
+    monkeypatch.setattr(cm, "_map_dirty", False)
+    clear()
+    yield
+    clear()
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

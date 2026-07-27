@@ -32,6 +32,10 @@ ALERT_THRESHOLDS = {
     "exit_warn_pct": -10.0,         # WARN: exit-rule(-15%) 手前の警戒ライン
 }
 
+# 前日と同じ内容でも毎回報告するアラート種別（KIK-727）。
+# ポジション単位の致命的アラートは、状態が続く限り毎日出す。
+_ALWAYS_REPORT_TYPES = frozenset({"hard_stop", "exit_rule"})
+
 
 def _calc_rsi(closes: list[float], period: int = 14) -> float | None:
     """Calculate RSI(14) using Wilder's smoothing (KIK-727).
@@ -194,7 +198,7 @@ def detect_alerts(
                         "message": f"決算{next_earnings}（残{days_until}日）",
                         "value": days_until,
                     })
-            except ValueError:
+            except (ValueError, TypeError):
                 pass
 
     # 4. VIX
@@ -231,19 +235,21 @@ def detect_alerts(
             })
 
     # 6. State-change filter: remove alerts that existed yesterday with same symbol+type
-    # KIK-727: CRITICAL は除外しない。exit-rule 抵触や損切りライン到達が継続して
-    # いる状態で2日目に消えるのは危険なため、抑制対象は WARN / INFO のみとする。
+    # KIK-727: ポジション単位の CRITICAL は除外しない。exit-rule 抵触や
+    # 損切りライン到達が継続している状態で2日目に消えるのは危険なため。
+    # 一方 vix_high / nikkei_per_bubble は市場状態で数週間〜数ヶ月続き得るので
+    # 「変化だけ知らせる」という state-change フィルタ本来の目的に従わせる。
     if prev_alerts:
         alerts = [
             a for a in alerts
-            if a.get("severity") == "CRITICAL"
+            if a.get("type") in _ALWAYS_REPORT_TYPES
             or (a["symbol"], a["type"]) not in prev_symbols_types
         ]
 
     # Sort by severity (CRITICAL first)
     # KIK-727: WARN が抜けており、生成されても INFO の後ろに回っていた。
     severity_order = {"CRITICAL": 0, "WARN": 1, "INFO": 2}
-    alerts.sort(key=lambda a: severity_order.get(a["severity"], 2))
+    alerts.sort(key=lambda a: severity_order.get(a.get("severity"), 3))
 
     return alerts
 
@@ -272,22 +278,31 @@ def format_morning_summary(alerts: list[dict], pf_total: float | None = None) ->
     lines = [f"■ 朝サマリー（{today_str} {weekday}）"]
 
     critical = [a for a in alerts if a["severity"] == "CRITICAL"]
+    warn = [a for a in alerts if a["severity"] == "WARN"]
     info = [a for a in alerts if a["severity"] == "INFO"]
 
     total_count = len(alerts)
     lines.append(f"⚠️ {total_count}件の注意")
     lines.append("")
 
+    # KIK-727: WARN 層を CRITICAL と INFO の間に表示する。
+    # 表示件数は実際に出した数から数える（総数固定で引くと、層ごとの
+    # 上限で落ちた分が「...他N件」に反映されず件数表示と食い違う）。
+    shown = 0
     for a in critical[:3]:
-        sym_display = a["symbol"]
-        lines.append(f"🔴 {sym_display}: {a['message']}")
+        lines.append(f"🔴 {a['symbol']}: {a['message']}")
+        shown += 1
+
+    for a in warn[:3]:
+        lines.append(f"🟠 {a['symbol']}: {a['message']}")
+        shown += 1
 
     for a in info[:5]:
-        sym_display = a["symbol"]
-        lines.append(f"🟡 {sym_display}: {a['message']}")
+        lines.append(f"🟡 {a['symbol']}: {a['message']}")
+        shown += 1
 
-    if len(alerts) > 8:
-        lines.append(f"  ...他{len(alerts) - 8}件")
+    if total_count > shown:
+        lines.append(f"  ...他{total_count - shown}件")
 
     # Suggest deepdive for most critical
     if critical:
@@ -296,6 +311,10 @@ def format_morning_summary(alerts: list[dict], pf_total: float | None = None) ->
             lines.append(f"\n→「{first['symbol']}を売るべきか」で詳細分析")
         elif first["type"] == "vix_high":
             lines.append(f"\n→「リスク判定して」で市況確認")
+    elif warn:
+        first = warn[0]
+        if first["type"] == "exit_approaching":
+            lines.append(f"\n→「{first['symbol']}を売るべきか」で詳細分析")
     elif info:
         first = info[0]
         if first["type"] == "earnings_soon":

@@ -40,6 +40,24 @@ JP_US_THRESHOLDS = {
 # Series alignment (KIK-727)
 # ---------------------------------------------------------------------------
 
+def _date_key(value) -> str:
+    """Normalise a date-like value to a ``YYYY-MM-DD`` string.
+
+    tz-aware な ``pd.Timestamp`` 同士は、同じ暦日でもタイムゾーンが違うと
+    等価にならずハッシュも一致しない。``get_price_history`` は yfinance の
+    DataFrame をそのまま返し、その index は取引所ローカルの tz-aware なので、
+    最も自然な ``df.index.tolist()`` を渡すと ^N225(Asia/Tokyo) と
+    ^GSPC(America/New_York) の積集合が空になり、例外も警告も出さずに
+    「データ不足」へ落ちる。暦日で正規化してこれを防ぐ。
+    """
+    if hasattr(value, "date"):
+        try:
+            return value.date().isoformat()
+        except (TypeError, ValueError):
+            pass
+    return str(value)[:10]
+
+
 def align_by_dates(
     series: list[tuple[list, list[float]]],
 ) -> tuple[list, list[list[float]]]:
@@ -54,13 +72,16 @@ def align_by_dates(
     Parameters
     ----------
     series : list[tuple[list, list[float]]]
-        ``(dates, values)`` のリスト。dates は比較可能なら型を問わない
-        （``datetime.date`` / ``pd.Timestamp`` / ``"YYYY-MM-DD"`` 文字列）。
+        ``(dates, values)`` のリスト。dates は ``datetime.date`` /
+        ``datetime.datetime`` / ``pd.Timestamp``（tz 有無・混在可） /
+        ``"YYYY-MM-DD"`` 文字列を受け付ける。内部で暦日に正規化する。
+        dates と values の長さが違う場合は **末尾を残して** 揃える
+        （本モジュールは全体が latest-last 規約のため）。
 
     Returns
     -------
     tuple[list, list[list[float]]]
-        共通日付（昇順）と、それに対応する各系列の値。
+        共通日付（``YYYY-MM-DD`` 文字列、昇順）と、対応する各系列の値。
     """
     if not series:
         return [], []
@@ -68,7 +89,10 @@ def align_by_dates(
     maps = []
     for dates, values in series:
         n = min(len(dates), len(values))
-        maps.append({dates[i]: values[i] for i in range(n)})
+        # latest-last: 長さが違うときは古い方ではなく末尾を残す。
+        keys = [_date_key(d) for d in dates[-n:]] if n else []
+        vals = list(values[-n:]) if n else []
+        maps.append(dict(zip(keys, vals)))
 
     common = set(maps[0])
     for m in maps[1:]:
@@ -84,11 +108,12 @@ def _resolve(
 ) -> tuple[list[float], list[list[float]], list, bool]:
     """Return date-aligned series when every date list is supplied.
 
-    日付が1つでも欠けている場合は従来の位置合わせにフォールバックする
-    （呼び出し側が日付を渡せない場合の後方互換）。第4要素がその可否を示す。
+    日付が1つでも欠けている（None または空）場合は従来の位置合わせに
+    フォールバックする（呼び出し側が日付を渡せない場合の後方互換）。
+    第4要素がその可否を示す。
     """
     all_dates = [dates] + [d for _, d in others]
-    if any(d is None for d in all_dates):
+    if any(not d for d in all_dates):
         n = min([len(closes)] + [len(v) for v, _ in others])
         return closes[-n:], [v[-n:] for v, _ in others], [], False
 
@@ -117,6 +142,8 @@ def calc_nikkei_usd(
         USD/JPY 日次終値（JPY/USD レート、例: 157.9）。ティッカー: USDJPY=X
     period : int
         変化率の計算ウィンドウ（営業日数、デフォルト 20 ≈ 4 週間）。
+        日付整合時は「共通営業日で20本」の意味になり、暦上の遡り期間は
+        20日よりやや長くなる（片方だけの休場日が共通日から落ちるため）。
     nikkei_dates, usdjpy_dates : list | None
         各終値に対応する日付（KIK-727）。**両方を渡すと日付で整合させる。**
         ^N225 と USDJPY=X は営業日が異なり、位置合わせでは別々の日付を
@@ -151,7 +178,9 @@ def calc_nikkei_usd(
     )
     n = len(nikkei)
     if n < min_len:
-        return _na
+        # 「日付を渡したが共通日が足りない」と「日付を渡していない」を
+        # caller が区別できるよう aligned を保持する（KIK-727 レビュー M4）。
+        return {**_na, "aligned": aligned}
 
     def _to_usd(i: int):
         return nikkei[i] / usdjpy[i] if usdjpy[i] else None
@@ -215,6 +244,8 @@ def calc_jp_us_relative(
         S&P 500 daily close prices (latest last). Ticker: ^GSPC.
     period : int
         Look-back window in trading days (~20 = 4 weeks).
+        日付整合時は「共通営業日で period 本」の意味になる。日米の祝日差で
+        年10日程度が共通日から落ちるため、暦上の遡り期間はやや長くなる。
     nikkei_dates, usdjpy_dates, spx_dates : list | None
         各終値に対応する日付（KIK-727）。**3つとも渡すと日付で整合させる。**
         日本と米国では祝日が異なるうえ、日本時間の夕方に実行すると米国市場は
@@ -260,7 +291,7 @@ def calc_jp_us_relative(
     )
     n = len(nikkei)
     if n < min_len:
-        return _na
+        return {**_na, "aligned": aligned}
 
     # Dollar-denominated Nikkei series
     nikkei_usd = [

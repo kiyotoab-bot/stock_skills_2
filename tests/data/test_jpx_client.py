@@ -185,8 +185,8 @@ class TestMarginScraping:
         import src.data.jpx_client._cache as cache_mod
         monkeypatch.setattr(cache_mod, "CACHE_DIR", tmp_path)
 
-        # Write previous week cache
-        cache_mod.write_cache("margin", "202617", {"margin_ratio": 3.0, "week_of": "2026-04-20"})
+        # Write previous week cache（前週 2.5 → 今週 3.0 なので +20%）
+        cache_mod.write_cache("margin", "202617", {"margin_ratio": 2.5, "week_of": "2026-04-20"})
 
         from src.data.jpx_client import margin as margin_mod
         html = '<a href="/margins/tvd/mtdailyk9.xls">x</a>'
@@ -194,11 +194,14 @@ class TestMarginScraping:
             "src.data.jpx_client._common.requests.get",
             lambda url, **kw: _mock_response(html if "index.html" in url else None, b"\xd0\xcf\x11\xe0"),
         )
+        # margin.py は `from ._cache import week_key` でモジュールグローバルに
+        # 束縛しているため、_cache 側を差し替えても効かない。import 先を差し替える。
         with patch("src.data.jpx_client.margin.read_xls", return_value=_make_margin_df()):
-            with patch("src.data.jpx_client._cache.week_key", return_value="202618"):
+            with patch("src.data.jpx_client.margin.week_key", return_value="202618"):
                 result = margin_mod.get_margin()
 
-        assert result["wow_change_pct"] is not None
+        # 実値まで固定する（is not None だけでは前週比ロジックの退行を拾えない）
+        assert result["wow_change_pct"] == pytest.approx(20.0)
 
 
 # ---------------------------------------------------------------------------

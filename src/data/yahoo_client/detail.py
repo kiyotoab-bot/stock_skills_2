@@ -24,21 +24,49 @@ from src.data.yahoo_client._normalize import (
 def _earnings_date(info: dict) -> Optional[str]:
     """Extract the next earnings date as YYYY-MM-DD from a yfinance info dict.
 
-    yfinance exposes the date as a POSIX timestamp under ``earningsTimestamp``
-    (with ``earningsTimestampStart`` as a fallback).  Returns None when the
-    field is missing or unparsable.
+    yfinance は POSIX タイムスタンプで ``earningsTimestamp`` /
+    ``earningsTimestampStart`` / ``earningsTimestampEnd`` を返す。
+
+    取引所ローカルのタイムゾーン（``exchangeTimezoneName``）で日付化する。
+    UTC で日付化すると JST 09:00 より前を指す値が前日になり、推定日を
+    「現地 00:00」で持つケース（``isEarningsDateEstimate`` が真のとき）は
+    確実に1日前倒しされる。前倒しされると ``detect_alerts`` の
+    ``0 <= days_until <= 7`` 判定で決算当日に ``days_until = -1`` となり、
+    最も知りたい日にアラートが消える。
+
+    複数のキーのうち **今日以降で最も近い日** を採る。``earningsTimestamp``
+    は直近の確定済み（過去の）決算日を指すことがあり、単純に先頭優先で
+    確定させると過去日を掴んで同じくアラートが出なくなる。
+    全て過去なら最も新しい過去日を返す（情報として保持する）。
     """
     from datetime import datetime, timezone
 
-    for key in ("earningsTimestamp", "earningsTimestampStart"):
+    tz = timezone.utc
+    tz_name = _safe_get(info, "exchangeTimezoneName")
+    if tz_name:
+        try:
+            from zoneinfo import ZoneInfo
+
+            tz = ZoneInfo(str(tz_name))
+        except Exception:
+            tz = timezone.utc
+
+    today = datetime.now(tz).date()
+    candidates = []
+    for key in ("earningsTimestamp", "earningsTimestampStart", "earningsTimestampEnd"):
         ts = _safe_get(info, key)
         if ts is None:
             continue
         try:
-            return datetime.fromtimestamp(float(ts), tz=timezone.utc).date().isoformat()
+            candidates.append(datetime.fromtimestamp(float(ts), tz=tz).date())
         except (ValueError, OSError, OverflowError, TypeError):
             continue
-    return None
+
+    if not candidates:
+        return None
+
+    future = [d for d in candidates if d >= today]
+    return (min(future) if future else max(candidates)).isoformat()
 
 
 def _try_get_field(df: Any, field_names: list[str]) -> Optional[float]:
@@ -191,7 +219,11 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             # portfolio.csv の next_earnings 列は手動更新前提で常に空欄のままだったため
             # detect_alerts の earnings_soon が一度も発火していなかった。ここで自動取得する。
             "next_earnings": _earnings_date(info),
-            "earnings_date_estimated": bool(_safe_get(info, "isEarningsDateEstimate")),
+            # 「推定でない」と「決算日が取れていない」を潰さないよう None を許す
+            "earnings_date_estimated": (
+                bool(_safe_get(info, "isEarningsDateEstimate"))
+                if _earnings_date(info) else None
+            ),
         }
 
         _sanitize_anomalies(result)

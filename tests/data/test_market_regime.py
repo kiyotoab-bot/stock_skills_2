@@ -1,7 +1,11 @@
 """Tests for src/data/market_regime.py."""
 
+from datetime import date, timedelta
+
 import pytest
+
 from src.data.market_regime import (
+    align_by_dates,
     calc_nikkei_usd, NIKKEI_USD_THRESHOLDS,
     calc_jp_us_relative, JP_US_THRESHOLDS,
     calc_nt_ratio, NT_THRESHOLDS,
@@ -329,10 +333,6 @@ class TestCalcNikkeiPerSignal:
 # Date alignment (KIK-727)
 # ---------------------------------------------------------------------------
 
-from datetime import date, timedelta
-
-from src.data.market_regime import align_by_dates
-
 
 def _days(n: int, start: date = date(2026, 1, 5)) -> list[date]:
     """n 営業日ぶんの連続日付（土日は考慮しない単純連番）。"""
@@ -344,7 +344,7 @@ class TestAlignByDates:
         d1 = [date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7)]
         d2 = [date(2026, 1, 5), date(2026, 1, 7), date(2026, 1, 8)]
         dates, vals = align_by_dates([(d1, [1.0, 2.0, 3.0]), (d2, [10.0, 30.0, 40.0])])
-        assert dates == [date(2026, 1, 5), date(2026, 1, 7)]
+        assert dates == ["2026-01-05", "2026-01-07"]
         assert vals == [[1.0, 3.0], [10.0, 30.0]]
 
     def test_empty_input(self):
@@ -389,7 +389,7 @@ class TestNikkeiUsdAlignment:
         usdjpy = [150.0] * 25
         r = calc_nikkei_usd(nikkei, usdjpy, nikkei_dates=d, usdjpy_dates=d)
         assert r["aligned"] is True
-        assert r["as_of"] == str(d[-1])
+        assert r["as_of"] == d[-1].isoformat()
         # 全期間 150 固定なので日経の変化率と一致する
         expected = (nikkei[-1] - nikkei[-21]) / nikkei[-21] * 100
         assert r["nikkei_usd_chg_pct"] == pytest.approx(round(expected, 2))
@@ -430,7 +430,7 @@ class TestJpUsAlignment:
         )
         assert misaligned["aligned"] is False
         assert aligned["aligned"] is True
-        assert aligned["as_of"] == str(spx_dates[-1])
+        assert aligned["as_of"] == spx_dates[-1].isoformat()
         # 整合後は共通日付が24本になり、基準日が変わるので値が変わる
         assert misaligned["relative_pct"] != aligned["relative_pct"]
 
@@ -438,3 +438,133 @@ class TestJpUsAlignment:
         r = calc_jp_us_relative(_trend(40000, 44000), _flat(150), _trend(7000, 7100))
         assert r["aligned"] is False
         assert r["signal"] in ("japan", "us", "neutral")
+
+
+class TestAlignmentExpectedValues:
+    """整合後の値を式で固定する（KIK-727 レビュー M3）。
+
+    `!=` だけでは「変わったこと」しか言えず、整合後の値が正しいかを
+    保証できない。共通日付から基準 index を決めて期待値を算出する。
+    """
+
+    def test_stale_spx_uses_common_last_date(self):
+        nk_dates, spx_dates = _days(25), _days(24)
+        nikkei = [40000.0 + i * 100 for i in range(25)]
+        usdjpy = [150.0] * 25
+        spx = [7000.0 + i * 30 for i in range(24)]
+
+        r = calc_jp_us_relative(
+            nikkei, usdjpy, spx,
+            nikkei_dates=nk_dates, usdjpy_dates=nk_dates, spx_dates=spx_dates,
+        )
+        # 共通日付は 24 本。最新は index 23、基準は index 3。
+        exp_nk = (nikkei[23] / 150 - nikkei[3] / 150) / (nikkei[3] / 150) * 100
+        exp_spx = (spx[23] - spx[3]) / spx[3] * 100
+        assert r["as_of"] == spx_dates[-1].isoformat()
+        assert r["nikkei_usd_chg_pct"] == pytest.approx(round(exp_nk, 2))
+        assert r["spx_chg_pct"] == pytest.approx(round(exp_spx, 2))
+        assert r["relative_pct"] == pytest.approx(round(exp_nk - exp_spx, 2))
+
+    def test_alignment_can_flip_signal(self):
+        """ずれが判断（signal）を変えることを示す。"""
+        nk_dates = _days(25)
+        # USDJPY は日経の休場日を5日含む＝末尾5本が別日とペアになる
+        fx_dates = _days(30)
+        nikkei = [40000.0] * 25
+        usdjpy = [150.0] * 25 + [130.0] * 5  # 後半で急激な円高
+
+        mis = calc_nikkei_usd(nikkei, usdjpy)
+        ali = calc_nikkei_usd(
+            nikkei, usdjpy, nikkei_dates=nk_dates, usdjpy_dates=fx_dates
+        )
+        assert mis["signal"] == "rising"   # 円高分を誤って取り込む
+        assert ali["signal"] == "flat"     # 日経も為替も動いていない
+        assert ali["nikkei_usd_chg_pct"] == pytest.approx(0.0)
+
+    def test_holiday_gap_as_of_is_common_last_date(self):
+        nk_dates, fx_dates = _days(25), _days(30)
+        r = calc_nikkei_usd(
+            [40000.0 + i * 100 for i in range(25)],
+            [150.0] * 30,
+            nikkei_dates=nk_dates, usdjpy_dates=fx_dates,
+        )
+        assert r["as_of"] == nk_dates[-1].isoformat()
+
+
+class TestAlignmentBoundaries:
+    """min_len の二段チェック（KIK-727 レビュー M1）。
+
+    「生の長さは足りるが整合後に不足」というケースが要。片側の判定だけを
+    消しても通ってしまう状態を防ぐ。
+    """
+
+    def test_overlap_exactly_min_len_ok(self):
+        d1, d2 = _days(25), _days(25, start=date(2026, 1, 9))  # overlap = 21
+        r = calc_nikkei_usd(_trend(40000, 44000), _flat(150),
+                            nikkei_dates=d1, usdjpy_dates=d2)
+        assert r["aligned"] is True
+        assert r["signal"] != "unavailable"
+
+    def test_overlap_one_short_returns_na(self):
+        d1, d2 = _days(25), _days(25, start=date(2026, 1, 10))  # overlap = 20
+        r = calc_nikkei_usd(_trend(40000, 44000), _flat(150),
+                            nikkei_dates=d1, usdjpy_dates=d2)
+        assert r["signal"] == "unavailable"
+        # 「日付を渡したが重なり不足」と「日付未指定」を区別できること
+        assert r["aligned"] is True
+
+    def test_no_dates_reports_aligned_false_on_na(self):
+        r = calc_nikkei_usd([1.0] * 25, [1.0] * 25, period=30)
+        assert r["signal"] == "unavailable"
+        assert r["aligned"] is False
+
+
+class TestAlignByDatesEdgeCases:
+    def test_tz_aware_timestamps_from_different_exchanges(self):
+        """tz が違う Timestamp でも同じ暦日なら突き合わせる。
+
+        get_price_history は yfinance の tz-aware index をそのまま返すため、
+        df.index.tolist() を渡すのが最も自然な使い方。正規化しないと
+        ^N225(Asia/Tokyo) と ^GSPC(America/New_York) の積集合が空になり、
+        例外も警告もなく「データ不足」に落ちる。
+        """
+        pd = pytest.importorskip("pandas")
+        jp = [pd.Timestamp("2026-01-05", tz="Asia/Tokyo"),
+              pd.Timestamp("2026-01-06", tz="Asia/Tokyo")]
+        us = [pd.Timestamp("2026-01-05", tz="America/New_York"),
+              pd.Timestamp("2026-01-06", tz="America/New_York")]
+        dates, vals = align_by_dates([(jp, [1.0, 2.0]), (us, [10.0, 20.0])])
+        assert dates == ["2026-01-05", "2026-01-06"]
+        assert vals == [[1.0, 2.0], [10.0, 20.0]]
+
+    def test_naive_and_aware_mix(self):
+        pd = pytest.importorskip("pandas")
+        a = [pd.Timestamp("2026-01-05", tz="Asia/Tokyo")]
+        b = [date(2026, 1, 5)]
+        dates, vals = align_by_dates([(a, [1.0]), (b, [2.0])])
+        assert dates == ["2026-01-05"]
+        assert vals == [[1.0], [2.0]]
+
+    def test_mismatched_lengths_keep_tail(self):
+        """長さが違うときは先頭ではなく末尾を残す（latest-last 規約）。"""
+        d = _days(5)
+        # 値が3本しかない = 直近3日分とみなす
+        dates, vals = align_by_dates([(d, [30.0, 40.0, 50.0]), (d, [1., 2., 3., 4., 5.])])
+        assert dates == [x.isoformat() for x in d[-3:]]
+        assert vals[0] == [30.0, 40.0, 50.0]
+        assert vals[1] == [3.0, 4.0, 5.0]
+
+    def test_duplicate_dates_last_wins(self):
+        dates, vals = align_by_dates([
+            ([date(2026, 1, 5), date(2026, 1, 5), date(2026, 1, 6)], [1.0, 9.0, 2.0]),
+            ([date(2026, 1, 5), date(2026, 1, 6)], [10.0, 20.0]),
+        ])
+        assert dates == ["2026-01-05", "2026-01-06"]
+        assert vals[0] == [9.0, 2.0]
+
+    def test_empty_date_list_falls_back(self):
+        """dates=[] は None と同じくフォールバックさせる。"""
+        r = calc_nikkei_usd(_trend(40000, 44000), _flat(150),
+                            nikkei_dates=[], usdjpy_dates=[])
+        assert r["aligned"] is False
+        assert r["signal"] != "unavailable"

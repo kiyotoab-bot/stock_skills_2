@@ -321,3 +321,193 @@ class TestFormatMorningSummary:
         result = format_morning_summary([])
         today = date.today().strftime("%m/%d")
         assert today in result
+
+
+# ---------------------------------------------------------------------------
+# 閾値・境界値（KIK-727 レビュー M1）
+# ---------------------------------------------------------------------------
+
+class TestPnlThresholdBoundaries:
+    @pytest.mark.parametrize("price,expected", [
+        (90.001, []),                    # -9.999% → 未発火
+        (90.0,   ["exit_approaching"]),  # ちょうど -10.0%
+        (85.001, ["exit_approaching"]),  # -14.999%
+        (85.0,   ["exit_rule"]),         # ちょうど -15.0%
+        (80.001, ["exit_rule"]),         # -19.999%
+        (80.0,   ["hard_stop"]),         # ちょうど -20.0%
+    ])
+    def test_boundaries(self, price, expected):
+        alerts = detect_alerts([_pos("X", 100)], {"X": _info("X", price)}, {})
+        got = [a["type"] for a in alerts
+               if a["type"] in ("exit_approaching", "exit_rule", "hard_stop")]
+        assert got == expected
+
+
+class TestCalcRSIBoundaries:
+    def test_exactly_period_returns_none(self):
+        assert _calc_rsi(list(range(14))) is None
+
+    def test_exactly_period_plus_one_returns_value(self):
+        assert _calc_rsi(list(range(15))) == 100.0
+
+    def test_custom_period_boundary(self):
+        assert _calc_rsi(list(range(5)), period=5) is None
+        assert _calc_rsi(list(range(6)), period=5) == 100.0
+
+
+# ---------------------------------------------------------------------------
+# Wilder RSI のゴールデン値（KIK-727 レビュー M2）
+# ---------------------------------------------------------------------------
+
+class TestWilderGoldenValues:
+    """参照実装との一致ではなく、外部で手計算した固定値で検証する。
+
+    テスト内に本実装と同構造の参照実装を置くと、同じ off-by-one を
+    両方に入れた場合に緑のまま通ってしまうため。
+    """
+
+    # Wilder の教科書データ（15本＝period+1、シード期のみ）
+    _SEED = [
+        44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42,
+        45.84, 46.08, 45.89, 46.03, 45.61, 46.28, 46.28,
+    ]
+    _EXTENDED = _SEED + [46.00, 46.03, 46.41, 46.22, 45.64]
+
+    def test_seed_matches_hand_computed(self):
+        """gains合計 3.34/14 = 0.2385714, losses合計 1.40/14 = 0.10
+
+        RS = 2.3857143 → RSI = 100 - 100/3.3857143 = 70.4641350
+        """
+        assert _calc_rsi(self._SEED) == pytest.approx(70.46413502, abs=1e-6)
+
+    def test_smoothing_extends_beyond_seed(self):
+        assert _calc_rsi(self._EXTENDED) == pytest.approx(57.91502067, abs=1e-6)
+
+    def test_not_cutlers_rsi(self):
+        """旧実装（直近15本の単純平均＝シードのみ）と明確に異なること。"""
+        cutlers = _calc_rsi(self._EXTENDED[-15:])
+        assert abs(_calc_rsi(self._EXTENDED) - cutlers) > 1.0
+
+
+# ---------------------------------------------------------------------------
+# 日経PER アラート（KIK-727 レビュー H3）
+# ---------------------------------------------------------------------------
+
+class TestNikkeiPerAlerts:
+    @pytest.mark.parametrize("per,expected_type,expected_sev", [
+        (26.0, "nikkei_per_bubble",     "CRITICAL"),
+        (25.0, "nikkei_per_bubble",     "CRITICAL"),  # 境界 >= 25
+        (24.9, "nikkei_per_overvalued", "INFO"),
+        (20.0, "nikkei_per_overvalued", "INFO"),      # 境界 >= 20
+        (19.9, None, None),                           # 正常レンジ
+        (13.1, None, None),
+        (13.0, "nikkei_per_cheap",      "INFO"),      # 境界 <= 13
+        (12.0, "nikkei_per_cheap",      "INFO"),
+    ])
+    def test_thresholds(self, per, expected_type, expected_sev):
+        alerts = detect_alerts([], {}, {}, nikkei_per=per)
+        got = [a for a in alerts if a["symbol"] == "^N225"]
+        if expected_type is None:
+            assert got == []
+        else:
+            assert len(got) == 1
+            assert got[0]["type"] == expected_type
+            assert got[0]["severity"] == expected_sev
+
+    def test_none_emits_nothing(self):
+        assert detect_alerts([], {}, {}, nikkei_per=None) == []
+
+    def test_thresholds_match_market_regime(self):
+        """ALERT_THRESHOLDS と NIKKEI_PER_THRESHOLDS の二重定義がずれないこと。"""
+        from src.data.market_regime import NIKKEI_PER_THRESHOLDS as M
+        assert ALERT_THRESHOLDS["nikkei_per_bubble"] == M["bubble"]
+        assert ALERT_THRESHOLDS["nikkei_per_overvalued"] == M["overvalued"]
+        assert ALERT_THRESHOLDS["nikkei_per_cheap"] == M["cheap"]
+
+
+class TestProfitTake:
+    def test_fires_on_gain_and_high_rsi(self):
+        histories = {"P": [100 + i * 2 for i in range(20)]}
+        alerts = detect_alerts([_pos("P", 100)], {"P": _info("P", 135)}, histories)
+        pt = [a for a in alerts if a["type"] == "profit_take"]
+        assert len(pt) == 1 and pt[0]["severity"] == "INFO"
+
+    def test_not_fired_when_rsi_low(self):
+        histories = {"P": [200 - i * 3 for i in range(20)]}
+        alerts = detect_alerts([_pos("P", 100)], {"P": _info("P", 135)}, histories)
+        assert [a for a in alerts if a["type"] == "profit_take"] == []
+
+    def test_not_fired_without_history(self):
+        alerts = detect_alerts([_pos("P", 100)], {"P": _info("P", 135)}, {})
+        assert [a for a in alerts if a["type"] == "profit_take"] == []
+
+
+# ---------------------------------------------------------------------------
+# state-change フィルタの補完（KIK-727 レビュー L2 / M3）
+# ---------------------------------------------------------------------------
+
+class TestStateChangeFilterExtra:
+    def test_suppresses_warn(self):
+        prev = [{"symbol": "X", "type": "exit_approaching"}]
+        alerts = detect_alerts([_pos("X", 100)], {"X": _info("X", 88)}, {},
+                               prev_alerts=prev)
+        assert [a for a in alerts if a["type"] == "exit_approaching"] == []
+
+    def test_keeps_new_critical_type(self):
+        prev = [{"symbol": "X", "type": "rsi_low"}]
+        alerts = detect_alerts([_pos("X", 100)], {"X": _info("X", 78)}, {},
+                               prev_alerts=prev)
+        assert [a["type"] for a in alerts] == ["hard_stop"]
+
+    def test_market_wide_critical_is_suppressed(self):
+        """vix_high は市場状態で数ヶ月続き得るので state-change に従わせる。"""
+        prev = [{"symbol": "^VIX", "type": "vix_high"}]
+        alerts = detect_alerts([], {}, {}, vix_price=35.0, prev_alerts=prev)
+        assert alerts == []
+
+    def test_position_critical_is_not_suppressed(self):
+        prev = [{"symbol": "X", "type": "hard_stop"}]
+        alerts = detect_alerts([_pos("X", 100)], {"X": _info("X", 78)}, {},
+                               prev_alerts=prev)
+        assert [a["type"] for a in alerts] == ["hard_stop"]
+
+
+# ---------------------------------------------------------------------------
+# format_morning_summary の WARN 表示（KIK-727 レビュー H1）
+# ---------------------------------------------------------------------------
+
+def _alert(sym, typ, sev, msg="msg", value=0):
+    return {"symbol": sym, "type": typ, "severity": sev,
+            "message": msg, "value": value}
+
+
+class TestFormatWarnRendering:
+    def test_warn_is_rendered(self):
+        alerts = [_alert("X", "exit_approaching", "WARN",
+                         "損益-12.0% → exit-rule(-15%)まであと3.0pt")]
+        result = format_morning_summary(alerts)
+        assert "1件の注意" in result
+        assert "X" in result and "exit-rule" in result
+        # ヘッダ＋空行以外に本文が最低1行あること
+        assert len([l for l in result.split("\n") if l.strip()]) >= 2
+
+    def test_order_critical_warn_info(self):
+        alerts = [
+            _alert("C", "exit_rule", "CRITICAL", "c"),
+            _alert("W", "exit_approaching", "WARN", "w"),
+            _alert("I", "rsi_low", "INFO", "i"),
+        ]
+        r = format_morning_summary(alerts)
+        assert r.index("C:") < r.index("W:") < r.index("I:")
+
+    def test_overflow_count_matches_shown(self):
+        """層ごとの上限で落ちた分が「...他N件」と一致すること。"""
+        alerts = (
+            [_alert(f"C{i}", "exit_rule", "CRITICAL") for i in range(5)]
+            + [_alert(f"W{i}", "exit_approaching", "WARN") for i in range(5)]
+            + [_alert(f"I{i}", "rsi_low", "INFO") for i in range(7)]
+        )
+        r = format_morning_summary(alerts)
+        shown = sum(1 for l in r.split("\n") if l.startswith(("🔴", "🟠", "🟡")))
+        assert shown == 3 + 3 + 5
+        assert f"...他{17 - shown}件" in r
