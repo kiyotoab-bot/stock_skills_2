@@ -21,6 +21,26 @@ from src.data.yahoo_client._normalize import (
 )
 
 
+def _earnings_date(info: dict) -> Optional[str]:
+    """Extract the next earnings date as YYYY-MM-DD from a yfinance info dict.
+
+    yfinance exposes the date as a POSIX timestamp under ``earningsTimestamp``
+    (with ``earningsTimestampStart`` as a fallback).  Returns None when the
+    field is missing or unparsable.
+    """
+    from datetime import datetime, timezone
+
+    for key in ("earningsTimestamp", "earningsTimestampStart"):
+        ts = _safe_get(info, key)
+        if ts is None:
+            continue
+        try:
+            return datetime.fromtimestamp(float(ts), tz=timezone.utc).date().isoformat()
+        except (ValueError, OSError, OverflowError, TypeError):
+            continue
+    return None
+
+
 def _try_get_field(df: Any, field_names: list[str]) -> Optional[float]:
     """Try to extract a numeric value from a DataFrame row using multiple
     possible field names.  Returns None if the DataFrame is empty or none of
@@ -167,6 +187,11 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             "fifty_two_week_low": _safe_get(info, "fiftyTwoWeekLow"),
             # Quote type (KIK-469)
             "quoteType": _safe_get(info, "quoteType"),
+            # Next earnings date (KIK-727)
+            # portfolio.csv の next_earnings 列は手動更新前提で常に空欄のままだったため
+            # detect_alerts の earnings_soon が一度も発火していなかった。ここで自動取得する。
+            "next_earnings": _earnings_date(info),
+            "earnings_date_estimated": bool(_safe_get(info, "isEarningsDateEstimate")),
         }
 
         _sanitize_anomalies(result)

@@ -24,18 +24,39 @@ ALERT_THRESHOLDS = {
     "rsi_oversold": 30,
     "earnings_days": 7,           # days before earnings to alert
     "vix_elevated": 25,
+    "nikkei_per_overvalued": 20.0,  # 割高注意
+    "nikkei_per_bubble": 25.0,      # 過熱警告（強制risk-off考慮水準）
+    "nikkei_per_cheap": 13.0,       # 割安シグナル
+    "profit_take_gain": 30.0,       # 利確検討: 含み益 >= 30%
+    "profit_take_rsi": 65.0,        # 利確検討: RSI >= 65（上昇圏）
+    "exit_warn_pct": -10.0,         # WARN: exit-rule(-15%) 手前の警戒ライン
 }
 
 
 def _calc_rsi(closes: list[float], period: int = 14) -> float | None:
-    """Calculate RSI(14) from close prices."""
+    """Calculate RSI(14) using Wilder's smoothing (KIK-727).
+
+    旧実装は直近 period+1 本の単純平均（Cutler's RSI）だった。閾値 30/70 は
+    Wilder 平滑を前提に定まった値であり、算出方式が噛み合っていなかった。
+    実測では保有＋WL 46銘柄で平均 6.2pt・最大 20.8pt 乖離し、5銘柄(11%)で
+    買われすぎ/売られすぎの判定が食い違っていた。
+
+    Wilder は系列全体を平滑するため、渡す ``closes`` が長いほど値が安定する。
+    """
     if len(closes) < period + 1:
         return None
-    deltas = np.diff(closes[-(period + 1):])
-    gains = np.where(deltas > 0, deltas, 0)
-    losses = np.where(deltas < 0, -deltas, 0)
-    avg_gain = np.mean(gains)
-    avg_loss = np.mean(losses)
+
+    deltas = np.diff(np.asarray(closes, dtype=float))
+    gains = np.where(deltas > 0, deltas, 0.0)
+    losses = np.where(deltas < 0, -deltas, 0.0)
+
+    # Seed with the simple average of the first `period` deltas, then smooth.
+    avg_gain = float(np.mean(gains[:period]))
+    avg_loss = float(np.mean(losses[:period]))
+    for i in range(period, len(deltas)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
@@ -52,6 +73,7 @@ def detect_alerts(
     histories: dict[str, list[float]],
     vix_price: float | None = None,
     prev_alerts: list[dict] | None = None,
+    nikkei_per: float | None = None,
 ) -> list[dict]:
     """Detect anomalies across portfolio holdings.
 
@@ -67,6 +89,8 @@ def detect_alerts(
         Current VIX value.
     prev_alerts : list[dict] | None
         Previous day's alerts for state-change filtering.
+    nikkei_per : float | None
+        Nikkei 225 PER (Price-to-Earnings Ratio). Alerts when overvalued or cheap.
 
     Returns
     -------
@@ -88,9 +112,13 @@ def detect_alerts(
         price = safe_float(info.get("price"))
         cost = safe_float(pos.get("cost_price"))
 
-        # 1. Exit-rule: P&L threshold
+        # P&L calculation (shared between exit-rule and profit-take checks)
+        pnl_pct: float | None = None
         if price > 0 and cost > 0:
             pnl_pct = (price - cost) / cost * 100
+
+        # 1. Exit-rule: loss threshold
+        if pnl_pct is not None:
             if pnl_pct <= thr["hard_stop_pct"]:
                 alerts.append({
                     "symbol": sym, "type": "hard_stop",
@@ -103,6 +131,18 @@ def detect_alerts(
                     "symbol": sym, "type": "exit_rule",
                     "severity": "CRITICAL",
                     "message": f"損益{pnl_pct:+.1f}% → exit-rule(-15%)到達",
+                    "value": pnl_pct,
+                })
+            elif pnl_pct <= thr["exit_warn_pct"]:
+                # KIK-727: WARN 層。従来 WARN は一度も生成されず、レポートの
+                # 「WARN 0件」が無内容だった。exit-rule 到達手前をここで拾う。
+                alerts.append({
+                    "symbol": sym, "type": "exit_approaching",
+                    "severity": "WARN",
+                    "message": (
+                        f"損益{pnl_pct:+.1f}% → exit-rule(-15%)まで"
+                        f"あと{pnl_pct - thr['exit_rule_pct']:.1f}pt"
+                    ),
                     "value": pnl_pct,
                 })
 
@@ -125,8 +165,24 @@ def detect_alerts(
                     "value": rsi,
                 })
 
+        # 2b. Profit-take: large gain + RSI elevated
+        if (pnl_pct is not None and rsi is not None
+                and pnl_pct >= thr["profit_take_gain"]
+                and rsi >= thr["profit_take_rsi"]):
+            alerts.append({
+                "symbol": sym, "type": "profit_take",
+                "severity": "INFO",
+                "message": f"損益{pnl_pct:+.1f}% RSI{rsi:.0f} → 利確検討ゾーン",
+                "value": pnl_pct,
+            })
+
         # 3. Upcoming earnings
+        # KIK-727: portfolio.csv の next_earnings 列は手動更新前提で常に空欄のため、
+        # このアラートは一度も発火していなかった。get_stock_info が自動取得する
+        # next_earnings にフォールバックする。CSV に明示値があればそちらを優先。
         next_earnings = pos.get("next_earnings") or ""
+        if not next_earnings and info:
+            next_earnings = info.get("next_earnings") or ""
         if next_earnings:
             try:
                 earn_date = datetime.strptime(next_earnings, "%Y-%m-%d").date()
@@ -150,13 +206,43 @@ def detect_alerts(
             "value": vix_price,
         })
 
-    # 5. State-change filter: remove alerts that existed yesterday with same symbol+type
+    # 5. Nikkei 225 PER
+    if nikkei_per is not None:
+        if nikkei_per >= thr["nikkei_per_bubble"]:
+            alerts.append({
+                "symbol": "^N225", "type": "nikkei_per_bubble",
+                "severity": "CRITICAL",
+                "message": f"日経PER {nikkei_per:.1f}倍 → 過熱警告（>={thr['nikkei_per_bubble']:.0f}倍）",
+                "value": nikkei_per,
+            })
+        elif nikkei_per >= thr["nikkei_per_overvalued"]:
+            alerts.append({
+                "symbol": "^N225", "type": "nikkei_per_overvalued",
+                "severity": "INFO",
+                "message": f"日経PER {nikkei_per:.1f}倍 → 割高注意（>={thr['nikkei_per_overvalued']:.0f}倍）",
+                "value": nikkei_per,
+            })
+        elif nikkei_per <= thr["nikkei_per_cheap"]:
+            alerts.append({
+                "symbol": "^N225", "type": "nikkei_per_cheap",
+                "severity": "INFO",
+                "message": f"日経PER {nikkei_per:.1f}倍 → 割安シグナル（<={thr['nikkei_per_cheap']:.0f}倍）",
+                "value": nikkei_per,
+            })
+
+    # 6. State-change filter: remove alerts that existed yesterday with same symbol+type
+    # KIK-727: CRITICAL は除外しない。exit-rule 抵触や損切りライン到達が継続して
+    # いる状態で2日目に消えるのは危険なため、抑制対象は WARN / INFO のみとする。
     if prev_alerts:
-        alerts = [a for a in alerts
-                  if (a["symbol"], a["type"]) not in prev_symbols_types]
+        alerts = [
+            a for a in alerts
+            if a.get("severity") == "CRITICAL"
+            or (a["symbol"], a["type"]) not in prev_symbols_types
+        ]
 
     # Sort by severity (CRITICAL first)
-    severity_order = {"CRITICAL": 0, "INFO": 1}
+    # KIK-727: WARN が抜けており、生成されても INFO の後ろに回っていた。
+    severity_order = {"CRITICAL": 0, "WARN": 1, "INFO": 2}
     alerts.sort(key=lambda a: severity_order.get(a["severity"], 2))
 
     return alerts
@@ -214,5 +300,7 @@ def format_morning_summary(alerts: list[dict], pf_total: float | None = None) ->
         first = info[0]
         if first["type"] == "earnings_soon":
             lines.append(f"\n→「{first['symbol']}の決算前チェック」で確認")
+        elif first["type"] == "profit_take":
+            lines.append(f"\n→「{first['symbol']}を利確すべきか」で詳細分析")
 
     return "\n".join(lines)
