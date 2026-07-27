@@ -22,7 +22,7 @@ try:
         search_stock_deep,
         search_x_sentiment,
         # マーケット検索
-        search_market,
+        search_market as _grok_search_market,
         search_trending_stocks,
         get_trending_themes,
         # 業界検索
@@ -35,6 +35,25 @@ try:
     HAS_GROK = True
 except ImportError:
     HAS_GROK = False
+
+
+def search_market(market_or_index: str, timeout: int = 30, context: str = "") -> dict:
+    """Grok で市況を検索。失敗時は Google News + NHK RSS にフォールバック。"""
+    if HAS_GROK:
+        result = _grok_search_market(market_or_index, timeout=timeout, context=context)
+        # Grok が正常に応答した場合はそのまま返す
+        if result.get("price_action") or result.get("raw_response"):
+            return result
+    # Grok 未設定・失敗 → RSS フォールバック
+    try:
+        from src.data.news_client import search_market_rss
+        return search_market_rss(market_or_index)
+    except Exception:
+        return {
+            "price_action": "", "macro_factors": [], "raw_response": "",
+            "sentiment": {"score": 0.0, "summary": ""},
+            "upcoming_events": [], "sector_rotation": [], "source": "unavailable",
+        }
 
 __all__ = [
     # 可用性
