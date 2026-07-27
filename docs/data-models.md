@@ -37,8 +37,10 @@
 | `fifty_two_week_high` | `float \| None` | 52週高値 | `fiftyTwoWeekHigh` | — |
 | `fifty_two_week_low` | `float \| None` | 52週安値 | `fiftyTwoWeekLow` | — |
 | `quoteType` | `str \| None` | 種別 ("EQUITY" / "ETF" 等) | `quoteType` | — |
+| `next_earnings` | `str \| None` | 次回決算予定日（YYYY-MM-DD） | `earningsTimestamp` 他 | 取引所TZ（`exchangeTimezoneName`）で日付化。候補のうち今日以降で最も近い日を採る。ETF は None |
+| `earnings_date_estimated` | `bool \| None` | 決算日が推定値か | `isEarningsDateEstimate` | `next_earnings` が None のときは None |
 
-**合計: 27 キー**（`quoteType` は KIK-469 で追加）
+**合計: 29 キー**（`quoteType` は KIK-469、`next_earnings` / `earnings_date_estimated` は KIK-727 で追加）
 
 ### 正規化ルール (`_normalize_ratio`)
 
@@ -165,7 +167,7 @@ ETF の場合のみ有意な値を持つ。個別株では `None` が多い。
 | `cost_currency` | str | 取得通貨（JPY, USD, SGD, IDR） |
 | `purchase_date` | str | 取得日（YYYY-MM-DD） |
 | `memo` | str | メモ |
-| `next_earnings` | str | 直近決算日（YYYY-MM-DD）。ETF は空欄 (KIK-683) |
+| `next_earnings` | str | **次回**決算予定日（YYYY-MM-DD）。ETF は空欄 (KIK-683)<br>空欄でも `get_stock_info()` が yfinance から自動取得した値にフォールバックするため、手動更新は任意 (KIK-727) |
 | `div_yield` | float? | 配当利回り（%）。None = 未設定 (KIK-694) |
 | `buyback_yield` | float? | 自社株買い利回り（%）(KIK-694) |
 | `total_return` | float? | 総還元率（%）= div_yield + buyback_yield (KIK-694) |
