@@ -28,22 +28,44 @@ class TestSyncAll:
         assert isinstance(result["failed"], list)
         assert isinstance(result["skipped"], list)
 
-    def test_portfolio_sync_called(self):
-        """When Neo4j available, portfolio sync is attempted."""
-        from tools.graphrag import sync_all
-        with patch("src.data.graph_store._common.is_available", return_value=True), \
-             patch("src.data.portfolio_io.load_portfolio", return_value=[{"symbol": "MSFT"}]), \
-             patch("src.data.graph_store.portfolio.sync_portfolio") as mock_sync:
-            result = sync_all()
+    def test_portfolio_sync_called(self, tmp_path):
+        """When Neo4j available, portfolio sync is attempted.
+
+        KIK-735: CSV パスは project_root から解決するようになったので、
+        テストも実ファイルを置く。
+        """
+        (tmp_path / "data").mkdir(parents=True)
+        (tmp_path / "data" / "portfolio.csv").write_text("symbol\nMSFT\n", encoding="utf-8")
+
+        import tools.graphrag as tg
+        orig_root = tg._project_root
+        try:
+            tg._project_root = str(tmp_path)
+            with patch("src.data.graph_store._common.is_available", return_value=True), \
+                 patch("src.data.portfolio_io.load_portfolio",
+                       return_value=[{"symbol": "MSFT"}]), \
+                 patch("src.data.graph_store.portfolio.sync_portfolio") as mock_sync:
+                result = tg.sync_all()
+        finally:
+            tg._project_root = orig_root
         mock_sync.assert_called_once()
         assert any("portfolio" in s for s in result["synced"])
 
-    def test_portfolio_error_continues(self):
+    def test_portfolio_error_continues(self, tmp_path):
         """Portfolio sync failure doesn't stop note sync."""
-        from tools.graphrag import sync_all
-        with patch("src.data.graph_store._common.is_available", return_value=True), \
-             patch("src.data.portfolio_io.load_portfolio", side_effect=Exception("CSV broken")):
-            result = sync_all()
+        (tmp_path / "data").mkdir(parents=True)
+        (tmp_path / "data" / "portfolio.csv").write_text("symbol\nMSFT\n", encoding="utf-8")
+
+        import tools.graphrag as tg
+        orig_root = tg._project_root
+        try:
+            tg._project_root = str(tmp_path)
+            with patch("src.data.graph_store._common.is_available", return_value=True), \
+                 patch("src.data.portfolio_io.load_portfolio",
+                       side_effect=Exception("CSV broken")):
+                result = tg.sync_all()
+        finally:
+            tg._project_root = orig_root
         assert any("portfolio" in s for s in result["failed"])
 
     def test_notes_sync_calls_merge_note(self, tmp_path):
