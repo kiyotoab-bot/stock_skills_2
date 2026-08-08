@@ -12,48 +12,79 @@ KIK-712 の `sync_all()` は portfolio と notes しか回しておらず、SKIL
 使うため、同じ id は上書きされ二重登録されない。
 """
 
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-# SKILL.md の同期対象表と1対1に対応する。ここに足したら SKILL.md も更新すること。
-HISTORY_CATEGORIES = ("trade", "screen", "report", "research", "health")
+from src.data.common import load_json_records
+
+# HISTORY_CATEGORIES は _WRITERS から導出する（このファイル下部で定義）。
+# 2つを別々に並べていたため、片方だけ増やす余地が残っていた。
 
 
 # --- helpers ---------------------------------------------------------------
 
 
 def _load_records(path: Path) -> list[dict]:
-    """1ファイルからレコード列を取り出す.
+    """1ファイルからレコード列を取り出す（実体は common.load_json_records）.
 
-    履歴ファイルには dict 形式（`save_*()` が書いたもの）と list 形式
-    （direct action が書いたもの）が混在している。実データ 20件の trade は
-    全て list だった。どちらでも読めるようにする。
+    同じ読み取りが `graph_store.sync_stock_full` にもあり、そちらは list 形式に
+    未対応で全件を黙って捨てていた。共通化して差分を無くしてある。
     """
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if isinstance(data, list):
-        return [r for r in data if isinstance(r, dict)]
-    if isinstance(data, dict):
-        return [data]
-    return []
+    return load_json_records(path)
 
 
 def _first(rec: dict, *keys: str, default: Any = None) -> Any:
-    """最初に見つかった非 None のキーの値を返す（キー名の揺れを吸収）."""
+    """最初に見つかった有効値を返す（キー名の揺れを吸収）.
+
+    空文字は「無い」とみなして次のキーに進む。手書き JSON では欠落を `""` で
+    表すことがあり、None 判定だけだと `{"action": "", "trade_type": "sell"}` で
+    有効な `sell` を捨ててレコードごと落とす。
+    """
     for k in keys:
         v = rec.get(k)
-        if v is not None:
+        if v is not None and v != "":
             return v
     return default
 
 
 def _num(value: Any, default: float = 0.0) -> float:
+    """数値化に失敗したら default を返す（欠けても構わない項目用）."""
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _required_num(value: Any) -> Optional[float]:
+    """数値化できなければ None。**欠けたら書いてはいけない項目用**.
+
+    `_num` は失敗を 0.0 に潰すので、株数や単価に使うと「0株・0円の取引」が
+    グラフに書かれて成功として数えられる。必須項目はこちらを使う。
+    bool は数値に化けるので明示的に弾く（`float(True) == 1.0`）。
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iso_date(value: Any) -> Optional[str]:
+    """先頭10文字を YYYY-MM-DD として検証して返す。駄目なら None.
+
+    素の `str(v)[:10]` は `"Aug 4, 2026"` を `"Aug 4, 202"` に切って truthy の
+    まま通してしまい、壊れた id と日付が静かにグラフへ蓄積する。
+    """
+    if value is None:
+        return None
+    head = str(value)[:10]
+    try:
+        datetime.strptime(head, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return head
 
 
 # --- per-category writers --------------------------------------------------
@@ -66,15 +97,19 @@ def _sync_trade(rec: dict) -> bool:
     # 実データでは direction が action / trade_type どちらかに入る（action が全件、
     # trade_type は 8/20 件のみ）。action を先に見る。
     trade_type = _first(rec, "action", "trade_type")
-    trade_date = _first(rec, "date", "trade_date")
-    if not (symbol and trade_type and trade_date):
+    trade_date = _iso_date(_first(rec, "date", "trade_date"))
+    # 株数・単価は必須。欠けたまま書くと 0株/0円の取引ノードが「成功」として
+    # 数えられ、誰も気づかない。手書き JSON が混ざる領域なので必ず弾く。
+    shares = _required_num(rec.get("shares"))
+    price = _required_num(rec.get("price"))
+    if not (symbol and trade_type and trade_date) or shares is None or price is None:
         return False
     return merge_trade(
         trade_date=trade_date,
         trade_type=str(trade_type).lower(),
         symbol=symbol,
-        shares=int(_num(rec.get("shares"))),
-        price=_num(rec.get("price")),
+        shares=int(shares),
+        price=price,
         currency=rec.get("currency", "JPY"),
         memo=rec.get("memo", "") or "",
         sell_price=rec.get("sell_price"),
@@ -85,17 +120,22 @@ def _sync_trade(rec: dict) -> bool:
 
 
 def _sync_screen(rec: dict) -> bool:
-    from src.data.graph_store import merge_screen, merge_stock
+    from src.data.graph_store import merge_screen, merge_stock, tag_theme
 
-    screen_date = rec.get("date")
+    screen_date = _iso_date(rec.get("date"))
     if not screen_date:
         return False
-    results = rec.get("results") or []
-    symbols = [r.get("symbol") for r in results if isinstance(r, dict) and r.get("symbol")]
+    results = [r for r in (rec.get("results") or []) if isinstance(r, dict) and r.get("symbol")]
+    symbols = [r["symbol"] for r in results]
+    theme = rec.get("theme")
     for r in results:
-        if isinstance(r, dict) and r.get("symbol"):
-            merge_stock(symbol=r["symbol"], name=r.get("name", "") or "",
-                        sector=r.get("sector", "") or "")
+        merge_stock(symbol=r["symbol"], name=r.get("name", "") or "",
+                    sector=r.get("sector", "") or "")
+        # save_screen.py の dual-write と同じことをする。ここで tag_theme を
+        # 落とすと sync 経由の Screen だけ Theme に繋がらず、get_theme_trends()
+        # の集計から静かに抜ける。
+        if theme:
+            tag_theme(r["symbol"], theme)
     return merge_screen(
         screen_date=screen_date,
         preset=rec.get("preset", "") or "",
@@ -109,7 +149,7 @@ def _sync_report(rec: dict) -> bool:
     from src.data.graph_store import merge_report_full, merge_stock
 
     symbol = rec.get("symbol")
-    report_date = rec.get("date")
+    report_date = _iso_date(rec.get("date"))
     if not (symbol and report_date):
         return False
     merge_stock(symbol=symbol, name=rec.get("name", "") or "",
@@ -129,27 +169,33 @@ def _sync_report(rec: dict) -> bool:
 
 
 def _sync_research(rec: dict) -> bool:
-    from src.data.graph_store import merge_research_full
+    from src.data.graph_store import link_research_supersedes, merge_research_full
 
-    research_date = rec.get("date")
+    research_date = _iso_date(rec.get("date"))
     target = rec.get("target")
     if not (research_date and target):
         return False
-    return merge_research_full(
+    research_type = _first(rec, "research_type", "type", default="") or ""
+    ok = merge_research_full(
         research_date=research_date,
-        research_type=_first(rec, "research_type", "type", default="") or "",
+        research_type=research_type,
         target=target,
         summary=rec.get("summary", "") or "",
         grok_research=rec.get("grok_research"),
         x_sentiment=rec.get("x_sentiment"),
         news=rec.get("news"),
     )
+    if ok:
+        # save_research.py と同じ。張らないと get_research_chain() が
+        # 古い research を最新扱いする。
+        link_research_supersedes(research_type, target)
+    return ok
 
 
 def _sync_health(rec: dict) -> bool:
     from src.data.graph_store import merge_health
 
-    health_date = rec.get("date")
+    health_date = _iso_date(rec.get("date"))
     if not health_date:
         return False
     positions = rec.get("positions") or []
@@ -161,13 +207,78 @@ def _sync_health(rec: dict) -> bool:
     )
 
 
+def _sync_market_context(rec: dict) -> bool:
+    from src.data.graph_store import merge_market_context_full
+
+    context_date = _iso_date(rec.get("date"))
+    if not context_date:
+        return False
+    return merge_market_context_full(
+        context_date=context_date,
+        indices=rec.get("indices") or [],
+        grok_research=rec.get("grok_research"),
+    )
+
+
+def _sync_stress_test(rec: dict) -> bool:
+    from src.data.graph_store import merge_stock, merge_stress_test
+
+    test_date = _iso_date(rec.get("date"))
+    scenario = rec.get("scenario")
+    if not (test_date and scenario):
+        return False
+    symbols = [s for s in (rec.get("symbols") or []) if s]
+    for sym in symbols:
+        merge_stock(symbol=sym)
+    var = rec.get("var_result") or {}
+    return merge_stress_test(
+        test_date=test_date,
+        scenario=scenario,
+        portfolio_impact=_num(rec.get("portfolio_impact")),
+        symbols=symbols,
+        var_95=_num(var.get("var_95_daily")),
+        var_99=_num(var.get("var_99_daily")),
+    )
+
+
+def _sync_forecast(rec: dict) -> bool:
+    from src.data.graph_store import merge_forecast, merge_stock
+
+    forecast_date = _iso_date(rec.get("date"))
+    if not forecast_date:
+        return False
+    positions = rec.get("positions") or []
+    symbols = [p.get("symbol") for p in positions
+               if isinstance(p, dict) and p.get("symbol")]
+    for sym in symbols:
+        merge_stock(symbol=sym)
+    pf = rec.get("portfolio") or {}
+    return merge_forecast(
+        forecast_date=forecast_date,
+        optimistic=_num(pf.get("optimistic")),
+        base=_num(pf.get("base")),
+        pessimistic=_num(pf.get("pessimistic")),
+        symbols=symbols,
+        total_value_jpy=_num(rec.get("total_value_jpy")),
+    )
+
+
+# `save_*()` が data/history/ 配下に作る **全カテゴリ** をここに並べる。
+# 対応は tests/data/test_graph_sync.py が save_*.py の実装から機械的に検証する。
+# KIK-735 では最初の5つしか入れておらず、market_context / stress_test / forecast が
+# 同じ穴（Neo4j 停止中に保存 → sync しても永久に埋まらない）を残していた。
 _WRITERS: dict[str, Callable[[dict], bool]] = {
     "trade": _sync_trade,
     "screen": _sync_screen,
     "report": _sync_report,
     "research": _sync_research,
     "health": _sync_health,
+    "market_context": _sync_market_context,
+    "stress_test": _sync_stress_test,
+    "forecast": _sync_forecast,
 }
+
+HISTORY_CATEGORIES = tuple(_WRITERS)
 
 
 # --- section syncs ---------------------------------------------------------
@@ -200,13 +311,24 @@ def _sync_notes(root: Path, result: dict) -> None:
         notes_dir = root / "data" / "notes"
         if not notes_dir.exists():
             return
-        count = 0
+        count = total = 0
         for nf in sorted(notes_dir.glob("*.json")):
             try:
                 # 旧実装は data[0] しか見ておらず、1ファイルに複数ノートを持つ
                 # 19ファイルから 36件が毎回落ちていた（123件同期 / 実体159件）。
-                for note in _load_records(nf):
-                    merge_note(
+                records = _load_records(nf)
+            except Exception as e:
+                result["failed"].append(f"note: {nf.name}: {e}")
+                continue
+            for i, note in enumerate(records):
+                total += 1
+                # try をレコード単位に落とす。ファイル単位だと1件の失敗で
+                # 同じファイルの後続レコードが道連れになる。
+                try:
+                    # merge_note は失敗しても例外を投げず False を返す。
+                    # 戻り値を見ないと「159件同期」と出しながら0件という
+                    # 状態が作れてしまう（_sync_history とも不整合になる）。
+                    if merge_note(
                         note_id=note.get("id", nf.stem),
                         note_date=note.get("date", ""),
                         note_type=note.get("type", "observation"),
@@ -214,12 +336,16 @@ def _sync_notes(root: Path, result: dict) -> None:
                         symbol=note.get("symbol"),
                         source=note.get("source", "claude"),
                         category=note.get("category", ""),
-                    )
-                    count += 1
-            except Exception:
-                result["failed"].append(f"note: {nf.name}")
+                    ):
+                        count += 1
+                    else:
+                        result["failed"].append(f"note: {nf.name}#{i} 書き込み失敗")
+                except Exception as e:
+                    result["failed"].append(f"note: {nf.name}#{i}: {e}")
         if count:
             result["synced"].append(f"notes({count}件)")
+        elif total:
+            result["skipped"].append(f"notes: {total}件中0件同期")
     except Exception as e:
         result["failed"].append(f"notes: {e}")
 
@@ -231,12 +357,19 @@ def _sync_cash(root: Path, result: dict) -> None:
     現金は銘柄ではないので HOLDS を張れず（``sync_portfolio`` も ``*.CASH`` を
     除外する）、Portfolio アンカーの属性として持たせる。残高の推移を後から
     辿れるよう、基準日ごとに Note(type=cash) も残す。
+
+    ⚠️ 日中の履歴は原理的に取れない。``cash_balance.json`` はスナップショットで
+    履歴を持たないため、同じ日に残高が何度動いても sync が見られるのは最後の
+    値だけになる（2026-08-04 は7件の売却で残高が7回動いたが Note は1件）。
+    冪等性のための設計ではなく、入力側の制約である。
     """
     cash_path = root / "data" / "cash_balance.json"
     if not cash_path.exists():
         return
     try:
-        from src.data.graph_store import extract_cash_currencies, merge_cash_balance
+        from src.data.graph_store import (
+            extract_cash_currencies, merge_cash_balance, unrecognized_cash_keys,
+        )
         from src.data.graph_store.note import merge_note
 
         records = _load_records(cash_path)
@@ -245,16 +378,23 @@ def _sync_cash(root: Path, result: dict) -> None:
             return
         balances = records[0]
 
-        # last_updated（残高の基準日）優先。無ければ updated_at の日付部分。
-        balance_date = str(_first(balances, "last_updated", "updated_at", default=""))[:10]
+        # updated_at を優先する。tools/cash_balance.py の save_cash_balance() が
+        # 更新するのは updated_at だけで、last_updated は手で書かれた値が残り
+        # 続ける。逆順にすると残高更新のたびに古い日付の Note が新しい残高で
+        # 上書きされ、過去の履歴が壊れる。
+        balance_date = _iso_date(_first(balances, "updated_at", "last_updated"))
         if not balance_date:
-            result["skipped"].append("cash: 基準日が無い")
+            result["skipped"].append("cash: 基準日が読めない（YYYY-MM-DD 形式でない）")
             return
 
         currencies = extract_cash_currencies(balances)
         if not currencies:
             result["skipped"].append("cash: 通貨キーが無い")
             return
+        ignored = unrecognized_cash_keys(balances)
+        if ignored:
+            # 黙って捨てると update_currency("usdt", ...) がグラフに出ないまま終わる
+            result["skipped"].append(f"cash: 通貨として認識できないキー {ignored}")
 
         if not merge_cash_balance(balance_date, balances):
             result["failed"].append("cash: Portfolio への書き込み失敗")
@@ -265,14 +405,16 @@ def _sync_cash(root: Path, result: dict) -> None:
             f"{code} {amount:,.0f}" for code, amount in sorted(currencies.items())
         )
         memo = balances.get("memo", "") or ""
-        merge_note(
+        if not merge_note(
             note_id=f"cash_{balance_date}",
             note_date=balance_date,
             note_type="cash",
             content=f"現金残高 {amounts}" + (f" — {memo}" if memo else ""),
             category="portfolio",
             source="cash_balance.json",
-        )
+        ):
+            result["failed"].append("cash: 履歴 Note の書き込み失敗")
+            return
         result["synced"].append(f"cash({len(currencies)}通貨)")
     except Exception as e:
         result["failed"].append(f"cash: {e}")
@@ -288,32 +430,54 @@ def _sync_history(root: Path, result: dict) -> None:
         if not files:
             continue
         writer = _WRITERS[category]
-        count = 0
+        count = total = 0
         for f in files:
             try:
-                for rec in _load_records(f):
+                records = _load_records(f)
+            except Exception as e:
+                # 1ファイルの失敗で残りを止めない
+                result["failed"].append(f"{category}: {f.name}: {e}")
+                continue
+            for i, rec in enumerate(records):
+                total += 1
+                try:
                     if writer(rec):
                         count += 1
-            except Exception:
-                # 1ファイルの失敗で残りを止めない
-                result["failed"].append(f"{category}: {f.name}")
+                    else:
+                        # 部分失敗を黙って捨てると「19件落ちたが1件成功」が
+                        # synced に1件と出るだけになる
+                        result["failed"].append(f"{category}: {f.name}#{i} 書き込み失敗")
+                except Exception as e:
+                    result["failed"].append(f"{category}: {f.name}#{i}: {e}")
         if count:
-            result["synced"].append(f"{category}({count}件)")
-        else:
-            # ファイルはあるのに1件も書けなかった = 気づけるようにする
-            result["skipped"].append(f"{category}: {len(files)}ファイル中0件同期")
+            result["synced"].append(f"{category}({count}/{total}件)")
+        elif total:
+            # レコードはあるのに1件も書けなかった。「対象が無かった」ではなく障害。
+            result["failed"].append(f"{category}: {total}件中0件同期")
 
 
 def _write_status(root: Path, result: dict) -> None:
+    """sync_status.yaml の last_sync を更新する（他のキーは保存する）."""
+    status_path = root / "data" / "sync_status.yaml"
     try:
         import yaml
-        status_path = root / "data" / "sync_status.yaml"
+        status: dict = {}
+        if status_path.exists():
+            # 全上書きすると、将来 last_sync 以外のキーを足しても次の sync で消える
+            try:
+                loaded = yaml.safe_load(status_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    status = loaded
+            except Exception:
+                status = {}
+        status["last_sync"] = datetime.now().isoformat()
         status_path.parent.mkdir(parents=True, exist_ok=True)
         with open(status_path, "w", encoding="utf-8") as f:
-            yaml.dump({"last_sync": datetime.now().isoformat()}, f)
+            yaml.dump(status, f, allow_unicode=True)
         result["synced"].append("sync_status更新")
-    except Exception:
-        pass  # non-critical
+    except Exception as e:
+        # 「最後にいつ sync したか」の唯一の記録なので、書けなかったら見せる
+        result["skipped"].append(f"sync_status: 更新できず ({e})")
 
 
 # --- entry point -----------------------------------------------------------
@@ -337,7 +501,12 @@ def sync_all(project_root: Optional[str] = None) -> dict:
     result: dict[str, list[str]] = {"synced": [], "failed": [], "skipped": []}
 
     try:
-        from src.data.graph_store._common import is_available
+        from src.data.graph_store import get_mode, is_available
+        # NEO4J_MODE=off は接続状態より優先されるため、is_available() だけ見ると
+        # 「接続はできるが全 merge_* が False」という状態で全カテゴリを走査し、
+        # 「N件中0件同期」が並ぶ。設定ミスをデータ不良と誤診させない。
+        if get_mode() == "off":
+            return {"synced": [], "failed": [], "skipped": ["NEO4J_MODE=off"]}
         if not is_available():
             return {"synced": [], "failed": [], "skipped": ["Neo4j未接続"]}
     except ImportError:

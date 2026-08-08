@@ -1,109 +1,48 @@
-"""Tests for sync_all() one-shot sync function (KIK-712)."""
+"""Tests for tools/graphrag.py の sync_all ファサード (KIK-712 / KIK-737).
 
-from unittest.mock import patch, MagicMock
+同期の中身は `src/data/graph_sync.py` に移ったので、検証も
+`tests/data/test_graph_sync.py` に寄せてある。ここはファサードとしての
+責務——`_project_root` を渡して委譲すること——だけを見る。
+二重に中身を検証すると、仕様変更のたびに2ファイル直すことになる。
+"""
 
-import pytest
+from unittest.mock import patch
 
 
-class TestSyncAll:
-    """Test tools/graphrag.py sync_all()."""
+class TestSyncAllFacade:
+    def test_delegates_with_project_root(self, tmp_path):
+        import tools.graphrag as tg
+        orig = tg._project_root
+        try:
+            tg._project_root = str(tmp_path)
+            with patch("src.data.graph_sync.sync_all",
+                       return_value={"synced": ["ok"], "failed": [], "skipped": []}) as m:
+                result = tg.sync_all()
+            m.assert_called_once_with(str(tmp_path))
+            assert result["synced"] == ["ok"]
+        finally:
+            tg._project_root = orig
 
-    def test_neo4j_unavailable_returns_skipped(self):
-        """When Neo4j is not available, sync_all returns skipped."""
-        from tools.graphrag import sync_all
-        with patch("src.data.graph_store._common.is_available", return_value=False):
-            result = sync_all()
-        assert result["skipped"]
+    def test_project_root_is_the_repository_root(self):
+        """tools/ から見て2階層上。graph_sync の既定値と一致していること."""
+        from pathlib import Path
+
+        import tools.graphrag as tg
+        from src.data import graph_sync
+
+        assert Path(tg._project_root) == Path(graph_sync.__file__).resolve().parents[2]
+
+    def test_returns_the_standard_shape(self, tmp_path):
+        """Neo4j 未接続でも synced/failed/skipped の3キーが揃う."""
+        import tools.graphrag as tg
+        orig = tg._project_root
+        try:
+            tg._project_root = str(tmp_path)
+            with patch("src.data.graph_store.get_mode", return_value="full"), \
+                 patch("src.data.graph_store.is_available", return_value=False):
+                result = tg.sync_all()
+        finally:
+            tg._project_root = orig
+        assert set(result) == {"synced", "failed", "skipped"}
+        assert all(isinstance(v, list) for v in result.values())
         assert not result["synced"]
-
-    def test_sync_all_returns_dict_structure(self):
-        """sync_all always returns a dict with synced/failed/skipped keys."""
-        from tools.graphrag import sync_all
-        with patch("src.data.graph_store._common.is_available", return_value=False):
-            result = sync_all()
-        assert "synced" in result
-        assert "failed" in result
-        assert "skipped" in result
-        assert isinstance(result["synced"], list)
-        assert isinstance(result["failed"], list)
-        assert isinstance(result["skipped"], list)
-
-    def test_portfolio_sync_called(self, tmp_path):
-        """When Neo4j available, portfolio sync is attempted.
-
-        KIK-735: CSV パスは project_root から解決するようになったので、
-        テストも実ファイルを置く。
-        """
-        (tmp_path / "data").mkdir(parents=True)
-        (tmp_path / "data" / "portfolio.csv").write_text("symbol\nMSFT\n", encoding="utf-8")
-
-        import tools.graphrag as tg
-        orig_root = tg._project_root
-        try:
-            tg._project_root = str(tmp_path)
-            with patch("src.data.graph_store._common.is_available", return_value=True), \
-                 patch("src.data.portfolio_io.load_portfolio",
-                       return_value=[{"symbol": "MSFT"}]), \
-                 patch("src.data.graph_store.portfolio.sync_portfolio") as mock_sync:
-                result = tg.sync_all()
-        finally:
-            tg._project_root = orig_root
-        mock_sync.assert_called_once()
-        assert any("portfolio" in s for s in result["synced"])
-
-    def test_portfolio_error_continues(self, tmp_path):
-        """Portfolio sync failure doesn't stop note sync."""
-        (tmp_path / "data").mkdir(parents=True)
-        (tmp_path / "data" / "portfolio.csv").write_text("symbol\nMSFT\n", encoding="utf-8")
-
-        import tools.graphrag as tg
-        orig_root = tg._project_root
-        try:
-            tg._project_root = str(tmp_path)
-            with patch("src.data.graph_store._common.is_available", return_value=True), \
-                 patch("src.data.portfolio_io.load_portfolio",
-                       side_effect=Exception("CSV broken")):
-                result = tg.sync_all()
-        finally:
-            tg._project_root = orig_root
-        assert any("portfolio" in s for s in result["failed"])
-
-    def test_notes_sync_calls_merge_note(self, tmp_path):
-        """Notes JSON files are synced via merge_note."""
-        import json
-        from tools.graphrag import sync_all
-
-        notes_dir = tmp_path / "data" / "notes"
-        notes_dir.mkdir(parents=True)
-        note = {"id": "n1", "date": "2026-04-24", "type": "thesis",
-                "content": "Test", "symbol": "MSFT"}
-        (notes_dir / "n1.json").write_text(json.dumps(note))
-
-        import tools.graphrag as tg
-        orig_root = tg._project_root
-        try:
-            tg._project_root = str(tmp_path)
-            with patch("src.data.graph_store._common.is_available", return_value=True), \
-                 patch("src.data.portfolio_io.load_portfolio", return_value=[]), \
-                 patch("src.data.graph_store.note.merge_note") as mock_merge:
-                result = sync_all()
-            mock_merge.assert_called_once()
-            assert any("notes" in s for s in result["synced"])
-        finally:
-            tg._project_root = orig_root
-
-    def test_sync_status_yaml_written(self, tmp_path):
-        """sync_status.yaml is written after sync."""
-        import tools.graphrag as tg
-        orig_root = tg._project_root
-        try:
-            tg._project_root = str(tmp_path)
-            (tmp_path / "data").mkdir(parents=True, exist_ok=True)
-            with patch("src.data.graph_store._common.is_available", return_value=True), \
-                 patch("src.data.portfolio_io.load_portfolio", return_value=[]):
-                from tools.graphrag import sync_all
-                sync_all()
-            status_path = tmp_path / "data" / "sync_status.yaml"
-            assert status_path.exists()
-        finally:
-            tg._project_root = orig_root

@@ -6,7 +6,28 @@ KIK-579: Added graceful_degradation decorator.
 """
 
 import functools
+import json
 import math
+from pathlib import Path
+
+
+def load_json_records(path) -> list[dict]:
+    """JSON ファイルからレコード列を取り出す (KIK-737).
+
+    ``data/history/`` と ``data/notes/`` のファイルには dict 形式（``save_*()``
+    が書いたもの）と list 形式（direct action が書いたもの）が混在している。
+    実データの trade 20ファイルは全て list、``cash_balance.json`` は dict。
+
+    片方しか読めない実装が複数箇所にあり、``sync_stock_full`` は list を読むと
+    ``AttributeError`` で全件を黙って捨てていた。読み取りはここに集約する。
+    """
+    with open(Path(path), "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        return [r for r in data if isinstance(r, dict)]
+    if isinstance(data, dict):
+        return [data]
+    return []
 
 
 def graceful_degradation(default=None):

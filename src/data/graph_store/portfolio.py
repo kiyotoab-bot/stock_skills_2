@@ -4,6 +4,8 @@ Handles merge_trade, merge_health, sync_portfolio, is_held, get_held_symbols,
 merge_stress_test, merge_forecast, sync_stock_full (KIK-555).
 """
 
+import re
+
 from src.data.graph_store import _common
 
 
@@ -189,27 +191,56 @@ def get_held_symbols() -> list[str]:
         return []
 
 
-# 通貨コード以外のキー（メタデータ・派生値）。balance_jpy は JPY の重複。
+# 通貨ではないと分かっているキー（メタデータ・派生値）。balance_jpy は JPY の重複。
+# 判定そのものはホワイトリストで行うので、これは「未知のキー」を報告するときに
+# 既知のメタデータを除くためだけに使う。
 _CASH_META_KEYS = frozenset({"updated_at", "last_updated", "memo", "balance_jpy"})
+
+
+def _known_currencies() -> frozenset[str]:
+    """このシステムが扱いうる通貨コード.
+
+    ticker_utils の地域→通貨マッピングを唯一の出典にする。USD は米国株が
+    サフィックス無しで表されるためマッピングに現れないので明示的に足す。
+    """
+    from src.data.ticker_utils import SUFFIX_TO_CURRENCY
+    return frozenset(SUFFIX_TO_CURRENCY.values()) | {"USD"}
 
 
 def extract_cash_currencies(balances: dict) -> dict[str, float]:
     """``cash_balance.json`` から通貨コードと残高だけを取り出す.
 
     ファイルにはメタデータ（``updated_at`` / ``memo``）と派生値（``balance_jpy``）が
-    同じ階層に混ざっている。ISO 4217 形式の3文字大文字キーだけを通貨とみなす。
+    同じ階層に混ざっている。
+
+    ⚠️ 「3文字の大文字」という形だけの判定にしてはいけない。``NAV`` / ``FEE`` /
+    ``PNL`` / ``TAX`` のような派生値を将来同じ階層に足すと、そのまま
+    ``cash_pnl`` として Portfolio ノードに書かれ現金として二重計上される。
+    既知の通貨コードのホワイトリストで判定する。
+
+    bool は ``float(True) == 1.0`` になるため明示的に弾く。
     """
+    known = _known_currencies()
     out: dict[str, float] = {}
     for key, value in balances.items():
-        if key in _CASH_META_KEYS:
-            continue
-        if not (len(key) == 3 and key.isalpha() and key.isupper()):
+        if key not in known or isinstance(value, bool):
             continue
         try:
             out[key] = float(value)
         except (TypeError, ValueError):
             continue
     return out
+
+
+def unrecognized_cash_keys(balances: dict) -> list[str]:
+    """通貨として扱えなかったキーのうち、既知のメタデータでないものを返す.
+
+    ``tools/cash_balance.py`` の ``update_currency()`` は通貨コードを検証せずに
+    書き込むため、``update_currency("usdt", 500)`` はファイルに残るがグラフには
+    現れない。黙って消えると気づけないので、呼び出し側が報告できるようにする。
+    """
+    known = _known_currencies()
+    return sorted(k for k in balances if k not in known and k not in _CASH_META_KEYS)
 
 
 def merge_cash_balance(balance_date: str, balances: dict) -> bool:
@@ -222,7 +253,7 @@ def merge_cash_balance(balance_date: str, balances: dict) -> bool:
     Parameters
     ----------
     balance_date : str
-        残高の基準日（``last_updated``）。
+        残高の基準日（``updated_at`` の日付部分）。
     balances : dict
         ``cash_balance.json`` の中身そのまま。通貨キーだけ拾う。
 
@@ -246,9 +277,28 @@ def merge_cash_balance(balance_date: str, balances: dict) -> bool:
 
     try:
         with driver.session() as session:
+            session.run("MERGE (p:Portfolio {name: 'default'})")
+
+            # SET p += は追記なので、それだけだと消えた通貨のプロパティが残る。
+            # USD を使い切って cash_balance.json から "USD" を消しても cash_usd が
+            # 居座り、現金を過大計上する（sync_portfolio が消えた銘柄の HOLDS を
+            # DELETE しているのと揃える）。REMOVE はプロパティ名を変数に取れないので、
+            # 既存キーを読んでから名前を埋め込む。APOC には依存しない。
+            existing = session.run(
+                "MATCH (p:Portfolio {name: 'default'}) "
+                "RETURN [k IN keys(p) WHERE k STARTS WITH 'cash_'] AS ks"
+            ).single()
+            stale = [k for k in (existing["ks"] if existing else [])
+                     if k not in props and re.fullmatch(r"cash_[a-z_]+", k)]
+            if stale:
+                session.run(
+                    "MATCH (p:Portfolio {name: 'default'}) REMOVE "
+                    + ", ".join(f"p.`{k}`" for k in stale)
+                )
+
             # プロパティ名が通貨で変わるので SET p += $props で流し込む
             session.run(
-                "MERGE (p:Portfolio {name: 'default'}) SET p += $props",
+                "MATCH (p:Portfolio {name: 'default'}) SET p += $props",
                 props=props,
             )
         return True
@@ -397,43 +447,55 @@ def sync_stock_full(symbol: str, client=None, csv_path: str = "") -> dict:
             history_dir = Path(__file__).resolve().parents[3] / "data" / "history" / "trade"
 
         if history_dir.exists():
+            from src.data.common import load_json_records
+
             for fp in sorted(history_dir.glob("*.json")):
+                # KIK-737: 以前は json.load() の結果に直接 .get() していたため、
+                # list 形式のファイル（実データ 20件は全て list）で AttributeError
+                # → except continue となり、**全件が黙って落ちていた**。
                 try:
-                    with open(fp, encoding="utf-8") as f:
-                        rec = json.load(f)
-                    if rec.get("symbol") != symbol:
-                        continue
-                    # Build summary + embedding
-                    sem = ""
-                    emb = None
-                    try:
-                        from src.data.context.summary_builder import build_trade_summary
-                        from src.data import embedding_client
-                        sem = build_trade_summary(
-                            rec.get("date", ""), rec.get("trade_type", ""),
-                            symbol, rec.get("shares", 0), rec.get("memo", ""),
-                        )
-                        emb = embedding_client.get_embedding(sem)
-                    except Exception:
-                        pass
-                    ok = merge_trade(
-                        trade_date=rec.get("date", ""),
-                        trade_type=rec.get("trade_type", "buy"),
-                        symbol=symbol,
-                        shares=rec.get("shares", 0),
-                        price=rec.get("price", 0),
-                        currency=rec.get("currency", "JPY"),
-                        memo=rec.get("memo", ""),
-                        semantic_summary=sem,
-                        embedding=emb,
-                        sell_price=rec.get("sell_price"),
-                        realized_pnl=rec.get("realized_pnl"),
-                        hold_days=rec.get("hold_days"),
-                    )
-                    if ok:
-                        result["trades"] += 1
+                    records = load_json_records(fp)
                 except Exception:
                     continue
+                for rec in records:
+                    try:
+                        if rec.get("symbol") != symbol:
+                            continue
+                        # 方向は action / trade_type どちらにも入る（graph_sync と同じ）
+                        trade_type = rec.get("action") or rec.get("trade_type") or "buy"
+                        trade_date = rec.get("date") or rec.get("trade_date") or ""
+                        # Build summary + embedding
+                        sem = ""
+                        emb = None
+                        try:
+                            from src.data.context.summary_builder import build_trade_summary
+                            from src.data import embedding_client
+                            sem = build_trade_summary(
+                                trade_date, trade_type,
+                                symbol, rec.get("shares", 0), rec.get("memo", ""),
+                            )
+                            emb = embedding_client.get_embedding(sem)
+                        except Exception:
+                            pass
+                        ok = merge_trade(
+                            trade_date=trade_date,
+                            trade_type=str(trade_type).lower(),
+                            symbol=symbol,
+                            shares=rec.get("shares", 0),
+                            price=rec.get("price", 0),
+                            currency=rec.get("currency", "JPY"),
+                            memo=rec.get("memo", ""),
+                            semantic_summary=sem,
+                            embedding=emb,
+                            sell_price=rec.get("sell_price"),
+                            realized_pnl=(rec.get("realized_pnl")
+                                          or rec.get("realized_pl") or rec.get("pnl")),
+                            hold_days=rec.get("hold_days"),
+                        )
+                        if ok:
+                            result["trades"] += 1
+                    except Exception:
+                        continue
     except Exception:
         pass
 
