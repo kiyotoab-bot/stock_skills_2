@@ -506,7 +506,21 @@ def check_routine_freshness(
             elapsed = (today - date.fromisoformat(last)).days
         except ValueError:
             continue
-        if elapsed >= thr["critical"]:
+        if kind == "monthly":
+            # 月次上限も投入計画も暦月で動くので、鮮度も暦月で見る。
+            # 経過日数だけだと (a) 月初に実施した月の下旬に誤って催促し、
+            # (b) 月末に実施すると翌月分を月半ばまで催促できない。
+            # 段階も日数ではなく「何ヶ月分やり損ねたか」で分ける。
+            try:
+                ly, lm = int(last[:4]), int(last[5:7])
+            except ValueError:
+                continue
+            missed = (today.year * 12 + today.month) - (ly * 12 + lm)
+            if missed <= 0:
+                continue
+            sev = "CRITICAL" if missed >= 2 else "WARN"
+            elapsed = missed
+        elif elapsed >= thr["critical"]:
             sev = "CRITICAL"
         elif elapsed >= thr["warn"]:
             sev = "WARN"
@@ -520,7 +534,9 @@ def check_routine_freshness(
         alerts.append({
             "symbol": "ROUTINE", "type": f"{kind}_stale",
             "severity": sev,
-            "message": f"{label} が {elapsed}日 未実行（最終 {last}）{extra}",
+            "message": (f"{label} が {elapsed}ヶ月分 未実行（最終 {last}）{extra}"
+                        if kind == "monthly"
+                        else f"{label} が {elapsed}日 未実行（最終 {last}）{extra}"),
             "value": elapsed,
         })
     return alerts

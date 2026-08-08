@@ -650,14 +650,39 @@ class TestMonthlyRoutine:
         assert m and m[0]["severity"] == "WARN"
         assert "売買枠" in m[0]["message"]
 
-    def test_critical_after_45_days(self):
+    def test_same_month_is_silent_even_late_in_the_month(self):
+        """月初に実施した月の下旬に催促すると狼少年になる (KIK-739)."""
         import datetime
         from src.data.morning_summary import check_routine_freshness
         alerts = check_routine_freshness(
-            {"daily": None, "weekly": None, "monthly": "2026-08-01"},
+            {"daily": "2026-09-28", "weekly": "2026-09-28", "monthly": "2026-09-01"},
+            today=datetime.date(2026, 9, 28))
+        assert not [a for a in alerts if "monthly" in a["type"]]
+
+    def test_new_month_warns_immediately(self):
+        """月末に実施しても、翌月に入ったら即座に催促する (KIK-739).
+
+        経過日数だけで見ると 8/31 実施 → 9月分を 9/25 まで催促できず、
+        月初に冷却が明ける月はその1回を丸ごと逃す。
+        """
+        import datetime
+        from src.data.morning_summary import check_routine_freshness
+        alerts = check_routine_freshness(
+            {"daily": "2026-09-01", "weekly": "2026-09-01", "monthly": "2026-08-31"},
+            today=datetime.date(2026, 9, 1))
+        m = [a for a in alerts if a["type"] == "monthly_stale"]
+        assert m and m[0]["severity"] == "WARN"
+        assert "1ヶ月分" in m[0]["message"]
+
+    def test_critical_after_two_months(self):
+        import datetime
+        from src.data.morning_summary import check_routine_freshness
+        alerts = check_routine_freshness(
+            {"daily": None, "weekly": None, "monthly": "2026-06-01"},
             today=datetime.date(2026, 9, 20))
         m = [a for a in alerts if a["type"] == "monthly_stale"]
         assert m and m[0]["severity"] == "CRITICAL"
+        assert "3ヶ月分" in m[0]["message"]
 
     def test_save_routine_report_accepts_monthly(self, tmp_path):
         import datetime
@@ -672,8 +697,8 @@ class TestMonthlyRoutine:
         payload = json.loads(open(out["json"], encoding="utf-8").read())
         assert payload["mode"] == "routine-monthly"
 
-    def test_unknown_kind_still_rejected(self):
+    def test_unknown_kind_still_rejected(self, tmp_path):
         import pytest
         from src.data.morning_summary import save_routine_report
         with pytest.raises(ValueError):
-            save_routine_report("yearly", "x")
+            save_routine_report("yearly", "x", reports_dir=str(tmp_path))

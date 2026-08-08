@@ -369,13 +369,19 @@ Step 8: reviewer（auto_review で自動挿入）
 **発注は月1回しか起きないのに、その1回を判断する枠が無かった。**
 結果、月に紐づく宿題（翌月枠の銘柄未定・conviction 未認定）が週次のたびに持ち越されていた。
 
+**Step 0（値の用意）**: `equity_value` / `cash` は health-checker に
+**数値だけ**を出させる（銘柄テーブル・RSI・市況は出さない。それは日次と週次の仕事）。
+あるいは `portfolio_io.load_portfolio()` と `cash_balance.load_cash_balance()` から
+オーケストレーターが直接組む。
+
 ```python
 from src.data.monthly_check import build_monthly_context
 ctx = build_monthly_context(
     load_notes(), load_portfolio(), equity_value, cash,
-    target_amount=10_000_000, deadline="2031-04-30",
-    excluded_dates={"2026-08-04", "2026-08-03"},   # 誤発注など計上しない日
+    excluded_dates={"2026-08-04", "2026-08-03"},   # 枠から外すが損益は残る日
+    stop_levels=get_stop_levels(),                 # conviction の CV3 判定に要る
 )
+# 目標額・期限は省略すると config/allocation.yaml の goal: から読む
 ```
 
 **入口は `build_monthly_context()` ひとつ。** 個別に呼ぶ設計にすると組み立て忘れが起きる。
@@ -397,6 +403,8 @@ Step 7: reviewer    — auto_review で自動挿入
 - `slots` の「枠あり銘柄未定」 — これが月次を作った直接の理由。**未定のまま月末を迎えさせない**
 - `conviction` で `qualified=False` の予定銘柄 — 発注日までに認定作業が要る
 - `goal.required_cagr_as_is` と `required_cagr_fully_invested` の**両方**
+- `tier_rules.tier_mismatch` — 規模ティアと運用ティアが違うとき。**自動では緩めない**
+- `conviction` の `exempt=True` — ユーザーが免除した銘柄。認定作業を促さない
 
 ⚠️ **必要年率は2本を取り違えない。** `as_is`（現金を寝かせたまま）は高く出るが、
 これは達成不能という意味ではなく**未投入の帰結**でしかない。判断は
@@ -599,7 +607,11 @@ sync 経路への埋め込み生成は未実装。
 
 #### Markdown レポート保存（routine のみ）
 
-`mode: routine-daily` または `mode: routine-weekly` の実行後、**チャットに出力したレポート全文を Markdown ファイルとして保存する**。
+`mode: routine-daily` / `routine-weekly` / `routine-monthly` の実行後、**チャットに出力したレポート全文を Markdown ファイルとして保存する**。
+
+⚠️ **月次も必ず md を保存する。** 鮮度判定（`latest_routine_dates`）は
+`data/reports/*.md` の日付しか見ないので、JSON だけ保存しても
+`monthly_never_run` が毎日の日次チェックで出続ける。
 
 | モード | 保存先 |
 |:---|:---|
@@ -637,6 +649,30 @@ sync 経路への埋め込み生成は未実装。
 
 ## 確定アクション
 <!-- 優先度付きアクションリスト -->
+```
+
+**月次レポートのセクション**（`# 月次チェック — YYYY-MM` の下に置く）:
+
+```markdown
+## 売買枠
+<!-- 冷却期間の残り / 月次上限の残り / 今月買えるか。blockers は全部書く -->
+<!-- tier_mismatch があれば必ず書く（規模は medium だが運用は small 等） -->
+
+## 今月の発注
+<!-- 予定銘柄と pre_order 6項目の結果。発注が起きるのは月次だけなのでここで通す -->
+
+## 枠の確定状況
+<!-- 当月〜3ヶ月先 + horizon 外の計画月。「枠あり銘柄未定」は省略禁止 -->
+
+## conviction 認定
+<!-- 予定銘柄の tier。qualified=False は発注日までの作業として書く -->
+<!-- exempt=True（conviction_override）は免除なので認定作業を促さない -->
+
+## 目標進捗
+<!-- 総資産 / 目標 / 残り年数 / 必要年率（as_is と fully_invested の両方） -->
+
+## 実現損益
+<!-- 今月・先月の確定売買。excluded_pnl は別枠で示す -->
 ```
 
 **保存方法**: `save_routine_report()` で Markdown と JSON を**1呼び出しで**保存する。
