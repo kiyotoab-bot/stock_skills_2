@@ -47,6 +47,19 @@ Evaluator-Optimizer パターンで自律的に深掘り分析する。通常の
 続けますか？ [このまま実行 / プラン修正 / キャンセル]
 ```
 
+**⚠️ MUST (KIK-735): Step 1 開始前に preflight gate を必ず通す。**
+
+```python
+from tools.preflight import run_preflight
+result = run_preflight(domain="pf")  # PF系テーマ。market/sector/stock も可
+if not result["passed"]:
+    # violations をユーザーに提示し abort
+    raise SystemExit(f"Preflight failed: {result['violations']}")
+```
+
+これで cash_balance.json 未参照 / conviction 違反 / lot_size 不正をコードレベルで阻止できる
+（2026-04-27 PF徹底レビューの誤推奨事故の再発防止）。
+
 **実行プランはテーマから自動生成する（ゼロショット）。** 典型例:
 
 | テーマ | Step 1 | 想定される Step 3 |
@@ -73,18 +86,34 @@ Evaluator-Optimizer パターンで自律的に深掘り分析する。通常の
 
 ### Step 1: 初回分析
 
-**まず lesson + 対象銘柄の thesis/observation をロードする（必須）:**
+**⚠️ MUST (KIK-738): lesson は全件 load した上で `filter_relevant_lessons()` でテーマ関連分のみ抽出する。**
+全件素読みは形骸化を招く（2026-04-27 / 2026-04-28 事故の真因）。テーマに関連する lesson のみ
+明示的に絞り込み、その内容を以降の全ステップで参照する。
 
 ```python
 python3 -c "
 import sys; sys.path.insert(0, '.')
 from tools.notes import load_notes
+from src.data.lesson_enforcer import filter_relevant_lessons
 
-# 1. Lesson（全件）
-lessons = load_notes(note_type='lesson')
-print(f'=== Lessons ({len(lessons)}件) ===')
-for n in lessons:
-    print(f'[{n.get(\"date\",\"\")}] {n.get(\"content\",\"\")[:200]}')
+# 1. Lesson 全件 load → ユーザー意図に関連するもののみ抽出（KIK-738 hook）
+all_lessons = load_notes(note_type='lesson')
+user_input = '<USER_PROMPT_HERE>'  # ユーザーの今回の指示文
+relevant_lessons = filter_relevant_lessons(user_input, all_lessons)
+
+print(f'=== Lessons {len(relevant_lessons)}/{len(all_lessons)} relevant ===')
+for n in relevant_lessons:
+    print(f'[{n.get(\"date\",\"\")}] trigger={n.get(\"trigger\",\"(none)\")[:60]}')
+    print(f'  expected_action: {n.get(\"expected_action\",\"(none)\")[:100]}')
+
+# 関連 0 件の場合の fallback 戦略：
+#   (a) 該当 lesson の trigger フィールドが未バックフィル → 直近 10 件で代用
+#   (b) ユーザー入力が真に新規パターン (どの trigger とも一致しない)
+# どちらの場合も直近 10 件にフォールバック。バックフィル完了後 (KIK-738 Phase 2)
+# 関連 0 件は (b) を意味するようになる。
+if not relevant_lessons:
+    print('[fallback] no trigger-match → recent 10 of', len(all_lessons))
+    relevant_lessons = all_lessons[-10:]
 
 # 2. 対象銘柄の thesis/observation（KIK-695）
 import csv
@@ -101,7 +130,8 @@ for sym in symbols:
 "
 ```
 
-lesson + 戦略メモのロード結果を以降の全ステップで参照する。0 件でも実行は続行する。
+`relevant_lessons` を以降の全ステップで参照する。Step 5 の verify_lesson_cited で
+**この同じリスト**を引用検証に渡す（一貫性保証）。
 
 次に stock-skills のエージェント（Screener / Analyst / Health Checker / Researcher / Strategist）を起動。使用可能なエージェントは [stock-skills routing.yaml](../stock-skills/routing.yaml) を参照。
 
@@ -261,8 +291,37 @@ Swarm 割当: [テーマ名]
 | **反証・リスク分析** | GPT(reasoning='high') | 批判的思考・深い推論（ソフト制約: 最適） |
 | **lesson照合・長文分析** | Gemini-Pro | 1Mコンテキスト（ソフト制約: 最適） |
 | **PF整合性・統合判断** | Claude（自身） | PF文脈保持・オーケストレーション |
+| **徹底調査（業界網羅）** | Gemini Deep Research | 80-160 sources 自律巡回 + 引用付き（KIK-731） |
+| **複数銘柄/テーマ並列** | Grok bulk_x / bulk_web | X firehose 並列・速報並列（KIK-732） |
 
 **⚠️ ハード制約（物理的に不可能）を先に固定し、ソフト制約（得意不得意）で推論役割を割り当てる。**
+
+#### Deep Research / Bulk Search トリガー (KIK-731 / KIK-732)
+
+ユーザーが「**深く**」「**徹底的に**」「**DR で**」「**腰を据えて**」と発話、
+または分析対象が >5銘柄 / >3テーマ横断の場合、Step 3 で以下を提案する:
+
+```
+🔍 Deep Research を起動できます
+   ・gemini.deep_research: Web 徹底調査（80-160 sources、推定 $2.5、5-10分）
+     → 業界全体像・規制動向・SEC等
+   ・grok.bulk_x_search: X並列センチメント（推定 $0.5-2.5、~30秒）
+     → 投資家センチメント・$cashtag・速報
+   実行しますか？ [y/skip]
+```
+
+ユーザー `y` で実行。完了後、Layer 4 フッタに記録:
+```
+💰 cost=$X.XX | 📚 sources=N | ⏱ duration=Xs
+```
+
+`config/tools.yaml` の `provider` / `when` / `strength` / `not_for` で**用途を区別**:
+- Web網羅 → `gemini.deep_research`（Google Search Grounding）
+- X内データ → `grok.bulk_x_search`（X firehose 独占）
+- 速報並列 → `grok.bulk_web_search`
+
+ハード制約: `deepthink_limits.yaml` の `tool_limits` セクション（DR 月10回/$30、bulk 月20回/$10、合算 $50）。
+`DEEPTHINK_DR_ENABLED=off` で DR 即停止。
 
 ### Step 4: チェックポイント（報告のみ — 承認待ちではない）
 
@@ -286,6 +345,113 @@ Swarm 割当: [テーマ名]
 ユーザーが「止めて」「方向修正」と言った場合のみ停止。
 
 ### Step 5: 統合レポート
+
+**⚠️ MUST (KIK-735): 売買・トリム・売却提案を含む場合、Step 5 直前に preflight 再検証。**
+
+```python
+from tools.preflight import run_preflight
+proposed = [("trim", "NVDA", 3), ("sell", "AMZN", 10)]  # 例
+result = run_preflight(domain="pf", proposed_actions=proposed)
+if not result["passed"]:
+    # conviction 違反 / lot_size 不正 → 推奨を出力前に修正
+    raise SystemExit(f"Preflight failed at Step 5: {result['violations']}")
+```
+
+**⚠️ MUST (KIK-738): Step 1 で抽出した `relevant_lessons` を最終提案文で**逐語引用**しているか検証。**
+
+引用ゼロは「lesson 形骸化」の典型パターン (2026-04-27 撤回ログ / 2026-04-28 META 推奨ミス)。
+Step 5 出力前に必ず以下を実行し、lesson が引用されていなければ提案を**書き直す**：
+
+```python
+from src.data.lesson_enforcer import verify_lesson_cited
+
+final_proposal_text = "<エグゼクティブサマリー + Swarm 統合 + 詳細 の本文>"
+ok, missing_lesson_ids = verify_lesson_cited(final_proposal_text, relevant_lessons)
+if not ok:
+    # missing_lesson_ids の lesson から expected_action / key_kpis を抜き出して、
+    # エグゼクティブサマリー本文に組み込んで再生成。
+    raise SystemExit(
+        f"Step 5 lesson citation failed: {missing_lesson_ids} are not cited in proposal. "
+        "提案テキストに該当 lesson の expected_action/key_kpis を逐語引用してから再出力すること。"
+    )
+```
+
+加えて、**Deep Research / bulk_search を実行した場合は、DR の "不採用" 銘柄リストが**
+**最終提案に混入していないか cross-check**：
+
+```python
+import re
+
+# DR レポート本文 (Step 3 で取得した text) から不採用銘柄を動的抽出。
+# 規則: 「見送り」「不採用」「除外」「除く」「リジェクト」を含むセクション内の
+# ティッカー風トークン (大文字 2-5 文字 or 4桁.T/.Tの日本株コード) を拾う。
+def _extract_dr_rejected(dr_text: str) -> list[str]:
+    if not dr_text:
+        return []
+    pattern = r"(?:見送り|不採用|除外|除く|リジェクト|reject)[^\n]{0,400}"
+    rejected: set[str] = set()
+    for match in re.finditer(pattern, dr_text):
+        sect = match.group(0)
+        for sym in re.findall(r"\b([A-Z]{2,5}|\d{4}\.T)\b", sect):
+            rejected.add(sym)
+    return sorted(rejected)
+
+dr_text = "<Step 3 で取得した DR 本文 (出力テキスト全体)>"
+dr_rejected = _extract_dr_rejected(dr_text)  # 例: ["META", "VST", "TSM"]
+for sym in dr_rejected:
+    # plan に登場するが「DR 不採用」「DR rejected」のような明示的な逆論証も同時に
+    # 含まれていなければ abort
+    if sym in final_proposal_text and not re.search(
+        rf"{sym}.{{0,80}}(不採用|rejected|見送り)", final_proposal_text
+    ):
+        raise SystemExit(
+            f"DR cross-check failed: '{sym}' is in DR rejected list but is "
+            "referenced in the proposal without explicit rejection rationale. "
+            "DR で不採用判定された銘柄を組み入れるなら、その逆論拠を明示すること。"
+        )
+```
+
+`_extract_dr_rejected()` は DR レポートのフォーマットに依存する best-effort 抽出。
+DR が新フォーマットになったら正規表現を拡張すること。テストは
+`tests/data/test_lesson_enforcer.py::TestStep5HookScenarios` に整合パターンあり。
+
+**⚠️ MUST (KIK-739): 提案出力直前に Layer 5 (Cited Sources) を生成し、本文末尾に追加。**
+
+「依拠した note の可視化 + 鮮度マーカー」で、古い情報の生ゴミ化を防ぐ
+(2026-04-28 セッションで判明した「lesson が引用されない」「ATH 接近を見逃す」課題への対応)。
+
+```python
+from src.data.citation_formatter import format_cited_sources
+
+# verify で実際に引用済みと判定された lessons を citation 候補に
+cited_lessons = [l for l in relevant_lessons if l.get("id") not in missing_lesson_ids]
+# 対象銘柄の thesis (Step 1 でロード済) のうち、提案文中に symbol が登場するものを cited に
+cited_theses = [
+    t for t in all_theses
+    if (t.get("symbol") or "") and t["symbol"] in final_proposal_text
+]
+# 各引用ノートが提案のどこに使われたか 1 行でメモ。
+# key は note['id'] (実際の保存形式: e.g. 'note_2026-04-24_portfolio_a1b2c3d4')
+used_for_map = {
+    cited_lessons[0]["id"]: "Cash 15-20% 判定",
+    cited_lessons[1]["id"]: "売却対象除外",
+    # ... 各 cited_lessons / cited_theses から id を引いてマッピング
+}
+
+citation_block = format_cited_sources(
+    cited_lessons, cited_theses, used_for_map=used_for_map,
+)
+final_proposal_text = final_proposal_text.rstrip() + "\n\n" + citation_block
+```
+
+`format_cited_sources` の鮮度マーカー規則:
+- `permanent` タグ → 🟢 (常時 fresh、永続ルール)
+- `seasonal` (or タグ無し) → 0-30日 🟢 / 31-90日 🟡 / 91日+ 🔴
+- `expired` → 出力から自動除外
+- thesis に conviction_override → 🔒 (鮮度無視)
+
+引用ゼロは **lesson 形骸化の典型** (2026-04-27 撤回ログのパターン) — 上の verify_lesson_cited
+が abort するので、ここに到達した時点で必ず 1 件以上 citation がある状態。
 
 **エグゼクティブサマリー先行の3部構成（サマリー、議論の統合、詳細）で出力する。**
 

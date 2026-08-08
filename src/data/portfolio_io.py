@@ -5,9 +5,12 @@ persistence with position tracking and P&L calculation.
 """
 
 import csv
+import logging
 import os
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from src.data.ticker_utils import (
     SUFFIX_TO_CURRENCY as _SUFFIX_TO_CURRENCY,
@@ -80,10 +83,20 @@ def load_portfolio(csv_path: str = DEFAULT_CSV_PATH) -> list[dict]:
     with open(csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            # KIK-744: 行単位で try/except し、数値破損で全体が落ちないようにする
+            try:
+                shares_int = int(float(row.get("shares", 0)))
+                cost_price_f = float(row.get("cost_price", 0.0))
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "Skipping malformed portfolio row symbol=%r: %s",
+                    row.get("symbol", ""), e,
+                )
+                continue
             position = {
                 "symbol": row.get("symbol", "").strip(),
-                "shares": int(float(row.get("shares", 0))),
-                "cost_price": float(row.get("cost_price", 0.0)),
+                "shares": shares_int,
+                "cost_price": cost_price_f,
                 "cost_currency": row.get("cost_currency", "JPY").strip(),
                 "purchase_date": row.get("purchase_date", "").strip(),
                 "memo": row.get("memo", "").strip(),
@@ -98,6 +111,75 @@ def load_portfolio(csv_path: str = DEFAULT_CSV_PATH) -> list[dict]:
                 portfolio.append(position)
 
     return portfolio
+
+
+DEFAULT_CASH_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "data",
+    "cash_balance.json",
+)
+
+
+def load_cash_balance(cash_path: str | None = None) -> dict:
+    """KIK-734: cash_balance.json を読み込む（PF総資産計算で必須）.
+
+    KIK-735: cash_path=None で `DEFAULT_CASH_PATH` を遅延参照する
+    （test の monkeypatch を効かせるため）。
+
+    Returns
+    -------
+    dict
+        {"total_jpy": float, "breakdown": {"USD": {...}, "JPY": {...}}, "date": str, ...}
+        ファイルが存在しない場合は空 dict を返す。
+    """
+    import json
+    if cash_path is None:
+        cash_path = DEFAULT_CASH_PATH
+    cash_path = os.path.normpath(cash_path)
+    if not os.path.exists(cash_path):
+        return {}
+    with open(cash_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_total_assets(
+    csv_path: str | None = None,
+    cash_path: str | None = None,
+) -> dict:
+    """KIK-734: PF総資産（株式 + 現金）を取得する SSoT 関数.
+
+    HC / Risk Assessor がキャッシュ参照漏れを起こさないよう、株式と現金を
+    一括取得する。Cash% 比率の正確な算出には必ずこの関数を使うこと。
+
+    Returns
+    -------
+    dict
+        {
+            "positions": list[dict],   # load_portfolio() の結果
+            "cash": dict,              # load_cash_balance() の結果
+            "cash_jpy": float,         # 現金合計（JPY 換算）
+            "has_cash": bool,          # cash_balance.json が読めたか
+        }
+    """
+    # KIK-735: dynamic default lookup so monkeypatching takes effect
+    if csv_path is None:
+        csv_path = DEFAULT_CSV_PATH
+    if cash_path is None:
+        cash_path = DEFAULT_CASH_PATH
+    positions = load_portfolio(csv_path)
+    cash = load_cash_balance(cash_path)
+    # KIK-734 review: has_cash は total_jpy が取れた時のみ True にする。
+    # cash_balance.json は存在するが total_jpy 欠損のケースを区別。
+    has_total_jpy = isinstance(cash, dict) and "total_jpy" in cash
+    cash_jpy = float(cash.get("total_jpy") or 0) if has_total_jpy else 0.0
+    return {
+        "positions": positions,
+        "cash": cash or {},
+        "cash_jpy": cash_jpy,
+        "has_cash": has_total_jpy,
+    }
 
 
 def save_portfolio(
@@ -157,7 +239,18 @@ def add_position(
     -------
     dict
         更新後のポジション dict
+
+    Raises
+    ------
+    ValueError
+        shares <= 0 または cost_price <= 0 の場合（KIK-742）。
     """
+    # KIK-742: 入力バリデーション（負数・ゼロを拒否してPF破壊を防ぐ）
+    if not isinstance(shares, (int, float)) or shares <= 0:
+        raise ValueError(f"shares must be > 0, got {shares!r}")
+    if not isinstance(cost_price, (int, float)) or cost_price <= 0:
+        raise ValueError(f"cost_price must be > 0, got {cost_price!r}")
+
     if purchase_date is None:
         purchase_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -171,6 +264,14 @@ def add_position(
             break
 
     if existing is not None:
+        # KIK-744: 異通貨混在を拒否（平均取得単価が壊れるため）
+        existing_currency = (existing.get("cost_currency") or "JPY").strip().upper()
+        new_currency = (cost_currency or "JPY").strip().upper()
+        if existing_currency != new_currency:
+            raise ValueError(
+                f"cost_currency mismatch for {symbol}: existing={existing_currency!r}, "
+                f"new={new_currency!r}. Cannot mix currencies in average cost basis."
+            )
         # 既存ポジションへの追加購入 → 平均取得単価を再計算
         old_shares = existing["shares"]
         old_price = existing["cost_price"]
@@ -234,8 +335,17 @@ def sell_position(
     Raises
     ------
     ValueError
-        銘柄が見つからない場合、または保有数を超える売却の場合
+        銘柄が見つからない場合、保有数を超える売却の場合、
+        または shares/sell_price が <= 0 の場合（KIK-742）。
     """
+    # KIK-742: 入力バリデーション（負数・ゼロを拒否してPF破壊を防ぐ）
+    if not isinstance(shares, (int, float)) or shares <= 0:
+        raise ValueError(f"shares must be > 0, got {shares!r}")
+    if sell_price is not None and (
+        not isinstance(sell_price, (int, float)) or sell_price <= 0
+    ):
+        raise ValueError(f"sell_price must be > 0 if provided, got {sell_price!r}")
+
     portfolio = load_portfolio(csv_path)
 
     target_idx = None

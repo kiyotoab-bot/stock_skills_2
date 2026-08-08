@@ -34,6 +34,7 @@ export OPENAI_API_KEY=sk-proj-...
 # Neo4j（GraphRAG、任意）
 export NEO4J_URI=bolt://localhost:7688
 export NEO4J_MODE=full  # off/summary/full
+export NEO4J_DEBUG=1    # 接続失敗時の診断を初回1回だけ stderr に出す（既定: 無音）
 ```
 
 すべて任意。未設定でもデフォルト値で動作する。
@@ -50,6 +51,30 @@ export NEO4J_MODE=full  # off/summary/full
 「暴落したらどうなる？」   → Health Checker がストレステスト実行
 「メモしておいて」        → 投資メモを直接保存
 ```
+
+### 出力フォーマット（Output &amp; Visibility v1）
+
+すべての応答は4レイヤ構成で表示される（KIK-729）。
+
+```
+🎯 [&lt;agent or chain&gt;] &lt;task summary&gt;        ← Layer 1 ヘッダ（常時表示）
+✅ &lt;agent&gt; 完了 (X.Xs) — &lt;1行サマリ&gt;        ← Layer 2 進捗（連鎖時のみ）
+
+[Layer 3 本体: Pattern A/B/Cで切替]
+- Pattern A: ミニマル（VIX/TODO/価格 等の即答）
+- Pattern B: 標準4セクション（単一エージェント分析）
+- Pattern C: チェーン（複数エージェント連鎖・routine）
+
+📊 実行: A → B → C                          ← Layer 4 フッタ（順序固定）
+💾 保存: data/&lt;path&gt;
+🔍 Reviewerでチェック？ [y/skip]
+➡ 次: &lt;次アクション提案&gt;
+```
+
+Reviewer は **3分類で起動制御**:
+- 🔒 **自動**: 売買確定直前 / conviction違反検知 / 週次routine
+- 🔍 **アドホック**: その他strategist/screener等 → 末尾に [y/skip] プロンプト → 次ターンで `y` 入力で起動
+- ⏭ **スキップ**: HC/researcher/analyst/risk-assessor 単独
 
 ## アーキテクチャ
 
@@ -87,17 +112,33 @@ Data (src/data/) — yahoo_client, grok_client, graph_store, graph_query, common
 docker compose up -d
 ```
 
-Neo4j 未接続でも全機能が正常動作する（graceful degradation）。
+**新規利用は data/ ローカルストレージで完結します。Neo4j はオプション機能です。** 既に Neo4j を運用中の方はそのまま使い続けられます（graceful degradation 完全対応）。Neo4j 未接続時は `data/notes/`・`data/portfolio.csv`・`data/screening_results/` 等から自動コンテキスト注入が動作します（KIK-719）。未接続時の警告は出力されません。診断したい場合は `NEO4J_DEBUG=1`（KIK-749）。
 
 ## テスト
 
 ```bash
-# ユニットテスト
-python3 -m pytest tests/ -q           # 約979テスト (~4秒)
+# ユニットテスト（API key/ネットワーク不要、autouse fixture で外部I/Oを完全モック）
+python3 -m pytest tests/ -q           # 1381 テスト (~55秒)
 
-# E2E テスト（実際の API を叩いてエージェント動作を検証）
-python3 tests/e2e/run_e2e.py          # 全6シナリオ実行
+# Dry-run（routing.yaml + agent定義の整合性検証、< 1秒、API key不要）KIK-746
+python3 tests/e2e/run_e2e.py --dry-run
+
+# モック E2E（pytest fixture で tools 層 stub 化、< 1秒、API key不要）KIK-747
+python3 -m pytest tests/e2e/test_mocked.py -q
+
+# 実 API E2E テスト（Yahoo Finance / LLM 実呼び出し、要 API key）
+python3 tests/e2e/run_e2e.py          # 全シナリオ実行 (~25秒)
 python3 tests/e2e/run_e2e.py e2e_001  # 特定シナリオのみ
+```
+
+### Worktree セットアップ（KIK-745）
+
+開発用 worktree は `scripts/setup_worktree.sh` で個人PFを使わず即セットアップ:
+
+```bash
+bash scripts/setup_worktree.sh KIK-NNN feature-name
+# → ~/stock-skills-kikNNN に展開、tests/fixtures/sample_portfolio.csv を
+#    data/ にコピー（汎用テスト銘柄、個人PFは流さない）
 ```
 
 ### E2E テストシナリオ

@@ -9,6 +9,7 @@ from src.data.history._helpers import (
     _history_dir,
     _sanitize,
     _dual_write_graph,
+    _unique_suffix,
     _write_graph,
 )
 
@@ -107,9 +108,12 @@ def save_research(
         Absolute path of the saved file.
     """
     today = date.today().isoformat()
-    now = datetime.now().isoformat(timespec="seconds")
+    now_dt = datetime.now()
+    now = now_dt.isoformat(timespec="seconds")
+    # KIK-744: HHMMSSffffff + uuid hex で完全一意化
+    ts_suffix = _unique_suffix(now_dt)
     identifier = f"{_safe_filename(research_type)}_{_safe_filename(target)}"
-    filename = f"{today}_{identifier}.json"
+    filename = f"{today}_{identifier}_{ts_suffix}.json"
 
     payload = {
         "category": "research",
@@ -163,8 +167,11 @@ def save_market_context(
         Absolute path of the saved file.
     """
     today = date.today().isoformat()
-    now = datetime.now().isoformat(timespec="seconds")
-    filename = f"{today}_context.json"
+    now_dt = datetime.now()
+    now = now_dt.isoformat(timespec="seconds")
+    # KIK-744: HHMMSSffffff + uuid hex で完全一意化
+    ts_suffix = _unique_suffix(now_dt)
+    filename = f"{today}_context_{ts_suffix}.json"
 
     payload = {
         "category": "market_context",

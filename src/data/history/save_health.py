@@ -6,6 +6,7 @@ from datetime import date, datetime
 from src.data.history._helpers import (
     _history_dir,
     _sanitize,
+    _unique_suffix,
     _write_graph,
 )
 
@@ -19,8 +20,11 @@ def save_health(
     Returns the absolute path of the saved file.
     """
     today = date.today().isoformat()
-    now = datetime.now().isoformat(timespec="seconds")
-    filename = f"{today}_health.json"
+    now_dt = datetime.now()
+    now = now_dt.isoformat(timespec="seconds")
+    # KIK-744: HHMMSSffffff + uuid hex で完全一意化
+    ts_suffix = _unique_suffix(now_dt)
+    filename = f"{today}_health_{ts_suffix}.json"
 
     positions_out = []
     for pos in health_data.get("positions", []):

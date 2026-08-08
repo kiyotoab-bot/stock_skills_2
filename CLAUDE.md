@@ -22,17 +22,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# ユニットテスト
+# ユニットテスト（API key/ネットワーク不要、約1381テスト）
 python3 -m pytest tests/ -q
 
-# E2E テスト（実際の API でエージェント動作検証）
+# Dry-run（routing.yaml + agent定義の整合性検証、< 1秒）KIK-746
+python3 tests/e2e/run_e2e.py --dry-run
+
+# モック E2E（pytest fixture で tools 層 stub 化、< 1秒）KIK-747
+python3 -m pytest tests/e2e/test_mocked.py -q
+
+# 実 API E2E テスト（実際の API でエージェント動作検証、要 API key）
 python3 tests/e2e/run_e2e.py
+
+# 開発用 worktree セットアップ（KIK-745、個人PFを流さない）
+bash scripts/setup_worktree.sh KIK-NNN [short-desc]
 
 # 依存インストール
 pip install -r requirements.txt
 ```
 
 エージェントが自律的にツールを呼び出すため、ユーザーがスクリプトを直接実行する必要はない。
+
+## Output &amp; Visibility v1（KIK-729）
+
+すべてのエージェント出力は4レイヤ構成で生成される。詳細は `.claude/skills/stock-skills/SKILL.md` の「Output &amp; Visibility v1」セクション参照。
+
+- **Layer 1**: ヘッダ（実行前・常時ON）`🎯 [&lt;agent or chain&gt;] &lt;task&gt;`
+- **Layer 2**: 進捗（連鎖時のみ）`✅ &lt;agent&gt; 完了 (X.Xs) — &lt;サマリ&gt;`
+- **Layer 3**: 本体（Pattern A/B/Cで切替）
+  - A: ミニマル（1-3行で済む事実照会）
+  - B: 標準（単一エージェント・4セクション固定）
+  - C: チェーン（連鎖 ≥2 / routine）
+- **Layer 4**: フッタ（順序固定）`📊 実行 → 💾 保存 → 🔍 Reviewer? → ➡ 次`
+
+Reviewer は3分類で起動: 🔒 自動（売買確定/conviction違反/週次routine） / 🔍 アドホック（[y/skip]プロンプト） / ⏭ スキップ。
 
 ## Architecture
 
@@ -80,6 +103,13 @@ Data (src/data/)
   market_regime.py — 市場レジーム指標（ドル建て日経・NT倍率・日経PER・理論株価バンド）
   band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
 
+Orchestrator (src/orchestrator/) — KIK-746
+  dry_run.py     — routing.yaml + agent定義の整合性検証（API呼ばない）
+                   verify_routing(user_input), verify_routing_yaml_integrity()
+
+Scripts (scripts/) — KIK-745
+  setup_worktree.sh — worktree作成 + sample fixture コピー一括化（個人PFを流さない）
+
 Config: .claude/agents/screener/examples.yaml (regions, themes, presets, few-shot)
 Config: config/scoring.yaml (スコアリング重み・閾値・セクター別設定)
 Config: config/allocation.yaml (PFターゲットアロケーション・集中度制約・乖離判定)
@@ -88,7 +118,12 @@ Config: config/llm_routing.yaml (LLM選択・モデルルーティング・コ�
 Config: config/tools.yaml (全ツールの関数・役割・NotebookLMライブラリと参照可否)
 Rules:  .claude/rules/ (development, workflow, testing)
 Docs:   docs/ (architecture, neo4j-schema, data-models)
-Tests:  tests/ (unit), tests/e2e/ (E2E agent scenarios)
+Tests:  tests/ (unit ~1381件), tests/e2e/ (E2E)
+        - run_e2e.py: 実 API シナリオ実行
+        - run_e2e.py --dry-run: routing検証のみ（< 1秒）KIK-746
+        - test_mocked.py: モック E2E（pytest fixture で tools stub）KIK-747
+Fixtures: tests/fixtures/sample_portfolio.csv / sample_cash_balance.json
+          (KIK-745、汎用テスト銘柄、worktree結合試験で個人PF代替)
 ```
 
 ## Post-Implementation Rule

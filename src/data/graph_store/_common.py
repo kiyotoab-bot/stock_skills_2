@@ -22,7 +22,14 @@ _NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 _NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password")
 
 _driver = None
-_unavailable_warned = False  # KIK-443: warn once on connection failure
+# Once-only guard for NEO4J_DEBUG=1 diagnostics (also kept as a stable
+# attribute for tests that monkeypatch ``src.data.graph_store._unavailable_warned``).
+_unavailable_warned = False
+
+
+def _debug_enabled() -> bool:
+    """Return True if NEO4J_DEBUG is set to a truthy value (1/true/yes)."""
+    return os.environ.get("NEO4J_DEBUG", "").strip().lower() in ("1", "true", "yes")
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +62,17 @@ def _get_mode() -> str:
 def get_mode() -> str:
     """Public accessor for current Neo4j write mode."""
     return _get_mode()
+
+
+def reset_mode_cache() -> None:
+    """Reset the mode cache (KIK-743).
+
+    Useful in tests where ``is_available`` is monkey-patched between cases —
+    without resetting, the 30s TTL leaks the previous test's mode value into
+    the next test.
+    """
+    global _mode_cache
+    _mode_cache = ("", 0.0)
 
 
 _driver_failure: str | None = None
@@ -103,24 +121,37 @@ def _unavailable_message() -> str:
 
 
 def is_available() -> bool:
-    """Check if Neo4j is reachable."""
+    """Check if Neo4j is reachable.
+
+    Neo4j is optional in this project (dual-write view side; the master is
+    ``data/`` JSON/CSV). Failures are silent by default. Set
+    ``NEO4J_DEBUG=1`` (or ``true``/``yes``) to emit a one-line diagnostic on
+    stderr the first time per process — repeated failures stay quiet to avoid
+    log spam, since this function is called repeatedly via ``_get_mode()``.
+    """
     global _unavailable_warned
     global _driver_failure
     driver = _get_driver()
     if driver is None:
-        if not _unavailable_warned:
+        # 既定では沈黙（KIK-749）。NEO4J_DEBUG=1 のときだけ、原因を切り分けた
+        # 案内（KIK-733 の _unavailable_message）を出す。
+        if _debug_enabled() and not _unavailable_warned:
             print(_unavailable_message(), file=sys.stderr)
             _unavailable_warned = True
         return False
     try:
         driver.verify_connectivity()
-        _unavailable_warned = False  # reset on successful connection
+        _unavailable_warned = False  # reset once connectivity recovers
         _driver_failure = None
         return True
-    except Exception:
+    except Exception as exc:
         _driver_failure = "connect"
-        if not _unavailable_warned:
-            print(_unavailable_message(), file=sys.stderr)
+        if _debug_enabled() and not _unavailable_warned:
+            # 例外は型名のみ。repr は URI・認証情報を含みうる。
+            print(
+                f"{_unavailable_message()}\n    詳細: {type(exc).__name__}",
+                file=sys.stderr,
+            )
             _unavailable_warned = True
         return False
 

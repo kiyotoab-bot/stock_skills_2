@@ -1,4 +1,14 @@
-/data/
+# Personal/private data (KIK-744: explicit exclusion list)
+# data/ 配下は基本的に個人データなので除外。
+# 将来追加するファイルは明示的に !data/<path> でホワイトリスト化する。
+data/
+!data/.gitkeep
+
+# tests/fixtures/sample_*.{csv,json} は明示的に追跡対象（KIK-745）
+# 汎用テストデータなので、個人PFと混同しないよう明示ホワイトリスト。
+!tests/fixtures/sample_portfolio.csv
+!tests/fixtures/sample_cash_balance.json
+
 __pycache__/
 *.pyc
 .venv/
@@ -9,9 +19,15 @@ __pycache__/
 .claude/settings.local.json
 data/models/
 articles/
-/config/
 .DS_Store
 .mcp.json
+
+# config/ — リポ追跡対象を明示（KIK-744）
+# config/ 全体を除外していたが、実際には scoring/allocation/etf_universe 等の
+# 共有設定はコミット対象。data ディレクトリと違って機密情報は持たない想定。
+# 機密 config を追加する場合は config/secrets/ などに分離して個別除外する。
+config/secrets/
+config/*.local.yaml
 
 # 分析中の中間出力（セッションのスクラッチ）
 # 2026-08-08: リポジトリ直下に73件・1.2MB 溜まっていたため無視対象にした。

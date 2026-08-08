@@ -113,10 +113,12 @@ class TestSaveScreening:
         assert Path(path).exists()
 
     def test_save_file_naming(self, tmp_path):
+        # KIK-743: HHMMSS 一意化（同日同region/preset の上書き防止）
         path = save_screening("value", "japan", _sample_results(), base_dir=str(tmp_path))
         filename = Path(path).name
         today = date.today().isoformat()
-        assert filename == f"{today}_japan_value.json"
+        assert filename.startswith(f"{today}_japan_value_")
+        assert filename.endswith(".json")
 
     def test_save_contains_metadata(self, tmp_path):
         path = save_screening("value", "japan", _sample_results(), base_dir=str(tmp_path))
@@ -147,14 +149,19 @@ class TestSaveScreening:
         data = _read_json(path)
         assert data["sector"] is None
 
-    def test_save_overwrites_same_day(self, tmp_path):
+    def test_save_does_not_overwrite_same_day(self, tmp_path):
+        # KIK-744: HHMMSSffffff + uuid 一意化により、同日同 region/preset でも
+        # 別ファイルに保存される（旧テストは上書き前提だった）。
         results1 = [{"symbol": "A", "value_score": 50}]
         results2 = [{"symbol": "B", "value_score": 60}]
         path1 = save_screening("value", "japan", results1, base_dir=str(tmp_path))
         path2 = save_screening("value", "japan", results2, base_dir=str(tmp_path))
-        assert path1 == path2
-        data = _read_json(path2)
-        assert data["results"][0]["symbol"] == "B"
+        assert path1 != path2
+        # 両ファイルとも残っている
+        data1 = _read_json(path1)
+        data2 = _read_json(path2)
+        assert data1["results"][0]["symbol"] == "A"
+        assert data2["results"][0]["symbol"] == "B"
 
     def test_save_creates_screen_subdirectory(self, tmp_path):
         save_screening("value", "japan", [], base_dir=str(tmp_path))
@@ -178,10 +185,12 @@ class TestSaveReport:
         assert Path(path).exists()
 
     def test_save_file_naming(self, tmp_path):
+        # KIK-743: HHMMSS 一意化（同日同銘柄の上書き防止）
         path = save_report("7203.T", _sample_stock_data(), 72.5, "割安", base_dir=str(tmp_path))
         filename = Path(path).name
         today = date.today().isoformat()
-        assert filename == f"{today}_7203_T.json"
+        assert filename.startswith(f"{today}_7203_T_")
+        assert filename.endswith(".json")
 
     def test_save_contains_score_and_verdict(self, tmp_path):
         path = save_report("7203.T", _sample_stock_data(), 72.5, "割安（買い検討）", base_dir=str(tmp_path))
@@ -222,16 +231,31 @@ class TestSaveTrade:
         assert data["shares"] == 5
 
     def test_save_file_naming(self, tmp_path):
+        # KIK-744: ファイル名末尾に HHMMSSffffff_<6hex> が付与される（同秒衝突防止）
         path = save_trade("7203.T", "buy", 100, 2850.0, "JPY", "2026-02-14", base_dir=str(tmp_path))
         filename = Path(path).name
         today = date.today().isoformat()
-        assert filename == f"{today}_buy_7203_T.json"
+        prefix = f"{today}_buy_7203_T_"
+        assert filename.startswith(prefix)
+        assert filename.endswith(".json")
+        suffix = filename[len(prefix):-len(".json")]
+        # 形式: HHMMSSffffff_<6hex>
+        assert len(suffix) == 19, f"unexpected suffix length: {suffix!r}"
+        assert suffix[12] == "_"
+        assert suffix[:12].isdigit()
 
     def test_save_sell_file_naming(self, tmp_path):
+        # KIK-744: ファイル名末尾に HHMMSSffffff_<6hex> が付与される（同秒衝突防止）
         path = save_trade("AAPL", "sell", 5, 180.0, "USD", "2026-02-14", base_dir=str(tmp_path))
         filename = Path(path).name
         today = date.today().isoformat()
-        assert filename == f"{today}_sell_AAPL.json"
+        prefix = f"{today}_sell_AAPL_"
+        assert filename.startswith(prefix)
+        assert filename.endswith(".json")
+        suffix = filename[len(prefix):-len(".json")]
+        assert len(suffix) == 19, f"unexpected suffix length: {suffix!r}"
+        assert suffix[12] == "_"
+        assert suffix[:12].isdigit()
 
     def test_save_with_memo(self, tmp_path):
         path = save_trade("7203.T", "buy", 100, 2850.0, "JPY", "2026-02-14", memo="割安でエントリー", base_dir=str(tmp_path))
@@ -280,10 +304,12 @@ class TestSaveHealth:
         assert Path(path).exists()
 
     def test_save_file_naming(self, tmp_path):
+        # KIK-743: HHMMSS 一意化（同日health の上書き防止）
         path = save_health(_sample_health_data(), base_dir=str(tmp_path))
         filename = Path(path).name
         today = date.today().isoformat()
-        assert filename == f"{today}_health.json"
+        assert filename.startswith(f"{today}_health_")
+        assert filename.endswith(".json")
 
     def test_save_contains_summary(self, tmp_path):
         path = save_health(_sample_health_data(), base_dir=str(tmp_path))
@@ -602,11 +628,13 @@ class TestSaveMarketContext:
         assert data["_saved_at"] is not None
 
     def test_filename_format(self, tmp_path):
+        # KIK-743: HHMMSS 一意化（同日context の上書き防止）
         context = {"indices": []}
         path = save_market_context(context, base_dir=str(tmp_path))
         fname = Path(path).name
         today = date.today().isoformat()
-        assert fname == f"{today}_context.json"
+        assert fname.startswith(f"{today}_context_")
+        assert fname.endswith(".json")
 
     def test_load_market_context(self, tmp_path):
         context = {"indices": [{"name": "VIX", "price": 20.0}]}
@@ -847,13 +875,15 @@ class TestSaveForecast:
         assert Path(path).exists()
 
     def test_save_file_naming(self, tmp_path):
+        # KIK-744: HHMMSSffffff + uuid hex で完全一意化
         path = save_forecast(
             positions=self._sample_positions(),
             base_dir=str(tmp_path),
         )
         filename = Path(path).name
         today = date.today().isoformat()
-        assert filename == f"{today}_forecast.json"
+        assert filename.startswith(f"{today}_forecast_")
+        assert filename.endswith(".json")
 
     def test_save_contains_metadata(self, tmp_path):
         positions = self._sample_positions()

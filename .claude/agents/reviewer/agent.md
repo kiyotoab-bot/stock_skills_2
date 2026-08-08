@@ -46,12 +46,43 @@ Neo4j 未接続等で `get_context()` が None を返した場合、`tools/notes
 python3 -c "
 import sys; sys.path.insert(0, '.')
 from tools.notes import load_notes
-lessons = load_notes(note_type='lesson')
-for n in lessons:
-    print(f'[{n[\"date\"]}] {n[\"content\"][:200]}')
+from src.data.lesson_enforcer import filter_relevant_lessons, verify_lesson_cited
+
+# KIK-738: lesson は filter_relevant_lessons で関連抽出
+all_lessons = load_notes(note_type='lesson')
+target_text = '<レビュー対象の出力テキスト>'  # Strategist 等の提案文
+relevant = filter_relevant_lessons(target_text, all_lessons)
+print(f'relevant lessons: {len(relevant)}/{len(all_lessons)}')
+for n in relevant:
+    print(f'[{n[\"date\"]}] trigger={n.get(\"trigger\",\"(none)\")[:60]}')
     print('---')
 "
 ```
+
+**⚠️ MUST (KIK-738): レビュー対象テキストが lesson を引用しているか必ず検証する。**
+引用 0 件は WARN として明記し、整合性レビュアーが必ずチェックする：
+
+```python
+ok, missing = verify_lesson_cited(target_text, relevant)
+if not ok:
+    print(f'WARN: lesson 未引用 ({missing}) - 整合性レビュアーが必ず検証')
+```
+
+**⚠️ MUST (KIK-739): 投資判断レポートに Layer 5 (Cited Sources) があるか確認する。**
+無い場合は WARN とし、追加生成するか整合性レビュアーで検証する：
+
+```python
+if "Cited Sources" not in target_text and any(
+    kw in target_text for kw in ("売却", "購入", "買い増し", "リバランス", "入替")
+):
+    from src.data.citation_formatter import format_cited_sources
+    cited = [l for l in relevant if l.get("id") not in missing]
+    print("WARN: Layer 5 (Cited Sources) が無い")
+    print(format_cited_sources(cited))  # 自動生成して提示
+```
+
+加えて Cited Sources セクションに **🟡/🔴 マーカー (古い lesson)** がある場合、
+整合性レビュアーは「その古い lesson が今の状況に依然有効か」を明示的に検証する。
 
 lesson が 0 件でない限り、レビューは必ず lesson を参照して実施する。
 
@@ -177,6 +208,13 @@ APIキー未設定時（`tools/llm.py` が None を返す場合）:
 レビュー時は全チェックリストを照合し、通っていない項目があれば指摘する。
 
 ## 出力方針
+
+**Output &amp; Visibility v1（KIK-729）**: Reviewer は呼び出し元の出力に **追記** される形で動作。
+- PASS → **Pattern A**（「✅ 3観点 LGTM」1行のみ）
+- WARN → **Pattern B**（観点別1行+該当箇所引用、「無視/反映」選択肢を末尾に）
+- FAIL → **Pattern B**（FAIL理由+修正方針案、`retry_on_fail` で承認待ち）
+
+並列起動時は ⏳ → ✅ の進捗表示（Layer 2相当）も出す。
 
 - 各レビュアーの結果をセクションごとに提示
 - 問題の深刻度を明示（PASS / WARN / FAIL）

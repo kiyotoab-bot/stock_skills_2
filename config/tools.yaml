@@ -38,6 +38,24 @@ tools:
       search_x_sentiment:
         description: "X(旧Twitter)上の投資家センチメント取得"
         when: "候補の定性評価時、市場心理の確認時"
+      bulk_x_search:
+        provider: "xAI Grok"
+        description: "X firehose 並列センチメント（複数クエリ束ね）"
+        when: "投資家センチメント・$cashtag・特定 handle を複数横断する時"
+        strength: "X firehose 独占アクセス（他LLM不可）"
+        not_for: "公式メディア・SEC（→ gemini.deep_research を使う）"
+        cost_per_call_usd: 0.5
+        max_calls_per_session: 5
+        note: "1クエリあたり sleep(0.5) で rate limit 配慮。max_sources_per_call=10 で sources 課金抑制"
+      bulk_web_search:
+        provider: "xAI Grok"
+        description: "Grok web_search 並列（速報重視・サイトフィルタ可）"
+        when: "リアルタイム速報・X反応とWeb反応の対比"
+        strength: "Grok の reasoning + web_search 統合"
+        not_for: "深い徹底調査（→ gemini.deep_research）"
+        cost_per_call_usd: 0.5
+        max_calls_per_session: 3
+        note: "allowed_domains で site フィルタ可（最大5）"
 
   graphrag:
     source: tools/graphrag.py
@@ -64,6 +82,18 @@ tools:
       is_provider_available:
         description: "指定プロバイダのAPIキーが設定されているか確認"
         when: "LLM呼び出し前のチェック"
+      gemini_deep_research:
+        provider: "Google Gemini"
+        description: "Gemini Deep Research API: Web 全般を自律巡回（80-160 sources）+ 引用付きレポート生成"
+        when: "業界全体像・規制動向・公式IR・SEC・マクロを徹底調査する時"
+        strength: "Google Search Grounding。1タスクで多数ソースを統合した深い分析"
+        not_for: "X/Twitter内データ（→ grok.bulk_x_search）"
+        cost_per_call_usd: 2.5
+        max_calls_per_session: 2
+        note: "depth=light/medium/heavy。wall_time 30min ハードキャンセル。DEEPTHINK_DR_ENABLED=off で停止"
+      is_deep_research_enabled:
+        description: "Gemini DR の kill switch 状態確認 (DEEPTHINK_DR_ENABLED)"
+        when: "DR 起動前のチェック"
 
   notes:
     source: tools/notes.py
@@ -84,6 +114,42 @@ tools:
       load_portfolio:
         description: "ポートフォリオ保有状況の読込（CSV）"
         when: "PF関連テーマ時（必須）。配分・通貨・ロール分析に使う"
+      load_cash_balance:
+        description: "キャッシュ残高読込（cash_balance.json）"
+        when: "PF総資産計算時（必須）。Cash% 比率算出には load_total_assets 推奨"
+        note: "KIK-734: HC/Risk Assessor は cash_balance.json を必ず参照すること"
+      load_total_assets:
+        description: "PF総資産（株式 + 現金）の SSoT 関数"
+        when: "PF総資産・Cash% 計算時（必須）。load_portfolio + load_cash_balance を一括取得"
+        note: "KIK-734: 戻り値 {positions, cash, cash_jpy, has_cash}。HC/Risk のキャッシュ参照漏れ防止"
+
+  sanity_gate:
+    source: src/data/sanity_gate.py
+    functions:
+      assert_pf_complete:
+        description: "PF総資産計算のキャッシュ参照漏れを assert で防ぐ"
+        when: "推奨生成前（必須）。HC/Risk Assessor で PF比率を出す前に通す"
+      assert_lot_size:
+        description: "JP/SG/JKT/HK/KS 株は100株単位、米株は1株可の assert"
+        when: "売買提案時（必須）。一部売却不可な銘柄での桁ミス防止"
+      assert_conviction_respected:
+        description: "conviction 銘柄への売却・トリム提案禁止 assert"
+        when: "売買提案時（必須）。ホールド確定銘柄の保護"
+      run_all_gates:
+        description: "上記3 gate を一括実行する便利関数"
+        when: "PF徹底レビュー・徹底調査・週次routine 実行時"
+        note: "KIK-734: 自然言語制約ではなくコード強制。fail で SanityGateError"
+
+  preflight:
+    source: src/data/preflight.py
+    functions:
+      run_preflight:
+        description: "DeepThink 起動前/Step5前のゲート（cash_balance / conviction / lot_size を一括検証）"
+        when: "DeepThink Step 0 と Step 5 直前（必須）。PF系テーマでは domain='pf'"
+        note: "KIK-735: sanity_gate のラッパー。conviction は data/notes/thesis から自動抽出"
+      extract_convictions:
+        description: "thesis ノートから conviction 銘柄リストを抽出"
+        when: "Strategist/Reviewer 起動時に conviction 注入用に取得"
 
   watchlist:
     source: tools/watchlist.py

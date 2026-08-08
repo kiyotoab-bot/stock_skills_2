@@ -58,7 +58,7 @@ def _daily_sigma(closes: list[float], window: int = 60) -> float | None:
     return sd if sd > 0 else None
 
 
-def _calc_rsi(closes: list[float], period: int = 14) -> float | None:
+def _calc_rsi(closes, period: int = 14) -> float | None:
     """Calculate RSI(14) using Wilder's smoothing (KIK-727).
 
     旧実装は直近 period+1 本の単純平均（Cutler's RSI）だった。閾値 30/70 は
@@ -67,7 +67,17 @@ def _calc_rsi(closes: list[float], period: int = 14) -> float | None:
     買われすぎ/売られすぎの判定が食い違っていた。
 
     Wilder は系列全体を平滑するため、渡す ``closes`` が長いほど値が安定する。
+
+    入力は list[float] / numpy 配列 / pandas Series / DataFrame を受ける
+    （DataFrame は Close 列を自動抽出）。
     """
+    if hasattr(closes, "columns"):
+        if "Close" in closes.columns:
+            closes = closes["Close"].tolist()
+        else:
+            return None
+    elif hasattr(closes, "tolist"):
+        closes = closes.tolist()
     if len(closes) < period + 1:
         return None
 

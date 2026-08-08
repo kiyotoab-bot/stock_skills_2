@@ -33,3 +33,38 @@ actions:
     - "現時点の中間結果をユーザーに提示"
     - "続行にはユーザーの明示的な承認が必要"
     - "承認なしで自動延長しない"
+
+# KIK-731 / KIK-732: 外部リサーチツール上限（コスト保証）
+# 月予算 $50 で安全に収まるよう設計
+tool_limits:
+  gemini_deep_research:
+    max_calls_per_session: 2          # 1セッション最大2回
+    max_calls_per_month: 10           # 月10回まで（$2.5×10=$25）
+    monthly_budget_usd: 30
+    estimated_cost_usd:
+      light: 1.5
+      medium: 2.5
+      deep: 5.0                       # KIK-737: 'heavy' → 'deep' に統一
+    # KIK-737: depth 連動 wall_time（light/medium=15min, deep=30min）
+    wall_time_by_depth_sec:
+      light: 900
+      medium: 900
+      deep: 1800
+    kill_switch_env: DEEPTHINK_DR_ENABLED  # =off で実行停止
+    dry_run_env: DEEPTHINK_DRY_RUN        # KIK-737: =1 で API 不要 dry_run
+    log_path: data/logs/deepthink_meta.jsonl
+  grok_bulk_x_search:
+    max_calls_per_session: 5
+    max_calls_per_month: 20
+    monthly_budget_usd: 10
+    cost_per_call_usd: 0.5
+    log_path: data/logs/deepthink_meta.jsonl
+  grok_bulk_web_search:
+    max_calls_per_session: 3
+    max_calls_per_month: 15
+    monthly_budget_usd: 7.5
+    cost_per_call_usd: 0.5
+    log_path: data/logs/deepthink_meta.jsonl
+
+# 月次合算上限（Hard cap）
+monthly_total_budget_usd: 50

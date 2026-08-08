@@ -78,6 +78,29 @@ class TestCalcRSI:
         long_series = [100 + i * 0.5 * ((-1) ** i) for i in range(60)]
         assert _calc_rsi(long_series) != pytest.approx(_calc_rsi(long_series[-15:]))
 
+    def test_accepts_pandas_series(self):
+        import pandas as pd
+        closes = pd.Series([100 + i * 0.5 * ((-1) ** i) for i in range(20)])
+        rsi = _calc_rsi(closes)
+        assert rsi is not None
+        assert 0 <= rsi <= 100
+
+    def test_accepts_dataframe_with_close_column(self):
+        import pandas as pd
+        df = pd.DataFrame({
+            "Open": [100.0] * 20,
+            "Close": [100 + i * 0.5 * ((-1) ** i) for i in range(20)],
+            "Volume": [1000] * 20,
+        })
+        rsi = _calc_rsi(df)
+        assert rsi is not None
+        assert 0 <= rsi <= 100
+
+    def test_dataframe_without_close_returns_none(self):
+        import pandas as pd
+        df = pd.DataFrame({"Open": [100.0] * 20})
+        assert _calc_rsi(df) is None
+
 
 # ---------------------------------------------------------------------------
 # detect_alerts
@@ -610,9 +633,9 @@ class TestFormatWarnRendering:
         assert f"...他{17 - shown}件" in r
 
 
-# ===================================================================
+# ============================================================
 # 月次チェックの routine 対応 (KIK-738)
-# ===================================================================
+# ============================================================
 
 class TestMonthlyRoutine:
     """日次・週次と同じ仕組みに月次を乗せる."""

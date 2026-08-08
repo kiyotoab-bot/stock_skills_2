@@ -102,6 +102,8 @@ examples.yaml の `quality_thresholds` を参照。ユーザーが「高い」�
 
 ## 出力方針
 
+**Output &amp; Visibility v1（KIK-729）**: 単発実行は **Pattern B**（標準4セクション: 結論→主要数値テーブル→詳細→次アクション）。連鎖（researcher→screener等）の中では **Pattern C** の `## ① / ## ②` セクションに収める。
+
 - スコア付きランキング（value_score 0-100点）
 - 異常値は自動除外（配当>15%、PBR<0.1 等）
 - 保有銘柄・ウォッチ銘柄・過去スクリーニング常連にはアノテーション付与
