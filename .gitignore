@@ -1,8 +1,12 @@
 # Personal/private data (KIK-744: explicit exclusion list)
 # data/ 配下は基本的に個人データなので除外。
-# 将来追加するファイルは明示的に !data/<path> でホワイトリスト化する。
-data/
-!data/.gitkeep
+# 将来追加するファイルは明示的に !/data/<path> でホワイトリスト化する。
+#
+# ⚠️ 先頭のスラッシュは必須。`data/` と書くと任意の階層の data ディレクトリに
+#    マッチし、src/data/ と tests/data/ まで無視される（追跡済みファイルは
+#    残るので気づきにくく、新規モジュールだけが黙って落ちる）。
+/data/
+!/data/.gitkeep
 
 # tests/fixtures/sample_*.{csv,json} は明示的に追跡対象（KIK-745）
 # 汎用テストデータなので、個人PFと混同しないよう明示ホワイトリスト。
@@ -17,7 +21,7 @@ __pycache__/
 .claude/worktrees/
 .claude/settings.json
 .claude/settings.local.json
-data/models/
+/data/models/
 articles/
 .DS_Store
 .mcp.json

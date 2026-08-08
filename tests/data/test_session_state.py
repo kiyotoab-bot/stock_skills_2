@@ -104,6 +104,85 @@ class TestReconcileSessionState:
         out = reconcile_session_state(base_dir=str(fake_repo), trade_window_days=7)
         assert "old_buy_X.json" not in out["recent_trades"]
 
+    def test_trade_file_written_as_list(self, fake_repo):
+        """save_trade.py は1件でもリストで書く。dict 前提だと実データで必ず落ちる。"""
+        today = date.today().isoformat()
+        _write_json(
+            fake_repo / "data" / "history" / "trade" / "today_sell_Y.json",
+            [{"id": "t1", "date": today, "type": "sell", "symbol": "Y"}],
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo))
+        assert "today_sell_Y.json" in out["recent_trades"]
+
+    def test_trade_list_uses_latest_date(self, fake_repo):
+        """1ファイルに複数レコードがある場合は最新日で窓を判定する。"""
+        today = date.today().isoformat()
+        old = (date.today() - timedelta(days=30)).isoformat()
+        _write_json(
+            fake_repo / "data" / "history" / "trade" / "mixed.json",
+            [
+                {"id": "t1", "date": old, "type": "buy", "symbol": "Y"},
+                {"id": "t2", "date": today, "type": "sell", "symbol": "Y"},
+            ],
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo), trade_window_days=7)
+        assert "mixed.json" in out["recent_trades"]
+
+    def test_trade_list_all_old_excluded(self, fake_repo):
+        old = (date.today() - timedelta(days=30)).isoformat()
+        _write_json(
+            fake_repo / "data" / "history" / "trade" / "old_list.json",
+            [{"id": "t1", "date": old, "type": "buy", "symbol": "Y"}],
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo), trade_window_days=7)
+        assert "old_list.json" not in out["recent_trades"]
+
+    def test_cash_date_from_updated_at(self, fake_repo):
+        """save_cash_balance() は `date` を書かない。updated_at で鮮度を判定する。"""
+        today = date.today().isoformat()
+        _write_json(
+            fake_repo / "data" / "cash_balance.json",
+            {"JPY": 100, "updated_at": f"{today}T18:30:00", "last_updated": today},
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo))
+        assert out["cash_stale"] is False
+        assert not any("日付がありません" in w for w in out["warnings"])
+
+    def test_cash_date_from_last_updated(self, fake_repo):
+        today = date.today().isoformat()
+        _write_json(
+            fake_repo / "data" / "cash_balance.json",
+            {"JPY": 100, "last_updated": today},
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo))
+        assert out["cash_stale"] is False
+
+    def test_cash_stale_from_updated_at(self, fake_repo):
+        old = (date.today() - timedelta(days=10)).isoformat()
+        _write_json(
+            fake_repo / "data" / "cash_balance.json",
+            {"JPY": 100, "updated_at": f"{old}T09:00:00"},
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo), cash_stale_days=3)
+        assert out["cash_stale"] is True
+        assert any("10日前" in w for w in out["warnings"])
+
+    def test_cash_without_any_date_is_stale(self, fake_repo):
+        _write_json(fake_repo / "data" / "cash_balance.json", {"JPY": 100})
+        out = reconcile_session_state(base_dir=str(fake_repo))
+        assert out["cash_stale"] is True
+        assert any("日付がありません" in w for w in out["warnings"])
+
+    def test_trade_file_with_junk_entries(self, fake_repo):
+        """dict でない要素が混ざっていても落ちない。"""
+        today = date.today().isoformat()
+        _write_json(
+            fake_repo / "data" / "history" / "trade" / "junk.json",
+            ["not a dict", {"id": "t1", "date": today, "type": "buy", "symbol": "Y"}],
+        )
+        out = reconcile_session_state(base_dir=str(fake_repo))
+        assert "junk.json" in out["recent_trades"]
+
     def test_corrupt_files_skipped(self, fake_repo):
         bad = fake_repo / "data" / "notes" / "bad.json"
         bad.parent.mkdir(parents=True, exist_ok=True)

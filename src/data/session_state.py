@@ -22,7 +22,14 @@ from typing import Any, Optional
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    """ローカル日付を返す。
+
+    note / trade / cash_balance の日付はいずれもローカル時刻で書かれる。
+    UTC で比較すると JST では朝9時までの間だけ日付が1日戻り、鮮度が
+    1日ぶん甘く出る（8/9 朝に書いた残高が UTC では 8/8 扱いになる）。
+    書く側に合わせてローカルで数える。
+    """
+    return date.today()
 
 
 def _parse_iso_date(value: object) -> Optional[date]:
@@ -92,6 +99,10 @@ def _load_recent_trades(base_dir: Path, window_days: int) -> list[str]:
 
     KIK-742: save_trade.py は `"date"` キーで保存するが、過去には `trade_date` も
     使われていた。両方をフォールバックして読む。
+
+    ⚠️ trade JSON のトップレベルは **レコードの配列**（save_trade.py は1件でも
+    リストで書く）。dict 前提で `.get()` を呼ぶと実データで必ず AttributeError に
+    なるため、両形式を受ける。1ファイルに複数レコードがある場合は最新日を採る。
     """
     trade_dir = base_dir / "data" / "history" / "trade"
     if not trade_dir.exists():
@@ -100,11 +111,17 @@ def _load_recent_trades(base_dir: Path, window_days: int) -> list[str]:
     recent: list[str] = []
     for fp in sorted(trade_dir.glob("*.json"), reverse=True):
         try:
-            rec = json.loads(fp.read_text(encoding="utf-8"))
+            raw = json.loads(fp.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
+        records = raw if isinstance(raw, list) else [raw]
         # KIK-742: date が正、trade_date は legacy フォールバック
-        d = _parse_iso_date(rec.get("date") or rec.get("trade_date"))
+        dates = [
+            _parse_iso_date(r.get("date") or r.get("trade_date"))
+            for r in records
+            if isinstance(r, dict)
+        ]
+        d = max((x for x in dates if x is not None), default=None)
         if d is not None and d >= cutoff:
             recent.append(fp.name)
     return recent
@@ -132,9 +149,18 @@ def reconcile_session_state(
     if cash_missing:
         warnings.append("cash_balance.json が見つかりません")
     else:
-        cash_date = _parse_iso_date(cash.get("date"))
+        # save_cash_balance() が書くのは updated_at / last_updated で、`date` は無い。
+        # `date` だけを見ると残高がいくら新しくても必ず「解釈できません」に落ちる。
+        # graph_sync が updated_at を優先するのに合わせ、同じ順で拾う。
+        cash_date_raw = (
+            cash.get("date") or cash.get("updated_at") or cash.get("last_updated")
+        )
+        cash_date = _parse_iso_date(cash_date_raw)
         if cash_date is None:
-            warnings.append("cash_balance.json の date が解釈できません")
+            warnings.append(
+                "cash_balance.json に日付がありません "
+                "(date / updated_at / last_updated のいずれも読めない)"
+            )
             # 年月日が読めない時は stale 扱い（保守側）
             cash_stale = True
         else:
@@ -142,7 +168,7 @@ def reconcile_session_state(
             if age_days > cash_stale_days:
                 cash_stale = True
                 warnings.append(
-                    f"cash_balance.json は {cash['date']} 時点 "
+                    f"cash_balance.json は {cash_date.isoformat()} 時点 "
                     f"({age_days}日前) — 直近取引と乖離の可能性"
                 )
 
