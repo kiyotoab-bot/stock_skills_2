@@ -202,8 +202,25 @@ def test_gitignore_keeps_config_yaml_tracked():
     # config/ 単独除外行が消えていること
     lines = [line.strip() for line in text.splitlines()]
     assert "config/" not in lines, "config/ must NOT be a blanket exclude"
-    # data/ は除外維持
-    assert "data/" in lines
+    # data/ は除外維持。ただしリポジトリ直下に限定すること。
+    # 先頭スラッシュなしの `data/` は src/data/ と tests/data/ にもマッチし、
+    # 新規モジュールが黙って追跡対象から外れる（追跡済みは残るので気づけない）。
+    assert "/data/" in lines, "root data dir must stay excluded, anchored"
+    assert "data/" not in lines, "unanchored data/ also swallows src/data and tests/data"
+
+
+def test_gitignore_does_not_swallow_source_data_dirs():
+    """src/data・tests/data がリポジトリの ignore ルールに巻き込まれない."""
+    import subprocess
+    from pathlib import Path
+    repo = Path(__file__).resolve().parent.parent
+    for path in ("src/data/__probe__.py", "tests/data/__probe__.py"):
+        r = subprocess.run(
+            ["git", "check-ignore", "-q", path],
+            cwd=repo, capture_output=True,
+        )
+        # exit 0 = ignored, 1 = not ignored
+        assert r.returncode == 1, f"{path} must not be ignored"
 
 
 def test_gitignore_excludes_secrets_path():
