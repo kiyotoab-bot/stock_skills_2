@@ -565,11 +565,15 @@ KIK-735 で5カテゴリを足した後も market_context / stress_test / foreca
   通貨コードでない文字列が渡っている
 - `skipped` に `NEO4J_MODE=off` → データではなく設定の問題
 
-**ベクトル埋め込みは sync 経路では生成されない。** `save_*()` 経由の書き込みだけが
-TEI（`src/data/embedding_client.py`）で埋め込みを付ける。Neo4j 停止中に保存したデータを
-後から sync した場合、ノードは作られるが `embedding` / `semantic_summary` が付かず、
-**そのノードだけベクトル検索から漏れる**。既存の埋め込みを壊すことはない（欠落のみ）。
-sync 経路への埋め込み生成は未実装。
+**ベクトル埋め込みは sync 経路でも生成される**（KIK-740）。save 経路と同じ
+`history/_helpers._build_embedding` を使うので、Neo4j 停止中に保存したデータを
+後から sync しても `embedding` / `semantic_summary` が付く。
+TEI（`src/data/embedding_client.py`）が未起動なら埋め込みなしで書かれる（graceful degradation）。
+
+⚠️ KIK-739 まで sync 経路は埋め込みを生成しておらず、**そのノードだけベクトル検索から
+永久に漏れていた**。ノードは作られ件数も合うので出力からは検知できない。
+実測では Note 172件中165件 → sync 後 169件に増えた（残り3件は 2026-04 の
+ソースファイルが存在しない残骸）。
 
 ### データ保存原則
 

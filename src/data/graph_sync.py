@@ -71,6 +71,24 @@ def _required_num(value: Any) -> Optional[float]:
         return None
 
 
+def _embedding(category: str, **kwargs) -> tuple[str, Optional[list]]:
+    """semantic_summary と埋め込みベクトルを作る (KIK-740).
+
+    ⚠️ sync 経路はこれを一切呼んでいなかった。``save_*()`` 経由の書き込みだけが
+    埋め込みを付けるため、**Neo4j 停止中に保存 → 復旧後に sync で補完**した
+    ノードだけが `embedding` を持たず、ベクトル検索から永久に漏れていた。
+    ノードは作られ件数も合うので、出力からは検知できない。
+
+    実体は `history/_helpers._build_embedding`（save 経路と同じもの）。
+    TEI 未起動なら ("", None) が返り、埋め込みなしで書かれる。
+    """
+    try:
+        from src.data.history._helpers import _build_embedding
+        return _build_embedding(category, **kwargs)
+    except Exception:
+        return ("", None)
+
+
 def _iso_date(value: Any) -> Optional[str]:
     """先頭10文字を YYYY-MM-DD として検証して返す。駄目なら None.
 
@@ -104,7 +122,10 @@ def _sync_trade(rec: dict) -> bool:
     price = _required_num(rec.get("price"))
     if not (symbol and trade_type and trade_date) or shares is None or price is None:
         return False
+    sem, emb = _embedding("trade", date=trade_date, trade_type=str(trade_type).lower(),
+                          symbol=symbol, shares=int(shares), memo=rec.get("memo", ""))
     return merge_trade(
+        semantic_summary=sem, embedding=emb,
         trade_date=trade_date,
         trade_type=str(trade_type).lower(),
         symbol=symbol,
@@ -136,7 +157,10 @@ def _sync_screen(rec: dict) -> bool:
         # の集計から静かに抜ける。
         if theme:
             tag_theme(r["symbol"], theme)
+    sem, emb = _embedding("screen", date=screen_date, preset=rec.get("preset", ""),
+                          region=rec.get("region", ""), top_symbols=symbols[:5])
     return merge_screen(
+        semantic_summary=sem, embedding=emb,
         screen_date=screen_date,
         preset=rec.get("preset", "") or "",
         region=rec.get("region", "") or "",
@@ -154,7 +178,11 @@ def _sync_report(rec: dict) -> bool:
         return False
     merge_stock(symbol=symbol, name=rec.get("name", "") or "",
                 sector=rec.get("sector", "") or "")
+    sem, emb = _embedding("report", symbol=symbol, name=rec.get("name", ""),
+                          score=_num(_first(rec, "value_score", "score")),
+                          verdict=rec.get("verdict", ""), sector=rec.get("sector", ""))
     return merge_report_full(
+        semantic_summary=sem, embedding=emb,
         report_date=report_date,
         symbol=symbol,
         score=_num(_first(rec, "value_score", "score")),
@@ -176,7 +204,10 @@ def _sync_research(rec: dict) -> bool:
     if not (research_date and target):
         return False
     research_type = _first(rec, "research_type", "type", default="") or ""
+    sem, emb = _embedding("research", research_type=research_type,
+                          target=target, result=rec)
     ok = merge_research_full(
+        semantic_summary=sem, embedding=emb,
         research_date=research_date,
         research_type=research_type,
         target=target,
@@ -200,7 +231,9 @@ def _sync_health(rec: dict) -> bool:
         return False
     positions = rec.get("positions") or []
     symbols = [p.get("symbol") for p in positions if isinstance(p, dict) and p.get("symbol")]
+    sem, emb = _embedding("health", date=health_date, summary=rec.get("summary") or {})
     return merge_health(
+        semantic_summary=sem, embedding=emb,
         health_date=health_date,
         summary=rec.get("summary") or {},
         symbols=symbols,
@@ -213,7 +246,11 @@ def _sync_market_context(rec: dict) -> bool:
     context_date = _iso_date(rec.get("date"))
     if not context_date:
         return False
+    sem, emb = _embedding("market_context", date=context_date,
+                          indices=rec.get("indices") or [],
+                          grok_research=rec.get("grok_research"))
     return merge_market_context_full(
+        semantic_summary=sem, embedding=emb,
         context_date=context_date,
         indices=rec.get("indices") or [],
         grok_research=rec.get("grok_research"),
@@ -231,7 +268,11 @@ def _sync_stress_test(rec: dict) -> bool:
     for sym in symbols:
         merge_stock(symbol=sym)
     var = rec.get("var_result") or {}
+    sem, emb = _embedding("stress_test", date=test_date, scenario=scenario,
+                          portfolio_impact=_num(rec.get("portfolio_impact")),
+                          symbol_count=len(symbols))
     return merge_stress_test(
+        semantic_summary=sem, embedding=emb,
         test_date=test_date,
         scenario=scenario,
         portfolio_impact=_num(rec.get("portfolio_impact")),
@@ -253,7 +294,13 @@ def _sync_forecast(rec: dict) -> bool:
     for sym in symbols:
         merge_stock(symbol=sym)
     pf = rec.get("portfolio") or {}
+    sem, emb = _embedding("forecast", date=forecast_date,
+                          optimistic=_num(pf.get("optimistic")),
+                          base=_num(pf.get("base")),
+                          pessimistic=_num(pf.get("pessimistic")),
+                          symbol_count=len(symbols))
     return merge_forecast(
+        semantic_summary=sem, embedding=emb,
         forecast_date=forecast_date,
         optimistic=_num(pf.get("optimistic")),
         base=_num(pf.get("base")),
@@ -328,7 +375,12 @@ def _sync_notes(root: Path, result: dict) -> None:
                     # merge_note は失敗しても例外を投げず False を返す。
                     # 戻り値を見ないと「159件同期」と出しながら0件という
                     # 状態が作れてしまう（_sync_history とも不整合になる）。
+                    sem, emb = _embedding(
+                        "note", symbol=note.get("symbol", "") or "",
+                        note_type=note.get("type", "observation"),
+                        content=note.get("content", ""))
                     if merge_note(
+                        semantic_summary=sem, embedding=emb,
                         note_id=note.get("id", nf.stem),
                         note_date=note.get("date", ""),
                         note_type=note.get("type", "observation"),
@@ -405,11 +457,14 @@ def _sync_cash(root: Path, result: dict) -> None:
             f"{code} {amount:,.0f}" for code, amount in sorted(currencies.items())
         )
         memo = balances.get("memo", "") or ""
+        content = f"現金残高 {amounts}" + (f" — {memo}" if memo else "")
+        sem, emb = _embedding("note", symbol="", note_type="cash", content=content)
         if not merge_note(
+            semantic_summary=sem, embedding=emb,
             note_id=f"cash_{balance_date}",
             note_date=balance_date,
             note_type="cash",
-            content=f"現金残高 {amounts}" + (f" — {memo}" if memo else ""),
+            content=content,
             category="portfolio",
             source="cash_balance.json",
         ):

@@ -447,52 +447,23 @@ def sync_stock_full(symbol: str, client=None, csv_path: str = "") -> dict:
             history_dir = Path(__file__).resolve().parents[3] / "data" / "history" / "trade"
 
         if history_dir.exists():
+            # KIK-740: 取引レコード → Trade ノードの変換は graph_sync._sync_trade
+            # ひとつに寄せた。以前はここに写しがあり、キー名の揺れ吸収も
+            # 必須フィールドのガードも graph_sync 側と食い違っていた
+            # （list 形式で全件落ちる KIK-737 のバグはここだけに残っていた）。
             from src.data.common import load_json_records
+            from src.data.graph_sync import _sync_trade
 
             for fp in sorted(history_dir.glob("*.json")):
-                # KIK-737: 以前は json.load() の結果に直接 .get() していたため、
-                # list 形式のファイル（実データ 20件は全て list）で AttributeError
-                # → except continue となり、**全件が黙って落ちていた**。
                 try:
                     records = load_json_records(fp)
                 except Exception:
                     continue
                 for rec in records:
+                    if rec.get("symbol") != symbol:
+                        continue
                     try:
-                        if rec.get("symbol") != symbol:
-                            continue
-                        # 方向は action / trade_type どちらにも入る（graph_sync と同じ）
-                        trade_type = rec.get("action") or rec.get("trade_type") or "buy"
-                        trade_date = rec.get("date") or rec.get("trade_date") or ""
-                        # Build summary + embedding
-                        sem = ""
-                        emb = None
-                        try:
-                            from src.data.context.summary_builder import build_trade_summary
-                            from src.data import embedding_client
-                            sem = build_trade_summary(
-                                trade_date, trade_type,
-                                symbol, rec.get("shares", 0), rec.get("memo", ""),
-                            )
-                            emb = embedding_client.get_embedding(sem)
-                        except Exception:
-                            pass
-                        ok = merge_trade(
-                            trade_date=trade_date,
-                            trade_type=str(trade_type).lower(),
-                            symbol=symbol,
-                            shares=rec.get("shares", 0),
-                            price=rec.get("price", 0),
-                            currency=rec.get("currency", "JPY"),
-                            memo=rec.get("memo", ""),
-                            semantic_summary=sem,
-                            embedding=emb,
-                            sell_price=rec.get("sell_price"),
-                            realized_pnl=(rec.get("realized_pnl")
-                                          or rec.get("realized_pl") or rec.get("pnl")),
-                            hold_days=rec.get("hold_days"),
-                        )
-                        if ok:
+                        if _sync_trade(rec):
                             result["trades"] += 1
                     except Exception:
                         continue
