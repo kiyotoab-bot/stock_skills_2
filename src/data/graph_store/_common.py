@@ -265,8 +265,105 @@ _VECTOR_INDEXES = [
 ]
 
 
+_DDL_NAME = re.compile(r"CREATE\s+(?:VECTOR\s+)?(?:CONSTRAINT|INDEX)\s+(\w+)")
+
+
+def _expected_schema() -> dict[str, list[str]]:
+    """DDL 定義から、あるべき制約・索引の名前を取り出す (KIK-742)."""
+    def names(stmts):
+        return [m.group(1) for m in (_DDL_NAME.search(s) for s in stmts) if m]
+    return {
+        "constraints": names(_SCHEMA_CONSTRAINTS),
+        "indexes": names(_SCHEMA_INDEXES),
+        "vector_indexes": names(_VECTOR_INDEXES),
+    }
+
+
+def check_schema() -> dict:
+    """制約・索引・ベクトル索引が実在するかを確認する (KIK-742).
+
+    ⚠️ **`init_schema()` が True を返しても、作られた保証はない。**
+    ベクトル索引の失敗は `try/except: pass` で握り潰される設計（古い Neo4j
+    互換のため）なので、1つも作られなくても True が返る。実際 2026-08-09 に
+    調べたところ、このDBには索引も制約も **1つも存在しなかった**
+    （Neo4j 既定の LOOKUP 2件のみ）。
+
+    埋め込みを全ノードに付けても、ベクトル索引が無ければ
+    `db.index.vector.queryNodes` は呼べず意味検索は一切動かない。
+    「埋め込みの欠落」より上流の問題なので、日次の Step 0 で見る。
+
+    Returns
+    -------
+    dict
+        ``ok`` / ``missing`` / ``present`` / ``vector_online`` / ``alerts``
+    """
+    expected = _expected_schema()
+    driver = _get_driver()
+    if driver is None:
+        return {"ok": None, "skipped": "Neo4j未接続", "missing": {}, "alerts": []}
+    try:
+        with driver.session() as session:
+            idx = session.run(
+                "SHOW INDEXES YIELD name, type, state RETURN name, type, state").data()
+            con = session.run("SHOW CONSTRAINTS YIELD name RETURN name").data()
+    except Exception as e:
+        return {"ok": None, "skipped": f"スキーマを読めない: {e}",
+                "missing": {}, "alerts": []}
+
+    have_idx = {r["name"] for r in idx}
+    have_con = {r["name"] for r in con}
+    vec_state = {r["name"]: r.get("state") for r in idx if r.get("type") == "VECTOR"}
+
+    missing = {
+        "constraints": [n for n in expected["constraints"] if n not in have_con],
+        "indexes": [n for n in expected["indexes"] if n not in have_idx],
+        "vector_indexes": [n for n in expected["vector_indexes"] if n not in have_idx],
+    }
+    # 作られていても ONLINE でなければ引けない
+    not_online = [n for n in expected["vector_indexes"]
+                  if n in vec_state and vec_state[n] != "ONLINE"]
+
+    alerts = []
+    if missing["vector_indexes"]:
+        alerts.append({
+            "symbol": "SCHEMA", "type": "vector_index_missing", "severity": "CRITICAL",
+            "message": (f"ベクトル索引が {len(missing['vector_indexes'])}件 未作成 "
+                        "→ 意味検索が動きません（init_schema() を実行）"),
+            "value": missing["vector_indexes"]})
+    if not_online:
+        alerts.append({
+            "symbol": "SCHEMA", "type": "vector_index_not_online", "severity": "WARN",
+            "message": f"ベクトル索引が構築中/失敗: {not_online}",
+            "value": not_online})
+    if missing["constraints"]:
+        alerts.append({
+            "symbol": "SCHEMA", "type": "constraint_missing", "severity": "WARN",
+            "message": (f"一意制約が {len(missing['constraints'])}件 未作成 "
+                        "→ ノードの重複を防げません"),
+            "value": missing["constraints"]})
+    if missing["indexes"]:
+        alerts.append({
+            "symbol": "SCHEMA", "type": "index_missing", "severity": "INFO",
+            "message": f"索引が {len(missing['indexes'])}件 未作成（クエリが遅くなります）",
+            "value": missing["indexes"]})
+
+    return {
+        "ok": not any(missing.values()) and not not_online,
+        "missing": missing,
+        "present": {k: len(set(expected[k]) & (have_con if k == "constraints" else have_idx))
+                    for k in expected},
+        "expected": {k: len(v) for k, v in expected.items()},
+        "vector_online": sum(1 for v in vec_state.values() if v == "ONLINE"),
+        "alerts": alerts,
+    }
+
+
 def init_schema() -> bool:
-    """Create constraints and indexes. Returns True on success."""
+    """Create constraints and indexes. Returns True on success.
+
+    ⚠️ 戻り値の True は「文を流した」以上の意味を持たない。ベクトル索引の
+    失敗は握り潰される。**作られたかは `check_schema()` で確認すること。**
+    """
     driver = _get_driver()
     if driver is None:
         return False
