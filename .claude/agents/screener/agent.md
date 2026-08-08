@@ -116,12 +116,15 @@ examples.yaml の `quality_thresholds` を参照。ユーザーが「高い」�
 - mode が `contrarian` かつ region が `jp`
 
 **手順:**
-1. `mcp__notebooklm__search_notebooks` で "清原達郎" を検索してノートブックIDを取得
-2. `mcp__notebooklm__ask_question(notebook_id, "ネットキャッシュ比率のスクリーニング条件と買い/見送り判断基準を教えてください")` を実行
+1. `config/tools.yaml` の `notebooklm` から清原ノートブックの `notebook_id` を取得する
+2. `ask_question(notebook_id, "ネットキャッシュ比率のスクリーニング条件と買い/見送り判断基準を教えてください")` を実行
 3. 返答をフィルター条件に反映し、結果に「📖 清原式ネットキャッシュ基準参照」の注記を付与
+
+⚠️ 上記トリガーに該当しない場合は呼ばない。1回15〜40秒かかり、無料枠は50クエリ/日。
+清原以外のノートブックは実行時に参照しない（`config/tools.yaml` の `notebooklm` を参照）。
 
 ## References
 
 - Regions & Presets & Few-shot: [examples.yaml](./examples.yaml)
 - 3軸スコアリング: [config/tools.yaml](../../../config/tools.yaml) の `scoring.score_quality`
-- ネットキャッシュ投資法: NotebookLM「清原達郎 ネットキャッシュ投資法」
+- ネットキャッシュ投資法: [config/tools.yaml](../../../config/tools.yaml) の `notebooklm`（ライブラリ4冊と参照可否）

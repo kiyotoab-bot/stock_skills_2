@@ -4,6 +4,7 @@ calc_nikkei_usd      : ドル建て日経平均（日経225 ÷ USDJPY）の水�
 calc_jp_us_relative  : ドル建て日経 vs S&P500 の相対強度
 calc_nt_ratio        : NT倍率（日経225 ÷ TOPIX）
 calc_nikkei_per_signal: 日経225 PER の水準評価
+calc_nikkei_fair_value: 日経225 の理論株価バンド（EPS × PER）
 """
 
 from __future__ import annotations
@@ -440,3 +441,81 @@ def calc_nikkei_per_signal(per: float) -> dict:
         )
 
     return {"per": per, "signal": signal, "label": label}
+
+
+def calc_nikkei_fair_value(price: float, per: float) -> dict:
+    """日経225 の理論株価バンド（EPS × PER）を算出する。
+
+    EPS は日経平均の実績値を別途取得せず、``price / per`` で導出する。
+    Health Checker は日経225終値と日経PERを既に取得しているため、
+    新たなデータ取得は不要。
+
+    Parameters
+    ----------
+    price : float
+        日経225 の現在値（例: 42000.0）。get_price_history の終値を使う。
+    per : float
+        日経225 の PER 倍率（例: 20.5）。calc_nikkei_per_signal と同じ値。
+
+    Returns
+    -------
+    dict with keys:
+        eps              : float | None  — 導出EPS（price / per）
+        fair_cheap       : float | None  — 割安圏の株価（EPS × cheap倍）
+        fair_overvalued  : float | None  — 割高圏の株価（EPS × overvalued倍）
+        fair_bubble      : float | None  — バブル圏の株価（EPS × bubble倍）
+        to_cheap_pct     : float | None  — 割安圏までの騰落率%（負なら下落が必要）
+        to_overvalued_pct: float | None  — 割高圏までの騰落率%
+        position         : "below_cheap" | "in_range" | "above_overvalued"
+                           | "above_bubble" | "unavailable"
+        label            : str           — 人間可読1行ラベル
+    """
+    _na = {
+        "eps": None,
+        "fair_cheap": None,
+        "fair_overvalued": None,
+        "fair_bubble": None,
+        "to_cheap_pct": None,
+        "to_overvalued_pct": None,
+        "position": "unavailable",
+        "label": "データ不足",
+    }
+
+    if price is None or per is None or price <= 0 or per <= 0:
+        return _na
+
+    thr = NIKKEI_PER_THRESHOLDS
+    eps = price / per
+
+    fair_cheap = eps * thr["cheap"]
+    fair_overvalued = eps * thr["overvalued"]
+    fair_bubble = eps * thr["bubble"]
+
+    if per >= thr["bubble"]:
+        position = "above_bubble"
+        state = f"バブル圏（¥{fair_bubble:,.0f}超）"
+    elif per >= thr["overvalued"]:
+        position = "above_overvalued"
+        state = f"割高圏（¥{fair_overvalued:,.0f}超）"
+    elif per <= thr["cheap"]:
+        position = "below_cheap"
+        state = f"割安圏（¥{fair_cheap:,.0f}以下）"
+    else:
+        position = "in_range"
+        state = "正常レンジ"
+
+    label = (
+        f"理論株価 割安圏 ¥{fair_cheap:,.0f} / 割高圏 ¥{fair_overvalued:,.0f}"
+        f" — 現在 ¥{price:,.0f} は{state}"
+    )
+
+    return {
+        "eps": round(eps, 1),
+        "fair_cheap": round(fair_cheap, 1),
+        "fair_overvalued": round(fair_overvalued, 1),
+        "fair_bubble": round(fair_bubble, 1),
+        "to_cheap_pct": round((fair_cheap - price) / price * 100, 1),
+        "to_overvalued_pct": round((fair_overvalued - price) / price * 100, 1),
+        "position": position,
+        "label": label,
+    }

@@ -77,12 +77,15 @@ Data (src/data/)
   ticker_utils.py — ティッカー推論（通貨/地域マッピング）
   portfolio_io.py — PF CSV 読み書き
   scoring.py     — 3軸品質スコアリング（還元性・成長性・持続性）
+  market_regime.py — 市場レジーム指標（ドル建て日経・NT倍率・日経PER・理論株価バンド）
+  band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
 
 Config: .claude/agents/screener/examples.yaml (regions, themes, presets, few-shot)
 Config: config/scoring.yaml (スコアリング重み・閾値・セクター別設定)
 Config: config/allocation.yaml (PFターゲットアロケーション・集中度制約・乖離判定)
 Config: config/etf_universe.yaml (ETF定番リスト — セクター/債券/コモディティ/地域)
 Config: config/llm_routing.yaml (LLM選択・モデルルーティング・コスト定義)
+Config: config/tools.yaml (全ツールの関数・役割・NotebookLMライブラリと参照可否)
 Rules:  .claude/rules/ (development, workflow, testing)
 Docs:   docs/ (architecture, neo4j-schema, data-models)
 Tests:  tests/ (unit), tests/e2e/ (E2E agent scenarios)

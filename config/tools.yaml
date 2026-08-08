@@ -200,3 +200,46 @@ tools:
       get_document_list:
         description: "指定日の全提出書類一覧を取得（フィルタなし）"
         when: "特定日の開示書類を網羅的に確認する時"
+
+  notebooklm:
+    source: "MCP (notebooklm-mcp) — tools/ にファサードは作らない"
+    note: |
+      Google NotebookLM（2026-07-16 に **Gemini Notebook** へ改名、URL は notebook.google.com）を
+      MCP 経由で参照する。ユーザーがアップロードした資料に根拠を限定した回答が返る。
+
+      **ライブラリ（4冊）と実行時参照の可否:**
+
+      | notebook_id | 内容 | 実行時参照 |
+      |:---|:---|:---|
+      | kiyohara-net-cash-investing | 清原達郎 ネットキャッシュ投資法 | **可**（トリガー条件付き） |
+      | sho-nikkei-technical-and-suppl | Sho's投資情報局 日経平均テクニカル・需給 | 不可（実装時に定着済み） |
+      | uki-quant-trading-methods-uki | UKI クオンツ手法（統計・機械学習・板読み） | 不可（未接続） |
+      | beginner-stock-investing-lectu | 株初心者向け講義9本 | **不可（接続しない）** |
+
+      ⚠️ **実行時に呼んでよいのは清原ノートブックのみ。** `ask_question` は実測 15〜40秒かかり、
+      無料枠は 50クエリ/日。日次ルーティン（朝サマリー・PFヘルスチェック等）の同期パスに入れると
+      体感が明確に悪化する。Sho / UKI の知見は**実装時に1回引いて判定ロジックとして定着させる**
+      （例: #160 大底圏シグナル、バンドウォーク終了判定）。
+
+      ⚠️ beginner-stock-investing-lectu はスクリーニング基準（時価総額500億円以上・自己資本比率
+      50%以上・配当3〜4%）が清原式（500億円未満の小型株）と矛盾する。ユーザーが明示的に
+      指定した時だけ手動で引く。エージェントの自動トリガーには入れない。
+
+      ⚠️ ノートブック追加時は **name に必ず ASCII を含める**。notebooklm-mcp の generateId() が
+      name を `[^a-z0-9]+` でスラグ化するため、日本語のみの name は id が空文字列になり
+      `ask_question` から参照できなくなる（実際に発生済み）。
+    functions:
+      search_notebooks:
+        description: "ライブラリをキーワード検索し、notebook_id を取得（name/description/topics/tags を対象）"
+        when: "ノートブックを id ではなくトピックで特定する時。上表の id を直接使ってもよい"
+      ask_question:
+        description: "ノートブックに質問し、ソース根拠付きの回答を取得"
+        when: |
+          清原式のネットキャッシュ基準を取得する時（screener / analyst のトリガー条件を満たした場合のみ）。
+          source_format="footnotes" で引用付き。session_id を渡すと文脈を保った追質問ができる。
+      list_notebooks:
+        description: "登録済みノートブックの一覧とメタデータを取得"
+        when: "ライブラリの現状を確認する時"
+      get_health:
+        description: "認証状態・アクティブノートブック・セッション数の確認"
+        when: "NotebookLM 参照が失敗した時の切り分け（authenticated=false なら setup_auth）"
