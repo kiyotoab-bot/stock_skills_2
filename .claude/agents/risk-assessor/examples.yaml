@@ -181,6 +181,30 @@ examples:
     pf_target: {income: "45-55%", growth: "15-25%", cash: "25-30%"}
     reasoning: "neutral+売られすぎ+日経PER割安。BB-4σ+ピボットS3+RSI<30+PBR割安の4条件揃いは#160大底圏シグナル。VIX低下確認後に倍買い開始"
 
+  # === バンドウォーク終了パターン（上昇トレンドの手仕舞い） ===
+  - intent: "この銘柄まだ持っていて大丈夫？（急騰後）"
+    input: {vix: 16, tnx: 4.2, ism: 52, fg: 72, wti: 75, yc: 0.5, nikkei_per: 21}
+    scores: {vix: +1, tnx: 0, ism: +1, fg: -1, wti: 0, yc: 0, nikkei_per: -1}
+    total: 0
+    verdict: neutral
+    steps:
+      - tool: yahoo_finance.get_price_history
+        params: { period: "6mo" }
+        note: "バンドウォーク判定は60本以上必要。3mo未満だとunavailableになる"
+      - code: |
+          from src.data.band_walk import detect_band_walk_end
+          bw = detect_band_walk_end(closes, highs=highs, lows=lows)
+    individual_signals:
+      - "6501.T: bw.signal=ended / stage=4/4 / 剥離から8本 → 上昇トレンド終了"
+      - "7203.T: bw.signal=band_walk → +2σ沿い継続中。利を伸ばす局面"
+      - "8306.T: bw.signal=ending / stage=2/4（日柄調整中）→ 警戒だが未確定"
+    action: |
+      バンドウォーク終了（4/4）の 6501.T はウェイト縮小を検討。
+      継続中の 7203.T は早すぎる利確をしない。
+      2/4 の 8306.T は工程3（パラボリック+MACD）の点灯待ちで監視のみ。
+    pf_target: {income: "50-55%", growth: "20-25%", cash: "20-30%"}
+    reasoning: "neutralだがF&G72で過熱気味。個別のトレンド寿命はバンドウォークの工程数で測る。工程は順番に満たされないと進まないため、stage 2 を「もうすぐ終了」と読み替えない"
+
   # =================================================================
   # 歴史的パターン（Gemini 3.1 Pro + Grok 調査に基づく）
   # =================================================================

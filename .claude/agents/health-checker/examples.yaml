@@ -62,10 +62,11 @@ examples:
       - code: |
           # 各銘柄のRSI, SMA50/200, 損益率を計算
           from src.data.market_regime import (
-              calc_nikkei_per_signal, calc_nikkei_usd,
+              calc_nikkei_per_signal, calc_nikkei_fair_value, calc_nikkei_usd,
               calc_nt_ratio, calc_jp_us_relative,
           )
           per_result  = calc_nikkei_per_signal(nikkei_per)
+          fair_result = calc_nikkei_fair_value(n225_price, nikkei_per)
           usd_result  = calc_nikkei_usd(nikkei_closes, usdjpy_closes)
           nt_result   = calc_nt_ratio(n225_price, topix_price)
           jus_result  = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
@@ -89,8 +90,9 @@ examples:
           # シグナル判定: RSI<30 かつ BB下限+5%以内 → 🔴 / RSI<35 または BB下限+8%以内 → ⚠️
       - output: |
           異常あり → 全テーブル（PF概況+アラート+市況+需給+乖離+WL+清原候補）
-          市況テーブルには必ず以下4指標を含める:
+          市況テーブルには必ず以下5指標を含める:
             日経PER:       [per_result["label"]]
+            理論株価:      [fair_result["label"]]
             ドル建て日経:  [usd_result["label"]]
             NT倍率:        [nt_result["label"]]
             JP vs US:      [jus_result["label"]]
@@ -101,7 +103,7 @@ examples:
             | 銘柄 | 名称 | 現在値 | RSI | BB下限 | 下限まで | SMA200乖離 | シグナル |
             🔴 エントリー圏到達時: 末尾に「📌 Analyst起動推奨（清原式詳細分析）」
           異常なし → 軽量3行（評価額+変動+一言）+ 清原候補セクション（候補あれば）
-    reasoning: "日次ルーティン。HC担当分。PER・ドル建て日経・NT倍率・JP vs USを市況に含める。jpxで需給も確認。清原候補はStep4でWLアラートと同時に処理"
+    reasoning: "日次ルーティン。HC担当分。PER・理論株価・ドル建て日経・NT倍率・JP vs USを市況に含める。jpxで需給も確認。清原候補はStep4でWLアラートと同時に処理"
 
   # === PFヘルスチェック ===
   - intent: "PF大丈夫？"
@@ -203,10 +205,11 @@ examples:
         note: "NT倍率計算用（Yahoo Finance非対応）"
       - code: |
           from src.data.market_regime import (
-              calc_nikkei_per_signal, calc_nikkei_usd,
+              calc_nikkei_per_signal, calc_nikkei_fair_value, calc_nikkei_usd,
               calc_nt_ratio, calc_jp_us_relative,
           )
           per_result  = calc_nikkei_per_signal(nikkei_per)
+          fair_result = calc_nikkei_fair_value(n225_price, nikkei_per)
           usd_result  = calc_nikkei_usd(nikkei_closes, usdjpy_closes)
           nt_result   = calc_nt_ratio(n225_price, topix_price)
           jus_result  = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
@@ -216,13 +219,14 @@ examples:
           主要指標の現在値・前日比を提示。数値のみ。
           | 指標 | 現在値 | 前日比 |
           | 日経PER | XX.X倍 | [per_result["label"]] |
+          | 理論株価 | 割安¥XX,XXX / 割高¥XX,XXX | [fair_result["label"]] |
           | ドル建て日経 | X,XXX.X USD | [usd_result["label"]] |
           | NT倍率 | XX.XX倍 | [nt_result["label"]] |
           | JP vs US | — | [jus_result["label"]] |
           需給セクション（available=Trueの場合のみ）:
             信用倍率: X.XX（signal: neutral/high/low）
             外国人: +XXXXX億円（N週連続買い越し）
-    reasoning: "定量データのみ。判断しない。PER・ドル建て日経・NT倍率・JP vs USを必ず含める"
+    reasoning: "定量データのみ。判断しない。PER・理論株価・ドル建て日経・NT倍率・JP vs USを必ず含める"
 
   - intent: "需給どう？"
     steps:

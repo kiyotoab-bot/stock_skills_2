@@ -10,6 +10,7 @@ from src.data.market_regime import (
     calc_jp_us_relative, JP_US_THRESHOLDS,
     calc_nt_ratio, NT_THRESHOLDS,
     calc_nikkei_per_signal, NIKKEI_PER_THRESHOLDS,
+    calc_nikkei_fair_value,
 )
 
 
@@ -568,3 +569,87 @@ class TestAlignByDatesEdgeCases:
                             nikkei_dates=[], usdjpy_dates=[])
         assert r["aligned"] is False
         assert r["signal"] != "unavailable"
+
+
+# ---------------------------------------------------------------------------
+# calc_nikkei_fair_value
+# ---------------------------------------------------------------------------
+
+class TestNikkeiFairValue:
+    def test_bands_are_eps_times_thresholds(self):
+        """EPS は price/per で導出し、各バンドは EPS × 閾値になる。"""
+        r = calc_nikkei_fair_value(42000.0, 16.0)
+        thr = NIKKEI_PER_THRESHOLDS
+        eps = 42000.0 / 16.0
+        assert r["eps"] == pytest.approx(eps, abs=0.1)
+        assert r["fair_cheap"] == pytest.approx(eps * thr["cheap"], abs=0.1)
+        assert r["fair_overvalued"] == pytest.approx(eps * thr["overvalued"], abs=0.1)
+        assert r["fair_bubble"] == pytest.approx(eps * thr["bubble"], abs=0.1)
+        assert r["position"] == "in_range"
+
+    def test_to_pct_direction(self):
+        """正常レンジでは割安圏は下、割高圏は上にある。"""
+        r = calc_nikkei_fair_value(42000.0, 16.0)
+        assert r["to_cheap_pct"] < 0
+        assert r["to_overvalued_pct"] > 0
+
+    def test_to_pct_recovers_price(self):
+        """to_cheap_pct を現在値に適用すると fair_cheap に戻る。"""
+        r = calc_nikkei_fair_value(42000.0, 16.0)
+        assert 42000.0 * (1 + r["to_cheap_pct"] / 100) == pytest.approx(
+            r["fair_cheap"], rel=1e-3
+        )
+
+    @pytest.mark.parametrize("per,expected", [
+        (12.9, "below_cheap"),
+        (13.0, "below_cheap"),      # cheap は境界を含む（<=）
+        (13.1, "in_range"),
+        (19.9, "in_range"),
+        (20.0, "above_overvalued"),  # overvalued は境界を含む（>=）
+        (24.9, "above_overvalued"),
+        (25.0, "above_bubble"),      # bubble は境界を含む（>=）
+        (40.0, "above_bubble"),
+    ])
+    def test_position_boundaries(self, per, expected):
+        assert calc_nikkei_fair_value(42000.0, per)["position"] == expected
+
+    @pytest.mark.parametrize("per", [10.0, 13.0, 16.0, 20.0, 25.0, 30.0])
+    def test_consistent_with_per_signal(self, per):
+        """calc_nikkei_per_signal と判定が食い違わない。"""
+        signal = calc_nikkei_per_signal(per)["signal"]
+        position = calc_nikkei_fair_value(42000.0, per)["position"]
+        mapping = {
+            "cheap": "below_cheap",
+            "normal": "in_range",
+            "overvalued": "above_overvalued",
+            "bubble": "above_bubble",
+        }
+        assert position == mapping[signal]
+
+    def test_price_at_cheap_band_is_below_cheap(self):
+        """現在値がちょうど割安圏の株価なら position は below_cheap。"""
+        r = calc_nikkei_fair_value(42000.0, 16.0)
+        r2 = calc_nikkei_fair_value(r["fair_cheap"], NIKKEI_PER_THRESHOLDS["cheap"])
+        assert r2["position"] == "below_cheap"
+        assert r2["to_cheap_pct"] == pytest.approx(0.0, abs=0.1)
+
+    def test_label_contains_both_bands(self):
+        label = calc_nikkei_fair_value(42000.0, 16.0)["label"]
+        assert "割安圏" in label and "割高圏" in label
+
+    @pytest.mark.parametrize("price,per", [
+        (None, 16.0),
+        (42000.0, None),
+        (None, None),
+        (0, 16.0),
+        (42000.0, 0),
+        (-100.0, 16.0),
+        (42000.0, -1.0),
+    ])
+    def test_guards_return_unavailable(self, price, per):
+        r = calc_nikkei_fair_value(price, per)
+        assert r["position"] == "unavailable"
+        assert r["label"] == "データ不足"
+        assert r["eps"] is None
+        assert r["fair_cheap"] is None
+        assert r["to_cheap_pct"] is None

@@ -131,6 +131,34 @@ Read ツールで全文を読み、examples セクションの全パターンと
 | 売られすぎ | RSI < 35 + ファンダ健全 | 押し目買い候補 |
 | リカバリー好機 | ATH-30%超下落 + ROE>20% + カタリスト発生 | エントリー候補 |
 | **大底圏（#160）** | BB -4σ以下 + ピボットS3/S4以下 + RSI<30 + PBR割安 | **玉集め候補（倍買い・翌日現引き方式）** |
+| **バンドウォーク終了** | +2σ沿いの上昇が4工程を経て中央線まで戻る | **上昇トレンド終了 — 利確・ウェイト縮小の検討材料** |
+
+**バンドウォーク終了判定:**
+
+`src/data/band_walk.detect_band_walk_end()` を使う。**自分で工程を判定しない**:
+
+```python
+from src.data.band_walk import detect_band_walk_end
+result = detect_band_walk_end(closes, highs=highs, lows=lows)
+# result: {in_band_walk, stage: 0〜4, stages: {detach, consolidation, indicators, reversion},
+#          bars_since_detach, signal: "band_walk"|"ending"|"ended"|"none"|"unavailable", label}
+```
+
+日足は **3ヶ月以上（60本以上）** 渡すこと。工程3の MACD 判定にウォームアップが必要で、
+本数が足りないと `unavailable` になる。
+
+| signal | 意味 | 出力の扱い |
+|:---|:---|:---|
+| band_walk | +2σ沿いを継続中 | 強トレンド。利を伸ばす局面（早すぎる利確の抑止材料） |
+| ending | 終了過程（stage 1〜3） | 「N/4工程」を明示。トレンド転換の警戒材料 |
+| ended | 4工程完了（stage 4） | 上昇トレンド終了。利確・ウェイト縮小の検討材料 |
+| none / unavailable | 該当なし / データ不足 | 出力しない |
+
+⚠️ **工程は順番に満たされないと進まない。** 日柄調整（工程2）を挟まず急落した場合は
+stage 1 のまま止まる。これは仕様であり、順序を無視した「4条件揃った」判定はしない。
+
+⚠️ 中央線は **25日**（Sho式の定義）。#160 の大底圏検出が使う BB(20, 2σ) とは期間が違う。
+両者を混同しないこと。
 
 **大底圏シグナル（#160）の優先度判定:**
 

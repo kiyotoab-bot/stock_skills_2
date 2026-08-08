@@ -117,6 +117,28 @@ result = calc_nikkei_per_signal(nikkei_per)
 **PER値は detect_alerts() にも渡すこと**（アラート生成に使用）。
 **出力**: `result["label"]` をそのまま市況テーブルに含める。
 
+#### 4-a'. 日経225 理論株価バンド（EPS × PER）
+
+`src/data/market_regime.calc_nikkei_fair_value()` で割安圏・割高圏の株価水準を算出する。
+**追加のデータ取得は不要**（4-a で取得済みの PER と、^N225 の終値をそのまま渡す）:
+
+```python
+from src.data.market_regime import calc_nikkei_fair_value
+result = calc_nikkei_fair_value(nikkei_close, nikkei_per)
+# result: {eps, fair_cheap, fair_overvalued, fair_bubble,
+#          to_cheap_pct, to_overvalued_pct,
+#          position: "below_cheap"|"in_range"|"above_overvalued"|"above_bubble"|"unavailable",
+#          label}
+```
+
+EPS は `終値 ÷ PER` で導出する。バンドは EPS × 各PER閾値（13倍/20倍/25倍）。
+
+**出力**: `result["label"]` を市況テーブルに1行追加する。
+「日経平均が高いか安いか」を倍率ではなく**株価の絶対水準**で言うための行であり、
+4-a（PER倍率の水準判定）と重複ではなく補完の関係にある。
+
+**判断はしない。** 「買い場」「売り場」等のコメントは付けない（数値のみ）。
+
 #### 4-b. ドル建て日経平均（日経225 ÷ USDJPY）
 
 `src/data/market_regime.calc_nikkei_usd()` でドル建て日経の水準・変化率を評価する:
