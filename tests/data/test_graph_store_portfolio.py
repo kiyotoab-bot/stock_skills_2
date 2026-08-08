@@ -164,3 +164,82 @@ class TestGetHeldSymbols:
         gs, _, session = gs_with_driver
         session.run.side_effect = Exception("DB error")
         assert gs.get_held_symbols() == []
+
+
+# ===================================================================
+# extract_cash_currencies / merge_cash_balance tests (KIK-736)
+# ===================================================================
+
+class TestExtractCashCurrencies:
+    """cash_balance.json は通貨・メタデータ・派生値が同じ階層に混ざっている."""
+
+    def test_real_file_shape(self):
+        import src.data.graph_store as gs
+        balances = {
+            "JPY": 6296491,
+            "updated_at": "2026-08-04T18:30:00",
+            "balance_jpy": 6296491,
+            "last_updated": "2026-08-04",
+            "memo": "8/4寄付き一斉約定 7件目",
+        }
+        assert gs.extract_cash_currencies(balances) == {"JPY": 6296491.0}
+
+    def test_balance_jpy_is_not_a_currency(self):
+        """balance_jpy は JPY の重複。通貨として数えると二重計上になる."""
+        import src.data.graph_store as gs
+        assert "balance_jpy" not in gs.extract_cash_currencies({"balance_jpy": 100})
+
+    def test_multi_currency(self):
+        import src.data.graph_store as gs
+        result = gs.extract_cash_currencies({"JPY": 100, "USD": 2996.9, "EUR": "50"})
+        assert result == {"JPY": 100.0, "USD": 2996.9, "EUR": 50.0}
+
+    def test_lowercase_and_wrong_length_keys_ignored(self):
+        import src.data.graph_store as gs
+        assert gs.extract_cash_currencies({"jpy": 1, "JPYY": 2, "JP": 3}) == {}
+
+    def test_non_numeric_value_dropped(self):
+        import src.data.graph_store as gs
+        assert gs.extract_cash_currencies({"JPY": "n/a", "USD": 5}) == {"USD": 5.0}
+
+
+class TestMergeCashBalance:
+    def test_sets_prefixed_properties_on_portfolio(self, gs_with_driver):
+        gs, _, session = gs_with_driver
+        with patch.object(gs, "_get_mode", return_value="full"):
+            assert gs.merge_cash_balance("2026-08-04", {"JPY": 6296491, "USD": 2996.9}) is True
+        props = session.run.call_args.kwargs["props"]
+        assert props == {"cash_jpy": 6296491.0, "cash_usd": 2996.9,
+                         "cash_updated_at": "2026-08-04"}
+
+    def test_merges_portfolio_anchor(self, gs_with_driver):
+        """Portfolio ノードが無い状態でも作られる（MERGE）."""
+        gs, _, session = gs_with_driver
+        with patch.object(gs, "_get_mode", return_value="full"):
+            gs.merge_cash_balance("2026-08-04", {"JPY": 1})
+        cypher = session.run.call_args.args[0]
+        assert "MERGE (p:Portfolio {name: 'default'})" in cypher
+        assert "SET p += $props" in cypher
+
+    def test_no_currency_returns_false_without_writing(self, gs_with_driver):
+        gs, _, session = gs_with_driver
+        with patch.object(gs, "_get_mode", return_value="full"):
+            assert gs.merge_cash_balance("2026-08-04", {"memo": "x"}) is False
+        session.run.assert_not_called()
+
+    def test_mode_off(self, gs_with_driver):
+        gs, _, _ = gs_with_driver
+        with patch.object(gs, "_get_mode", return_value="off"):
+            assert gs.merge_cash_balance("2026-08-04", {"JPY": 1}) is False
+
+    def test_no_driver(self):
+        import src.data.graph_store as gs
+        with patch.object(gs, "_get_mode", return_value="full"), \
+             patch("src.data.graph_store._get_driver", return_value=None):
+            assert gs.merge_cash_balance("2026-08-04", {"JPY": 1}) is False
+
+    def test_error_handling(self, gs_with_driver):
+        gs, _, session = gs_with_driver
+        session.run.side_effect = Exception("DB error")
+        with patch.object(gs, "_get_mode", return_value="full"):
+            assert gs.merge_cash_balance("2026-08-04", {"JPY": 1}) is False

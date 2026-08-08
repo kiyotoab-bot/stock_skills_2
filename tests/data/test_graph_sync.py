@@ -267,6 +267,109 @@ class TestSyncPortfolioPath:
         assert not result["synced"]
 
 
+class TestSyncCash:
+    """KIK-736: cash_balance.json は同期表にあるだけで呼び出し口が無かった."""
+
+    REAL = {
+        "JPY": 6296491,
+        "updated_at": "2026-08-04T18:30:00",
+        "balance_jpy": 6296491,
+        "last_updated": "2026-08-04",
+        "memo": "8/4寄付き一斉約定 7件目",
+    }
+
+    def test_portfolio_property_and_note_written(self, root):
+        _write(root / "data/cash_balance.json", self.REAL)
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=True) as mc, \
+             patch("src.data.graph_store.note.merge_note") as mn:
+            graph_sync._sync_cash(root, result)
+
+        assert mc.call_args.args[0] == "2026-08-04"
+        assert mn.call_args.kwargs["note_type"] == "cash"
+        assert mn.call_args.kwargs["category"] == "portfolio"
+        assert result["synced"] == ["cash(1通貨)"]
+
+    def test_note_id_is_date_scoped_so_resync_does_not_duplicate(self, root):
+        _write(root / "data/cash_balance.json", self.REAL)
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=True), \
+             patch("src.data.graph_store.note.merge_note") as mn:
+            graph_sync._sync_cash(root, result)
+            graph_sync._sync_cash(root, result)
+        ids = {c.kwargs["note_id"] for c in mn.call_args_list}
+        assert ids == {"cash_2026-08-04"}
+
+    def test_last_updated_wins_over_updated_at(self, root):
+        """updated_at は書き込み時刻、last_updated が残高の基準日."""
+        _write(root / "data/cash_balance.json",
+               {"JPY": 100, "updated_at": "2026-08-07T23:00:00",
+                "last_updated": "2026-08-04"})
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=True) as mc, \
+             patch("src.data.graph_store.note.merge_note"):
+            graph_sync._sync_cash(root, result)
+        assert mc.call_args.args[0] == "2026-08-04"
+
+    def test_updated_at_used_when_last_updated_missing(self, root):
+        _write(root / "data/cash_balance.json",
+               {"JPY": 100, "updated_at": "2026-08-07T23:00:00"})
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=True) as mc, \
+             patch("src.data.graph_store.note.merge_note"):
+            graph_sync._sync_cash(root, result)
+        assert mc.call_args.args[0] == "2026-08-07"
+
+    def test_multi_currency_content(self, root):
+        _write(root / "data/cash_balance.json",
+               {"JPY": 6296491, "USD": 2996.9, "last_updated": "2026-08-04"})
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=True), \
+             patch("src.data.graph_store.note.merge_note") as mn:
+            graph_sync._sync_cash(root, result)
+        content = mn.call_args.kwargs["content"]
+        assert "JPY 6,296,491" in content
+        assert "USD 2,997" in content
+        assert result["synced"] == ["cash(2通貨)"]
+
+    def test_missing_file_is_silent(self, root):
+        result = {"synced": [], "failed": [], "skipped": []}
+        graph_sync._sync_cash(root, result)
+        assert result == {"synced": [], "failed": [], "skipped": []}
+
+    def test_no_currency_key_is_skipped(self, root):
+        _write(root / "data/cash_balance.json",
+               {"last_updated": "2026-08-04", "memo": "x"})
+        result = {"synced": [], "failed": [], "skipped": []}
+        graph_sync._sync_cash(root, result)
+        assert any("cash" in s for s in result["skipped"])
+        assert not result["synced"]
+
+    def test_no_date_is_skipped(self, root):
+        _write(root / "data/cash_balance.json", {"JPY": 100})
+        result = {"synced": [], "failed": [], "skipped": []}
+        graph_sync._sync_cash(root, result)
+        assert any("基準日" in s for s in result["skipped"])
+
+    def test_write_failure_reported(self, root):
+        _write(root / "data/cash_balance.json", self.REAL)
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=False), \
+             patch("src.data.graph_store.note.merge_note") as mn:
+            graph_sync._sync_cash(root, result)
+        assert any("cash" in f for f in result["failed"])
+        mn.assert_not_called()
+
+    def test_cash_included_in_sync_all(self, root):
+        _write(root / "data/cash_balance.json", self.REAL)
+        with patch("src.data.graph_store._common.is_available", return_value=True), \
+             patch("src.data.portfolio_io.load_portfolio", return_value=[]), \
+             patch("src.data.graph_store.merge_cash_balance", return_value=True), \
+             patch("src.data.graph_store.note.merge_note"):
+            result = graph_sync.sync_all(str(root))
+        assert any("cash" in s for s in result["synced"])
+
+
 class TestSyncAllEntryPoint:
     def test_neo4j_unavailable_returns_skipped(self):
         with patch("src.data.graph_store._common.is_available", return_value=False):

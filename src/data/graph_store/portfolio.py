@@ -189,6 +189,73 @@ def get_held_symbols() -> list[str]:
         return []
 
 
+# 通貨コード以外のキー（メタデータ・派生値）。balance_jpy は JPY の重複。
+_CASH_META_KEYS = frozenset({"updated_at", "last_updated", "memo", "balance_jpy"})
+
+
+def extract_cash_currencies(balances: dict) -> dict[str, float]:
+    """``cash_balance.json`` から通貨コードと残高だけを取り出す.
+
+    ファイルにはメタデータ（``updated_at`` / ``memo``）と派生値（``balance_jpy``）が
+    同じ階層に混ざっている。ISO 4217 形式の3文字大文字キーだけを通貨とみなす。
+    """
+    out: dict[str, float] = {}
+    for key, value in balances.items():
+        if key in _CASH_META_KEYS:
+            continue
+        if not (len(key) == 3 and key.isalpha() and key.isupper()):
+            continue
+        try:
+            out[key] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def merge_cash_balance(balance_date: str, balances: dict) -> bool:
+    """現金残高を Portfolio ノードのプロパティとして書く (KIK-736).
+
+    現金は銘柄ではないので HOLDS を張れない（``sync_portfolio`` も ``*.CASH`` を
+    除外している）。Portfolio アンカーの属性として持たせ、``cash_jpy`` のように
+    通貨ごとのプロパティにする。履歴は呼び出し側が Note で残す。
+
+    Parameters
+    ----------
+    balance_date : str
+        残高の基準日（``last_updated``）。
+    balances : dict
+        ``cash_balance.json`` の中身そのまま。通貨キーだけ拾う。
+
+    Returns
+    -------
+    bool
+        書けたら True。通貨キーが1つも無ければ False。
+    """
+    if _common._get_mode() == "off":
+        return False
+    driver = _common._get_driver()
+    if driver is None:
+        return False
+
+    currencies = extract_cash_currencies(balances)
+    if not currencies:
+        return False
+
+    props = {f"cash_{code.lower()}": amount for code, amount in currencies.items()}
+    props["cash_updated_at"] = balance_date
+
+    try:
+        with driver.session() as session:
+            # プロパティ名が通貨で変わるので SET p += $props で流し込む
+            session.run(
+                "MERGE (p:Portfolio {name: 'default'}) SET p += $props",
+                props=props,
+            )
+        return True
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # StressTest node (KIK-428)
 # ---------------------------------------------------------------------------

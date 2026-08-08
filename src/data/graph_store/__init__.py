@@ -58,8 +58,10 @@ from src.data.graph_store.research import (  # noqa: F401
 
 # --- portfolio.py: Trade, HealthCheck, Portfolio, StressTest, Forecast ---
 from src.data.graph_store.portfolio import (  # noqa: F401
+    extract_cash_currencies,
     get_held_symbols,
     is_held,
+    merge_cash_balance,
     merge_forecast,
     merge_health,
     merge_stress_test,

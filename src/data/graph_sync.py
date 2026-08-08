@@ -224,6 +224,60 @@ def _sync_notes(root: Path, result: dict) -> None:
         result["failed"].append(f"notes: {e}")
 
 
+def _sync_cash(root: Path, result: dict) -> None:
+    """data/cash_balance.json → Portfolio ノードの cash_* プロパティ + Note 履歴.
+
+    KIK-736 まで SKILL.md の同期表に載っているだけで呼び出し口が無かった。
+    現金は銘柄ではないので HOLDS を張れず（``sync_portfolio`` も ``*.CASH`` を
+    除外する）、Portfolio アンカーの属性として持たせる。残高の推移を後から
+    辿れるよう、基準日ごとに Note(type=cash) も残す。
+    """
+    cash_path = root / "data" / "cash_balance.json"
+    if not cash_path.exists():
+        return
+    try:
+        from src.data.graph_store import extract_cash_currencies, merge_cash_balance
+        from src.data.graph_store.note import merge_note
+
+        records = _load_records(cash_path)
+        if not records:
+            result["skipped"].append("cash: 中身が空")
+            return
+        balances = records[0]
+
+        # last_updated（残高の基準日）優先。無ければ updated_at の日付部分。
+        balance_date = str(_first(balances, "last_updated", "updated_at", default=""))[:10]
+        if not balance_date:
+            result["skipped"].append("cash: 基準日が無い")
+            return
+
+        currencies = extract_cash_currencies(balances)
+        if not currencies:
+            result["skipped"].append("cash: 通貨キーが無い")
+            return
+
+        if not merge_cash_balance(balance_date, balances):
+            result["failed"].append("cash: Portfolio への書き込み失敗")
+            return
+
+        # id を基準日で切るので、同じ日の再 sync では上書きされ増えない
+        amounts = " / ".join(
+            f"{code} {amount:,.0f}" for code, amount in sorted(currencies.items())
+        )
+        memo = balances.get("memo", "") or ""
+        merge_note(
+            note_id=f"cash_{balance_date}",
+            note_date=balance_date,
+            note_type="cash",
+            content=f"現金残高 {amounts}" + (f" — {memo}" if memo else ""),
+            category="portfolio",
+            source="cash_balance.json",
+        )
+        result["synced"].append(f"cash({len(currencies)}通貨)")
+    except Exception as e:
+        result["failed"].append(f"cash: {e}")
+
+
 def _sync_history(root: Path, result: dict) -> None:
     """data/history/{category}/*.json を全カテゴリ同期する."""
     for category in HISTORY_CATEGORIES:
@@ -292,6 +346,7 @@ def sync_all(project_root: Optional[str] = None) -> dict:
     root = Path(project_root) if project_root else Path(__file__).resolve().parents[2]
 
     _sync_portfolio(root, result)
+    _sync_cash(root, result)
     _sync_notes(root, result)
     _sync_history(root, result)
     _write_status(root, result)
