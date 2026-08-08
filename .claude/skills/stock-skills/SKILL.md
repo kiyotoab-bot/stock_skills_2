@@ -54,7 +54,7 @@ Routing後、Execution前に実行する。ユーザーの意図を正しく汲�
 
 - 入力が明確（「7203.T分析して」「PF大丈夫？」）→ 即実行
 - `required_context: []`（health-checker, risk-assessor, reviewer）→ 即実行
-- `mode: routine-*`（朝サマリー/日次/週次）→ 定型なので即実行
+- `mode: routine-*`（朝サマリー/日次/週次/月次）→ 定型なので即実行
 
 ### ヘッダー表示
 
@@ -204,7 +204,7 @@ Agent(logic-reviewer, prompt="Geminiでロジックレビュー: call_llm('gemin
 
 ### 定常業務（Routine Execution）（KIK-724）
 
-routing.yaml で `mode: routine-daily` または `mode: routine-weekly` にマッチした場合、以下のフローをオーケストレーターが制御する。
+routing.yaml で `mode: routine-daily` / `routine-weekly` / `routine-monthly` にマッチした場合、以下のフローをオーケストレーターが制御する。
 
 #### レベル判定
 
@@ -212,7 +212,12 @@ routing.yaml で `mode: routine-daily` または `mode: routine-weekly` にマ�
 |:---|:---|:---|
 | daily | 定常業務, まとめてチェック, 日次チェック, ルーティン | 3-4分 |
 | weekly | フルチェック, 週次レビュー, しっかり見たい | 8-13分 |
+| **monthly** | **月次チェック, 月次レビュー, 今月の発注どうする, 月初チェック** | **5-7分** |
 | デフォルト（未指定時） | daily | — |
+
+⚠️ **monthly は weekly の上位互換ではない。** 見る対象が違う。
+weekly は「相場と PF の現状」、monthly は「**今月の売買1回をどう使うか**」。
+片方を回しても他方は埋まらない。
 
 #### 日次フロー（routine-daily）
 
@@ -252,6 +257,50 @@ Step 8: reviewer（auto_review で自動挿入）
 - 課題なし → 「現状維持が最善」と出力し、Step 7 をスキップ
 - 週次の Step 4 ターゲット乖離は全 green でも表示する（網羅的に見る目的）
 
+#### 月次フロー（routine-monthly）（KIK-738）
+
+**なぜ月次が要るか**: 冷却期間は買付から4週、月次上限は売買1回、投入計画も月1銘柄。
+**発注は月1回しか起きないのに、その1回を判断する枠が無かった。**
+結果、月に紐づく宿題（翌月枠の銘柄未定・conviction 未認定）が週次のたびに持ち越されていた。
+
+```python
+from src.data.monthly_check import build_monthly_context
+ctx = build_monthly_context(
+    load_notes(), load_portfolio(), equity_value, cash,
+    target_amount=10_000_000, deadline="2031-04-30",
+    excluded_dates={"2026-08-04", "2026-08-03"},   # 誤発注など計上しない日
+)
+```
+
+**入口は `build_monthly_context()` ひとつ。** 個別に呼ぶ設計にすると組み立て忘れが起きる。
+
+```
+Step 1: budget      — 冷却期間の残り / 月次上限の残り / 今月買えるか + 塞がっている理由
+Step 2: slots       — 当月〜3ヶ月先の枠。「枠あり銘柄未定」を必ず出す
+Step 3: conviction  — 予定銘柄の CV1-CV3。記録が無ければ未認定として出す
+Step 4: goal        — 目標進捗と必要年率（現状維持 / 投入完了後 の2本）
+Step 5: realized    — 今月と先月の確定売買・実現損益
+  ↓
+Step 6: strategist  — 今月の1回をどう使うか。発注する / 見送る / 枠を埋める作業をする
+Step 7: reviewer    — auto_review で自動挿入
+```
+
+**出力の必須項目**（省略禁止）:
+
+- `budget.blockers` — 買えない理由を**全部**出す。冷却と月次上限が同時に塞がることがある
+- `slots` の「枠あり銘柄未定」 — これが月次を作った直接の理由。**未定のまま月末を迎えさせない**
+- `conviction` で `qualified=False` の予定銘柄 — 発注日までに認定作業が要る
+- `goal.required_cagr_as_is` と `required_cagr_fully_invested` の**両方**
+
+⚠️ **必要年率は2本を取り違えない。** `as_is`（現金を寝かせたまま）は高く出るが、
+これは達成不能という意味ではなく**未投入の帰結**でしかない。判断は
+`fully_invested`（投入完了後の株式額ベース）を見る。片方だけ見せると誤読する。
+
+⚠️ `slots` / `conviction` は**自然文のノートからの抽出**なので完全ではない。
+根拠行（`lines` / `evidence`）を必ず添えて、エージェントが検証できるようにする。
+`conviction` は CV1-CV3 と明示された記述のみを根拠にし、
+「ストップ」「テーゼ」等のキーワードから充足を**推測しない**（全銘柄 3/3 になり警告が死ぬ）。
+
 #### プログレッシブ表示（週次）
 
 Phase 完了ごとに中間結果を出力し、体感の待ち時間を短縮する:
@@ -285,7 +334,7 @@ Phase 完了ごとに中間結果を出力し、体感の待ち時間を短縮�
 #### データ保存
 
 結果は `data/session_logs/routine/` に自動保存する:
-- `daily_YYYYMMDD.json` / `weekly_YYYYMMDD.json`
+- `daily_YYYYMMDD.json` / `weekly_YYYYMMDD.json` / `monthly_YYYYMMDD.json`
 
 ### Reviewer 自動挿入（KIK-659）
 

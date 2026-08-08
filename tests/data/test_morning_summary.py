@@ -608,3 +608,72 @@ class TestFormatWarnRendering:
         shown = sum(1 for l in r.split("\n") if l.startswith(("🔴", "🟠", "🟡")))
         assert shown == 3 + 3 + 5
         assert f"...他{17 - shown}件" in r
+
+
+# ===================================================================
+# 月次チェックの routine 対応 (KIK-738)
+# ===================================================================
+
+class TestMonthlyRoutine:
+    """日次・週次と同じ仕組みに月次を乗せる."""
+
+    def test_stale_thresholds_registered(self):
+        from src.data.morning_summary import ROUTINE_STALE_DAYS, _ROUTINE_LABEL
+        assert ROUTINE_STALE_DAYS["monthly"] == {"warn": 25, "critical": 45}
+        assert _ROUTINE_LABEL["monthly"] == "月次チェック"
+
+    def test_latest_routine_dates_includes_monthly(self, tmp_path):
+        from src.data.morning_summary import latest_routine_dates
+        (tmp_path / "monthly_20260801.md").write_text("x", encoding="utf-8")
+        (tmp_path / "daily_20260807.md").write_text("x", encoding="utf-8")
+        out = latest_routine_dates(str(tmp_path))
+        assert out["monthly"] == "2026-08-01"
+        assert out["daily"] == "2026-08-07"
+        assert out["weekly"] is None
+
+    def test_never_run_is_reported(self):
+        import datetime
+        from src.data.morning_summary import check_routine_freshness
+        alerts = check_routine_freshness(
+            {"daily": "2026-08-07", "weekly": "2026-08-07", "monthly": None},
+            today=datetime.date(2026, 8, 8))
+        assert any(a["type"] == "monthly_never_run" for a in alerts)
+
+    def test_stale_message_names_what_is_missing(self):
+        """週次と同じく、何が抜けたのかを書かないと放置される."""
+        import datetime
+        from src.data.morning_summary import check_routine_freshness
+        alerts = check_routine_freshness(
+            {"daily": "2026-09-05", "weekly": "2026-09-05", "monthly": "2026-08-01"},
+            today=datetime.date(2026, 9, 5))
+        m = [a for a in alerts if a["type"] == "monthly_stale"]
+        assert m and m[0]["severity"] == "WARN"
+        assert "売買枠" in m[0]["message"]
+
+    def test_critical_after_45_days(self):
+        import datetime
+        from src.data.morning_summary import check_routine_freshness
+        alerts = check_routine_freshness(
+            {"daily": None, "weekly": None, "monthly": "2026-08-01"},
+            today=datetime.date(2026, 9, 20))
+        m = [a for a in alerts if a["type"] == "monthly_stale"]
+        assert m and m[0]["severity"] == "CRITICAL"
+
+    def test_save_routine_report_accepts_monthly(self, tmp_path):
+        import datetime
+        import json
+        from src.data.morning_summary import save_routine_report
+        out = save_routine_report(
+            "monthly", "# 月次チェック", {"budget": {"can_buy_now": False}},
+            day=datetime.date(2026, 8, 8),
+            reports_dir=str(tmp_path / "reports"),
+            logs_dir=str(tmp_path / "logs"))
+        assert out["markdown"].endswith("monthly_20260808.md")
+        payload = json.loads(open(out["json"], encoding="utf-8").read())
+        assert payload["mode"] == "routine-monthly"
+
+    def test_unknown_kind_still_rejected(self):
+        import pytest
+        from src.data.morning_summary import save_routine_report
+        with pytest.raises(ValueError):
+            save_routine_report("yearly", "x")
