@@ -8,6 +8,7 @@ from src.data.history._helpers import (
     _history_dir,
     _sanitize,
     _dual_write_graph,
+    _write_graph,
 )
 
 
@@ -51,25 +52,8 @@ def save_stress_test(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-428) -- graceful degradation
-    var = var_result or {}
-
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_stress_test, merge_stock
-        for sym in symbols:
-            merge_stock(symbol=sym)
-        merge_stress_test(
-            test_date=today, scenario=scenario,
-            portfolio_impact=portfolio_impact, symbols=symbols,
-            var_95=var.get("var_95_daily", 0), var_99=var.get("var_99_daily", 0),
-            semantic_summary=sem_summary, embedding=emb,
-        )
-
-    _dual_write_graph(
-        _graph_write, "stress_test",
-        dict(date=today, scenario=scenario,
-             portfolio_impact=portfolio_impact, symbol_count=len(symbols)),
-    )
+    # Neo4j dual-write -- 変換は graph_writers ひとつ（KIK-741）
+    _write_graph("stress_test", payload)
 
     return str(path.resolve())
 
@@ -124,22 +108,6 @@ def save_forecast(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-428) -- graceful degradation
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_forecast, merge_stock
-        for sym in symbols:
-            merge_stock(symbol=sym)
-        merge_forecast(
-            forecast_date=today, optimistic=avg_opt, base=avg_base,
-            pessimistic=avg_pess, symbols=symbols,
-            total_value_jpy=total_value_jpy,
-            semantic_summary=sem_summary, embedding=emb,
-        )
-
-    _dual_write_graph(
-        _graph_write, "forecast",
-        dict(date=today, optimistic=avg_opt, base=avg_base,
-             pessimistic=avg_pess, symbol_count=len(symbols)),
-    )
+    _write_graph("forecast", payload)
 
     return str(path.resolve())

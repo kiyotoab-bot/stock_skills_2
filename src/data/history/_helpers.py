@@ -136,6 +136,26 @@ def _build_embedding(category: str, **kwargs) -> tuple[str, list[float] | None]:
 # Dual-write helper
 # ---------------------------------------------------------------------------
 
+def _write_graph(category: str, payload: dict) -> bool:
+    """保存した payload をそのまま GraphRAG に書く (KIK-741).
+
+    変換は `src/data/graph_writers.py` ひとつ。以前は save 側にも同じ変換の
+    写しがあり、sync 側と食い違っていた（screen の tag_theme、research の
+    SUPERSEDES、trade のキー名吸収などが片方にしか無かった）。
+
+    **payload がインターフェース**である。保存と同時に書いても、後から
+    `sync_all()` が同じファイルを読んで書いても、同じ関数を通る。
+
+    Neo4j 未接続・TEI 未起動でも例外は投げない（graceful degradation）。
+    """
+    try:
+        from src.data.graph_writers import _WRITERS
+        writer = _WRITERS.get(category)
+        return bool(writer and writer(payload))
+    except Exception:
+        return False
+
+
 def _dual_write_graph(graph_callable, embed_category: str, embed_kwargs: dict):
     """Execute Neo4j dual-write with graceful degradation.
 

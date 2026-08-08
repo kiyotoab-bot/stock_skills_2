@@ -6,7 +6,7 @@ from datetime import date, datetime
 from src.data.history._helpers import (
     _history_dir,
     _sanitize,
-    _dual_write_graph,
+    _write_graph,
 )
 
 
@@ -58,14 +58,6 @@ def save_health(
     # Neo4j dual-write (KIK-399/420) -- graceful degradation
     symbols = [p.get("symbol") for p in health_data.get("positions", []) if p.get("symbol")]
 
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_health
-        merge_health(today, summary, symbols,
-                     semantic_summary=sem_summary, embedding=emb)
-
-    _dual_write_graph(
-        _graph_write, "health",
-        dict(date=today, summary=summary),
-    )
+    _write_graph("health", payload)
 
     return str(path.resolve())

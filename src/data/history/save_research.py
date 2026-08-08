@@ -9,6 +9,7 @@ from src.data.history._helpers import (
     _history_dir,
     _sanitize,
     _dual_write_graph,
+    _write_graph,
 )
 
 
@@ -128,29 +129,8 @@ def save_research(
     # Neo4j dual-write (KIK-399/413/416/420) -- graceful degradation
     summary = result.get("summary", "") or _build_research_summary(research_type, result)
 
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_research_full, merge_stock, link_research_supersedes
-        if research_type in ("stock", "business"):
-            _fundamentals = result.get("fundamentals") or {}
-            merge_stock(
-                symbol=target,
-                name=result.get("name", ""),
-                sector=_fundamentals.get("sector", "") or "",
-            )
-        merge_research_full(
-            research_date=today, research_type=research_type,
-            target=target, summary=summary,
-            grok_research=result.get("grok_research"),
-            x_sentiment=result.get("x_sentiment"),
-            news=result.get("news"),
-            semantic_summary=sem_summary, embedding=emb,
-        )
-        link_research_supersedes(research_type, target)
-
-    _dual_write_graph(
-        _graph_write, "research",
-        dict(research_type=research_type, target=target, result=result),
-    )
+    # Neo4j dual-write -- 変換は graph_writers ひとつ（KIK-741）
+    _write_graph("research", payload)
 
     # KIK-434: AI graph linking (graceful degradation)
     try:
@@ -200,18 +180,6 @@ def save_market_context(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_market_context_full
-        merge_market_context_full(
-            context_date=today, indices=context.get("indices", []),
-            grok_research=context.get("grok_research"),
-            semantic_summary=sem_summary, embedding=emb,
-        )
-
-    _dual_write_graph(
-        _graph_write, "market_context",
-        dict(date=today, indices=context.get("indices", []),
-             grok_research=context.get("grok_research")),
-    )
+    _write_graph("market_context", payload)
 
     return str(path.resolve())

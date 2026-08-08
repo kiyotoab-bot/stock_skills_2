@@ -7,7 +7,7 @@ from src.data.history._helpers import (
     _safe_filename,
     _history_dir,
     _sanitize,
-    _dual_write_graph,
+    _write_graph,
 )
 
 
@@ -46,23 +46,8 @@ def save_screening(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399/420/487) -- graceful degradation
-    symbols = [r.get("symbol") for r in results if r.get("symbol")]
-
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_screen, merge_stock, tag_theme
-        for r in results:
-            sym = r.get("symbol")
-            if sym:
-                merge_stock(symbol=sym, name=r.get("name", ""), sector=r.get("sector", ""))
-                if theme:
-                    tag_theme(sym, theme)
-        merge_screen(today, preset, region, len(results), symbols,
-                     semantic_summary=sem_summary, embedding=emb)
-
-    _dual_write_graph(
-        _graph_write, "screen",
-        dict(date=today, preset=preset, region=region, top_symbols=symbols[:5]),
-    )
+    # Neo4j dual-write -- 変換は graph_writers ひとつ（KIK-741）。
+    # payload をそのまま渡すので、後から sync しても同じ結果になる。
+    _write_graph("screen", payload)
 
     return str(path.resolve())

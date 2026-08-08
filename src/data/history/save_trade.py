@@ -9,6 +9,7 @@ from src.data.history._helpers import (
     _history_dir,
     _sanitize,
     _dual_write_graph,
+    _write_graph,
 )
 
 
@@ -81,34 +82,7 @@ def save_trade(
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
     # Neo4j dual-write (KIK-399/420/555) -- graceful degradation
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_trade, merge_stock
-        # KIK-555: Enrich Stock metadata from stock_info or yfinance
-        _si = stock_info
-        if not _si:
-            try:
-                from src.data import yahoo_client
-                _si = yahoo_client.get_stock_info(symbol) or {}
-            except Exception:
-                _si = {}
-        merge_stock(
-            symbol=symbol,
-            name=_si.get("name", ""),
-            sector=_si.get("sector", ""),
-            country=_si.get("country", ""),
-        )
-        merge_trade(
-            trade_date=date_str, trade_type=trade_type, symbol=symbol,
-            shares=shares, price=price, currency=currency, memo=memo,
-            semantic_summary=sem_summary, embedding=emb,
-            sell_price=sell_price, realized_pnl=realized_pnl,
-            hold_days=hold_days,
-        )
-
-    _dual_write_graph(
-        _graph_write, "trade",
-        dict(date=date_str, trade_type=trade_type,
-             symbol=symbol, shares=shares, memo=memo),
-    )
+    # Neo4j dual-write -- 変換は graph_writers ひとつ（KIK-741）
+    _write_graph("trade", payload)
 
     return str(path.resolve())
