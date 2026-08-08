@@ -203,6 +203,18 @@ stock/business: positive/negative。industry: trend/growth_driver/risk/regulator
 | Property | Type | Description |
 |:---|:---|:---|
 | name | string (UNIQUE) | ポートフォリオ名 (デフォルト: "default") |
+| cash_{通貨} | float | 現金残高。通貨コード小文字（`cash_jpy`, `cash_usd`）(KIK-736) |
+| cash_updated_at | string | 現金残高の基準日 (YYYY-MM-DD) (KIK-736) |
+
+現金は銘柄ではないため HOLDS を張らず（`sync_portfolio` は `*.CASH` を除外する）、
+アンカーの属性として持つ。残高の履歴は `Note {type: "cash"}` が
+`ABOUT -> Portfolio` で保持する（id は `cash_{基準日}`）。
+
+- 基準日は `cash_balance.json` の **`updated_at`**（`save_cash_balance()` が更新する唯一のキー）
+- `cash_balance.json` から消えた通貨の `cash_*` プロパティは sync 時に削除される（KIK-737）。
+  残したままだと使い切った通貨を現金として過大計上する
+- **日中の履歴は取れない。** `cash_balance.json` はスナップショットで履歴を持たないため、
+  同じ日に残高が何度動いても Note は1件（最後の値）になる
 
 ### StressTest (KIK-428)
 ストレステスト実行結果。STRESSED リレーションで対象銘柄に接続。

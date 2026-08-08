@@ -84,6 +84,77 @@ verdict: risk-on, ...
 
 `routing.yaml` の `context_rules` は銘柄の省略補完など **具体的なヒューリスティック** を定義する。Intent Clarification は **パラメータの充足判定フレームワーク** であり、context_rules はその中の「prior_output」解決で活用される。両者は補完関係にあり、重複ではない。
 
+## チェックリスト（必須・KIK-731）
+
+`config/checklists.yaml` を参照する。**2026年8月3〜6日に発生した15件の見落とし・誤りを、
+「どのチェックがあれば防げたか」に1対1で変換したもの**であり、精神論ではない。
+
+| 場面 | 通すチェックリスト |
+|:---|:---|
+| 銘柄の評価・スクリーニング | `data_quality` `comparison` |
+| 改訂率・前年比・進捗率・リターンの計算 | `comparison` |
+| 売買可否・ストップ・配分の判定 | `rules` |
+| WLチェック・日次/週次チェック・候補提示 | `reporting` `data_quality` |
+| **発注指示書を出す直前** | **`pre_order`（6項目すべて）** |
+| すべての場面 | `followthrough` |
+
+### 機械的レビュー（必須・KIK-734）
+
+チェックリストのうち**コードで判定できる12項目**は `src/data/checklist_review.py` で実行する。
+
+**入口は `run_review()` ひとつ。**段階的に縮退しつつ、記録だけは必ず残る。
+
+```python
+from src.data import checklist_review as CR
+
+checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
+          + CR.check_stop_sigma(dist) + CR.check_followthrough(notes)
+          + CR.check_cooldown(excluded_dates=...)
+          + CR.check_order(sym, info, rev, margin, cap)
+          + CR.check_review_coverage(notes, CR.latest_review_date()))
+
+summary = CR.run_review(checks, llm_context=review_prompt)
+# → level: "mechanical_plus_independent"（外部LLMが実際に使えた場合）
+#           "mechanical_only"（使えなかった場合）
+# → data/reviews/ への保存は run_review が必ず行う
+```
+
+| 段階 | 内容 | 条件 |
+|:---|:---|:---|
+| 1 | 機械的チェック（12項目） | **常に実行** |
+| 2 | 外部LLMによる独立レビュー | 実際に叩いて使えたときだけ |
+| 3 | `data/reviews/` への記録 | **1でも2でも必ず** |
+
+個別の `check_*` / `save_review` を直接呼ぶ設計にしていたが、**呼ぶ側が組み立てる限り
+組み立て忘れが起きる**。`auto_review` が一度も発火しなかったのと同じ構造なので、
+単一の入口に畳み込み `save` を既定 True にした。「レビューしたが記録しなかった」を起こせない。
+
+**なぜ機械化したか**: `orchestration.yaml` の `auto_review` は仕組みで強制されておらず、
+2026-08-03〜06 に該当する判断が多数あったのに **Reviewer が一度も発火しなかった**
+（`data/reviews/` の最新が 2026-04-26 のままだった）。目標・期限・配分・11銘柄の投入計画・
+ルール改訂のすべてが未レビューで確定していた。
+
+- `check_review_coverage()` が**未レビューの判断件数**を数える。5件以上で FAIL
+- `save_review()` を呼ばない限りカウントは減らない。**発火したことが記録で検証できる**
+- `llm_availability()` は環境変数ではなく**実際に叩いて**確認する
+  （`is_provider_available()` は鍵の有無しか見ず、それを「使える」と誤読した実績がある）
+- 外部LLMが使えないときは `independent=False` を明示する。
+  **Claude が Claude の判断を見るのは独立レビューではない**
+
+⚠️ 総合 PASS は「31項目すべて確認した」ではなく「**自動判定できた範囲で問題なし**」の意味しか持たない。
+
+**`code` 欄があるチェックは必ず実行する**（目視確認で代替しない）。主なもの:
+
+- `get_stock_info()` の `forecast_source` / `forecast_suspect` / `dividend_yield_suspect`
+- `analyze_revisions()`（`get_forecast_history()` の隣接2件を直接比較しない）
+- `src.data.yahoo_client._cache._cache_path()`（キャッシュパスを自分で組まない）
+- `detect_alerts(stop_levels=get_stop_levels())`（ストップ距離は日次σ倍で判定）
+
+とくに `followthrough.FT1` は毎回確認する。**過去に自分が「○日に再評価する」と書いた項目を
+実行しないまま、その予定を前提に意思決定が進んだ**事例が実際に起きている
+（7/28に「7259.Tを8/3に再評価」と記録 → 未実行のまま8/3に約定）。
+`load_notes(note_type="target")` の `trigger` / `expected_action` を日付で洗うこと。
+
 ## Execution
 
 エージェントは必ず **Agent ツールでサブエージェントとして起動**する。自分で agent.md を読んで直接実行してはならない。
@@ -97,6 +168,23 @@ Agent({
 
 - サブエージェントの prompt に agent.md と examples.yaml の内容を含める
 - サブエージェントは自律的にツール（tools/）を使ってデータ取得・判断・出力する
+
+### 今日の日付の注入（必須）
+
+**エージェント起動前に必ず以下を実行し、取得した日付を全エージェントの prompt 冒頭に含めること。**
+
+```python
+import datetime
+today = datetime.date.today().isoformat()  # 例: "2026-05-27"
+```
+
+prompt に含める形式:
+```
+## 今日の日付: {today}
+※ yfinance のキャッシュ日付と混同しないこと。レポートのファイル名・見出し・TODO の日付は必ずこの日付を使用する。
+```
+
+**なぜ必要か**: yfinance は24hキャッシュを持つため、取得した株価データの日付（キャッシュ日）と実行日が異なる場合がある。日次レポートのファイル名や「本日」「明日」の表現に実行日を使わないと、日付の混乱が生じる。
 
 ### Conviction 銘柄の強制注入
 
@@ -216,6 +304,19 @@ routing.yaml で `mode: routine-daily` または `mode: routine-weekly` にマ�
 
 #### 日次フロー（routine-daily）
 
+**Step 0（必須）: ルーティンの鮮度チェック**
+
+```python
+from src.data.morning_summary import latest_routine_dates, check_routine_freshness
+check_routine_freshness(latest_routine_dates())
+```
+
+週次にしか含まれない項目（リスク判定・アクションプラン・レビュー・需給）は、
+**週次を回さないと誰も気づかないまま抜け続ける**。実際 2026-07-27 から 08-06 まで
+10日間 週次が未実行で、その間リスク判定・Reviewer・需給がすべて抜けていた
+（需給はユーザーの指摘で発覚した）。日次の冒頭で必ず確認し、
+`weekly_stale`（7日でWARN / 14日でCRITICAL）が出たら**週次の実行を促す**。
+
 ```
 Step 1: detect_alerts（異常検知）
   ↓ CRITICAL 銘柄を Step 2 に注入
@@ -232,7 +333,10 @@ Step 4: HC — ターゲット乖離（config/allocation.yaml照合）+ WLアラ
 #### 週次フロー（routine-weekly）
 
 ```
-[日次 Step 1-4]
+[日次 Step 1-4（ただし Step 3 は 3c を追加）]
+  Step 3a: HC — 市況定量        ─┐
+  Step 3b: researcher — ニュース ─┤ 並列（Agent同時発行）
+  Step 3c: HC — 需給動向        ─┘  ← 週次のみ追加
   ↓
 Step 5: risk-assessor（フルリスク判定 — 12ステップ全実行）
   ↓
@@ -247,6 +351,8 @@ Step 8: reviewer（auto_review で自動挿入）
   ↓ Step 6 スキップ → Step 8 もスキップ
 ```
 
+- Step 3c（需給）は `jpx.get_demand_supply()` を呼び出す。`available=False` の場合は `（需給: データ取得失敗）` を1行付記してスキップ
+- Step 3c の出力項目: 信用倍率（market）/ 外国人純買い / 個人純買い / 投信純買い。判断コメントは付けず数値のみ
 - Step 7 のスクリーニングは、ターゲット乖離red / exit-rule到達 / バリュートラップ疑いがある場合に起動
 - **「やらないチェック」はscreener起動を阻害しない。** 「やらないチェック」該当時は結果に「📋 WL候補（買い保留）」ラベルを付与
 - 課題なし → 「現状維持が最善」と出力し、Step 7 をスキップ
@@ -276,6 +382,7 @@ Phase 完了ごとに中間結果を出力し、体感の待ち時間を短縮�
 | 異常検知 | detect_alerts のみ | + HC全銘柄 | + HC全銘柄 |
 | PF損益 | なし | 全銘柄テーブル | 全銘柄テーブル |
 | 市況 | なし | 主要6指標+ニュース | 主要6指標+ニュース |
+| 需給動向 | なし | なし | 信用倍率+外国人/個人/投信 |
 | 乖離チェック | なし | yellow/red のみ | 全項目 |
 | リスク判定 | なし | なし | フル(12ステップ) |
 | アクション提案 | なし | なし | What-If付き |
@@ -343,29 +450,69 @@ routing.yaml で `action: direct` に分類される操作はエージェント�
 「sync して」「データを同期して」「整合性チェック」でローカル→GraphRAG の差分検出・同期を実行する。
 
 **同期フロー**:
-1. `data/sync_status.yaml` の last_sync を確認
-2. last_sync より新しいファイルを差分として検出
-3. 差分テーブルをユーザーに提示
-4. ユーザー確認後、ローカル → GraphRAG の方向で同期実行
-5. `data/sync_status.yaml` を更新
+1. `data/sync_status.yaml` の last_sync を確認し、前回同期日をユーザーに伝える
+2. `sync_all()` を実行（**毎回フルスキャン**。差分同期は実装していない）
+3. 戻り値の synced / failed / skipped を件数まで提示する
+4. `data/sync_status.yaml` の last_sync が更新される
+
+⚠️ **差分同期は存在しない。** 以前ここには「last_sync より新しいファイルを差分として
+検出し、差分テーブルを提示してから同期」と書いてあったが、そのような API は無く、
+`sync_all()` は毎回全件を MERGE する（冪等なので不整合は出ないが、ファイルが増えると
+線形に重くなる）。差分の提示が必要なら呼び出し側でファイルの mtime を見ること。
+
+**実体は `src/data/graph_sync.py` の `sync_all()`**（`tools/graphrag.py` は薄いファサード）。
+下表の history カテゴリは `_WRITERS` から導出される（`HISTORY_CATEGORIES = tuple(_WRITERS)`）。
+**`save_*()` を追加してカテゴリが増えたら `_WRITERS` に足すこと。**
+`tests/data/test_graph_sync.py::test_every_saved_category_has_a_writer` が
+`save_*.py` の `_history_dir("...")` を走査して漏れを検出する（テストが落ちる）。
 
 **同期対象**:
 
 | data/ | GraphRAG ノード | 同期関数 |
 |:---|:---|:---|
 | data/notes/*.json | Note | merge_note() |
-| data/history/screen/*.json | Screen + SURFACED | merge_screen() |
 | data/history/trade/*.json | Trade + BOUGHT/SOLD | merge_trade() |
-| data/history/report/*.json | Report + ANALYZED | merge_report() |
-| data/history/research/*.json | Research | merge_note() |
-| data/history/health/*.json | HealthCheck | merge_note() |
+| data/history/screen/*.json | Screen + SURFACED | merge_screen() + tag_theme() |
+| data/history/report/*.json | Report + ANALYZED | merge_report_full() |
+| data/history/research/*.json | Research | merge_research_full() + link_research_supersedes() |
+| data/history/health/*.json | HealthCheck | merge_health() |
+| data/history/market_context/*.json | MarketContext | merge_market_context_full() |
+| data/history/stress_test/*.json | StressTest + STRESSED | merge_stress_test() |
+| data/history/forecast/*.json | Forecast | merge_forecast() |
 | data/portfolio.csv | Portfolio + HOLDS | sync_portfolio() |
-| data/cash_balance.json | MarketContext (cash) | merge_note(type=cash) |
+| data/cash_balance.json | Portfolio.cash_* + Note(type=cash) | merge_cash_balance() |
 
 **同期方向は常にローカル → GraphRAG**（一方向）。
 **重複防止**: graph_store の全関数が MERGE を使用。同じ id は上書きされ二重登録されない。
 
-**ベクトル埋め込み生成**: sync 時に TEI（`src/data/embedding_client.py`）が利用可能であれば、各データの semantic_summary からベクトル埋め込みを生成し、GraphRAG ノードに付与する。これにより「前に調べた半導体関連」のような曖昧なベクトル検索が可能になる。TEI 未起動時は埋め込みなしで同期する（graceful degradation）。
+**現金の持たせ方**: 現金は銘柄ではないので HOLDS を張れない（`sync_portfolio` も
+`*.CASH` を除外する）。Portfolio アンカーの `cash_jpy` / `cash_usd` … と
+`cash_updated_at` プロパティに入れ、基準日ごとの `Note(type=cash)` で履歴を残す。
+Note の id は基準日で切ってあるので、再 sync しても増えず上書きされる。
+`cash_balance.json` は通貨・メタデータ（`updated_at` / `memo`）・派生値（`balance_jpy`）が
+同じ階層に混ざっているため、**3文字大文字キーだけを通貨とみなす**（`balance_jpy` を
+通貨として数えると JPY が二重計上になる）。
+
+⚠️ **KIK-735/736/737 まで、この表の大半が実際には回っていなかった**（2026-08-08 発見）。
+`save_*()` が保存時に dual-write するため平常時は表面化せず、
+**Neo4j が落ちている間に保存したデータだけが永久に取り残される**という形で漏れていた。
+現金に至っては呼び出し口自体が無く、総資産の79%がグラフに存在しなかった。
+notes は1ファイル目のレコードしか読んでおらず36件が毎回落ちていた。
+KIK-735 で5カテゴリを足した後も market_context / stress_test / forecast が漏れており、
+「表に無い＝忘れた」を検知する仕組みが無いことが原因だった。
+
+**結果は件数まで見る。**「synced」と出ただけでは足りない:
+- `synced` の history は `{category}({成功}/{全体}件)` 形式。分母と分子が違えば取りこぼしがある
+- `failed` に `{category}: {N}件中0件同期` → **障害**（Neo4j が落ちた等）。リトライする
+- `skipped` に `cash: 通貨として認識できないキー [...]` → `update_currency()` に
+  通貨コードでない文字列が渡っている
+- `skipped` に `NEO4J_MODE=off` → データではなく設定の問題
+
+**ベクトル埋め込みは sync 経路では生成されない。** `save_*()` 経由の書き込みだけが
+TEI（`src/data/embedding_client.py`）で埋め込みを付ける。Neo4j 停止中に保存したデータを
+後から sync した場合、ノードは作られるが `embedding` / `semantic_summary` が付かず、
+**そのノードだけベクトル検索から漏れる**。既存の埋め込みを壊すことはない（欠落のみ）。
+sync 経路への埋め込み生成は未実装。
 
 ### データ保存原則
 
@@ -401,6 +548,62 @@ routing.yaml で `action: direct` に分類される操作はエージェント�
 | Strategist | data/session_logs/{date}.json |
 | Reviewer | data/reviews/{date}.json |
 
+#### Markdown レポート保存（routine のみ）
+
+`mode: routine-daily` または `mode: routine-weekly` の実行後、**チャットに出力したレポート全文を Markdown ファイルとして保存する**。
+
+| モード | 保存先 |
+|:---|:---|
+| routine-daily | `data/reports/daily_YYYYMMDD.md` |
+| routine-weekly | `data/reports/weekly_YYYYMMDD.md` |
+
+**Markdown フォーマット**:
+
+```markdown
+# 日次チェック — YYYY-MM-DD
+<!-- または「# 週次レビュー — YYYY-MM-DD」 -->
+
+## 概要
+- 総資産: ¥X,XXX,XXX（PF: ¥X,XXX,XXX / キャッシュ: ¥X,XXX,XXX（XX%））
+- Risk判定: risk-on / neutral / risk-off（スコアXX）
+- Reviewer: PASS / WARN / FAIL
+
+## ヘルスチェック
+<!-- HC の出力そのまま（銘柄テーブル・RSI・クロス等） -->
+
+## 市況
+<!-- 市況テーブルそのまま -->
+
+## リスク判定（週次のみ）
+<!-- Risk Assessor の出力そのまま -->
+
+## アクションプラン（週次のみ）
+<!-- Strategist の出力そのまま -->
+
+## スクリーニング結果（週次・条件付き）
+<!-- Screener の出力そのまま -->
+
+## レビュー
+<!-- Reviewer の判定と理由 -->
+
+## 確定アクション
+<!-- 優先度付きアクションリスト -->
+```
+
+**保存方法**: `save_routine_report()` で Markdown と JSON を**1呼び出しで**保存する。
+
+```python
+from src.data.morning_summary import save_routine_report
+save_routine_report("daily", markdown_text, data_dict)   # または "weekly"
+```
+
+Markdown と JSON を別々に書く手順だったため、2026-08-06 に日次を3回実行しながら
+**保存を1度もしなかった**。`check_routine_freshness()` は保存されたレポートの日付を
+見るので、この抜けは最大3日間検知されない。1呼び出しにまとめて書き忘れの余地を減らす。
+
+**保存タイミング**: 全ステップ完了後、チャット出力と同一内容を保存する。
+**内容の一致を保証**: チャットに表示した内容と Markdown の内容を一致させる。要約・省略不可。
+
 **データ保存原則**:
 - **data/ (JSON/CSV) は常に保存する。** これが唯一の自動保存先
 - **GraphRAG への書き込みは自動実行しない。** ユーザーが「sync して」と指示した場合のみ実行する
@@ -412,6 +615,7 @@ routing.yaml で `action: direct` に分類される操作はエージェント�
 
 ```
 💾 data/screening_results/trending_us_20260420.json
+💾 data/reports/weekly_20260506.md
 ```
 
 **sync 提案（Neo4j 接続時のみ）**:
@@ -432,17 +636,17 @@ if is_available():
 
 ユーザーから「sync して」「GraphRAG と同期」と指示された場合、または上記の sync 提案をユーザーが承認した場合、data/ → GraphRAG の一方向同期を実行する。
 
-**sync 対象**:
+**sync 対象**: 上記「データ同期（KIK-676/677）」の表と同一。実体は
+`src/data/graph_sync.py` の `sync_all()` ひとつで、`tools/graphrag.py` から呼ぶ。
 
-| data/ | GraphRAG ノード | 同期関数 |
-|:---|:---|:---|
-| data/notes/*.json | Note | merge_note() |
-| data/history/screen/*.json | Screen + SURFACED | merge_screen() |
-| data/history/trade/*.json | Trade + BOUGHT/SOLD | merge_trade() |
-| data/history/report/*.json | Report + ANALYZED | merge_report() |
-| data/history/research/*.json | Research | merge_note() |
-| data/history/health/*.json | HealthCheck | merge_note() |
-| data/portfolio.csv | Portfolio + HOLDS | sync_portfolio() |
+```python
+from tools.graphrag import sync_all
+r = sync_all()   # {"synced": [...], "failed": [...], "skipped": [...]}
+```
+
+**結果は件数まで見る。** `skipped` に `"{category}: Nファイル中0件同期"` が出ていたら、
+ファイルはあるのに1件も書けていない（必須フィールド欠落など）。`synced` が空でないことだけを
+見て「同期できた」と報告しない。
 
 **sync 状態管理**: `data/sync_status.yaml` で最終同期日時と同期済みファイル一覧を管理。ファイルの更新日時が last_sync より新しければ未同期と判定。
 

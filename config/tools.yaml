@@ -13,6 +13,18 @@ tools:
       get_stock_info:
         description: "個別銘柄の指標取得（PER/PBR/ROE/配当利回り/Beta等）"
         when: "候補の詳細確認時、ヘルスチェック時"
+        note: |
+          日本株（.T）では J-Quants の会社予想を自動マージする。追加されるキー:
+            forecast_source        "jquants"（会社予想を採用）/ "yfinance"（フォールバック）
+            forecast_eps_company   会社予想EPS   / per_forward_company    会社予想ベースのPER
+            forecast_dps_company   会社予想年間配当 / dividend_yield_company 会社予想ベースの利回り
+            forecast_divergence    yfinanceと会社予想の乖離率
+            forecast_suspect       乖離20%超なら True
+          ⚠️ **forecast_suspect が True の銘柄は、一次情報（決算短信）を確認するまで
+            投資判断に使わない。** forecast_source が "jquants" のときは
+            per_forward_company / dividend_yield_company を forward_per / dividend_yield より優先する。
+          ⚠️ dividend_yield_suspect（dividendRate と実績DPSの±30%乖離）も別途立つ。
+            こちらは実際の増配でも発火するため、否定ではなく確認の合図。
       get_price_history:
         description: "価格履歴取得（RSI・SMA等のテクニカル計算用）"
         when: "テクニカル確認時、ストレステスト時"
@@ -34,8 +46,13 @@ tools:
         description: "過去の分析・lesson・thesis・観察メモの取得（Neo4j GraphRAG）"
         when: "初回分析時（必須）。銘柄の過去文脈を踏まえた判断に使う"
       sync_all:
-        description: "data/ → GraphRAG の一括同期（notes + portfolio）"
+        description: "data/ → GraphRAG の一括同期（portfolio + cash + notes + history 8カテゴリ）"
         when: "「syncして」「データを同期して」と言われた時"
+        note: |
+          実体は src/data/graph_sync.py。毎回フルスキャン（MERGE なので冪等・差分同期は無い）。
+          戻り値は件数まで見る: synced の history は {成功}/{全体} 形式。
+          failed に「N件中0件同期」= 障害。skipped の NEO4J_MODE=off は設定の問題。
+          sync 経路では埋め込み（TEI）を生成しないため、ベクトル検索からは漏れる。
 
   llm:
     source: tools/llm.py
@@ -85,6 +102,81 @@ tools:
         description: "PF全銘柄の一括スコアリング + 4象限分類（保有/買い増し/要監視/売却検討）"
         when: "PF全体の品質評価、要監視銘柄の特定時"
 
+  news_rss:
+    source: tools/news_rss.py
+    functions:
+      search_market_rss:
+        description: "Google News + NHK経済ニュース RSS で市況ニュースを取得（Grok代替）"
+        when: "Grok API 利用不可時のニュース取得。grok.search_market() が自動でフォールバック"
+      fetch_google_news:
+        description: "Google News RSS でキーワード検索（銘柄名・テーマ等）"
+        when: "特定銘柄・テーマのニュース直接取得時"
+      fetch_nhk_news:
+        description: "NHK経済ニュース RSS 取得（マクロ・政策ニュース）"
+        when: "マクロ経済・政策ニュースの取得時"
+
+  jquants:
+    source: tools/jquants.py
+    note: |
+      JPX公式データ（日本株のみ）。**日本株の会社予想はここを一次情報とする。**
+      2026-08-05 の実測で、yfinance の予想値は検証5銘柄中2件（40%）が誤りだった:
+        6436.T アマノ  dividendRate 250円（会社予想180円）→ 利回りを6.44%と誤認し推奨に載せた
+        6701.T 日本電気 forwardEps 718.96（会社予想の約3.3倍）→ 予想PER 6.4 と誤認
+      J-Quants は決算短信そのものなので、取得できる限りこちらが正しい。
+      米国株・指数・為替・商品は yahoo_finance を使うこと（J-Quantsは日本株のみ）。
+    functions:
+      get_company_forecast:
+        description: "決算短信の会社予想（予想EPS・予想年間配当・予想売上/営業利益/純利益）と実績を取得"
+        when: "日本株の予想PER・予想配当利回りを出す時。**発注前の検証では必須**"
+        note: |
+          IFRS/Non-GAAP開示だと予想EPS/純利益が空になる（実測: 6701 日本電気 /
+          4568 第一三共 / 9364 上組）。has_forecast=False の場合は yfinance にフォールバックする。
+          値が取れないことを「間違った値」で埋めないのが設計意図。
+      get_forecast_history:
+        description: "会社予想の改訂履歴（新しい順）。上方修正・下方修正の追跡に使う"
+        when: "業績モメンタムの方向を確認する時"
+      get_daily_bars:
+        description: "日足OHLCV（JPX公式・調整後価格優先）"
+        when: "日本株のテクニカル計算時。yfinanceが最新バーをClose=nullで返す不具合の回避にも使う"
+      get_next_earnings:
+        description: "公表済みの決算発表予定日"
+        when: "決算前後の判断時"
+        note: |
+          ⚠️ カレンダーは**翌営業日1日分のみ**の公表。None は「当面決算がない」ではなく
+          「直近の公表枠に載っていない」を意味する。数ヶ月先の予定は yahoo_finance の
+          next_earnings（推定値・earnings_date_estimated フラグ付き）を使う。
+      get_earnings_calendar:
+        description: "翌営業日に決算発表する全銘柄の一覧"
+        when: "保有・ウォッチリストと突合して明日の決算を洗い出す時"
+      get_stock_margin:
+        description: "個別銘柄の週次信用取引残高（信用倍率・買い残・売り残・前週比）を取得"
+        when: |
+          **発注前は必須**（checklists.yaml PO7）。日次チェックでも保有銘柄について確認する。
+          信用倍率 = 買い残 ÷ 売り残。大きいほど上値で戻り売りに押される。
+          バリュエーションと値動きだけを見ていると完全に抜ける軸。
+        note: |
+          判断基準: 15倍以上=やや厚い / 30倍以上=上値の重石として明確 / 前週比+50%超=急増
+          detect_alerts(margins=...) に渡すと margin_heavy / margin_extreme / margin_surge を自動判定する。
+          実測（2026-07-31）: 8031.T 三井物産 38.5倍 / 6701.T 日本電気 20.3倍 /
+                            7453.T 良品計画 1.56倍 / 6501.T 日立 8.79倍（前週比-62.3%）
+          Standard プラン以上必要。JQUANTS_API_KEY / JQUANTS_API_REFRESH_TOKEN で認証
+
+  jpx:
+    source: tools/jpx.py
+    functions:
+      get_demand_supply:
+        description: "需給動向の全指標（信用残高・投資主体別売買・空売り出来高）をまとめて取得"
+        when: "市況チェック時、需給セクション表示時"
+      get_margin:
+        description: "信用取引残高（信用倍率・前週比）の取得"
+        when: "信用倍率の個別確認時"
+      get_investor_type:
+        description: "投資主体別売買動向（外国人・個人・投信の純売買）の取得"
+        when: "外国人動向の個別確認時"
+      get_short_selling:
+        description: "空売り出来高と前日比の取得"
+        when: "空売り圧力の個別確認時"
+
   morning_summary:
     source: tools/morning_summary.py
     functions:
@@ -94,3 +186,17 @@ tools:
       format_morning_summary:
         description: "異常検知結果を1分で読めるサマリーにフォーマット"
         when: "detect_alertsの結果を人間向けに整形する時"
+
+  edinet:
+    source: tools/edinet.py
+    functions:
+      get_large_shareholding:
+        description: "大量保有報告書・変更報告書を日次取得（提出者名・対象銘柄・ティッカー付き）"
+        when: "機関投資家の大量保有動向を確認する時、特定銘柄への大口買いを検知する時"
+        note: "EDINET_API_KEY 環境変数で認証（無料登録）。未設定時は空リストを返す"
+      get_disclosures:
+        description: "書類種別（keyword）または銘柄（ticker）で開示書類を検索"
+        when: "特定銘柄の有価証券報告書・四半期報告書等を探す時"
+      get_document_list:
+        description: "指定日の全提出書類一覧を取得（フィルタなし）"
+        when: "特定日の開示書類を網羅的に確認する時"

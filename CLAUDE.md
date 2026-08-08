@@ -68,6 +68,7 @@ Data (src/data/)
   grok_client/   — Grok API (xAI) ラッパー
   graph_store/   — Neo4j 書き込み（dual-write）
   graph_query/   — Neo4j 読み取り
+  graph_sync.py  — data/ → GraphRAG 一括同期（「syncして」の実体）
   context/       — 自動コンテキスト注入
   history/       — 実行履歴ストア
   note_manager   — 投資メモ管理
