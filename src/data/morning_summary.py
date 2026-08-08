@@ -444,21 +444,26 @@ def format_morning_summary(alerts: list[dict], pf_total: float | None = None) ->
 # ---------------------------------------------------------------------------
 
 ROUTINE_STALE_DAYS = {
+    # 月次は「今月の1回をどう使うか」を決める枠。月を跨いだら気づきたいので、
+    # 30日ではなく25日で WARN にする（月初にやり損ねても月内に拾える）。
+    "monthly": {"warn": 25, "critical": 45},
     "weekly": {"warn": 7, "critical": 14},
     "daily": {"warn": 3, "critical": 7},
 }
 
-_ROUTINE_LABEL = {"weekly": "週次レビュー", "daily": "日次チェック"}
+_ROUTINE_LABEL = {"monthly": "月次チェック", "weekly": "週次レビュー",
+                  "daily": "日次チェック"}
 
 
 def latest_routine_dates(reports_dir: str = "data/reports") -> dict[str, str | None]:
-    """``data/reports/`` から日次・週次の最終実行日を拾う。
+    """``data/reports/`` から日次・週次・月次の最終実行日を拾う。
 
-    ファイル名は ``daily_YYYYMMDD.md`` / ``weekly_YYYYMMDD.md``。
+    ファイル名は ``daily_YYYYMMDD.md`` / ``weekly_YYYYMMDD.md`` /
+    ``monthly_YYYYMMDD.md``。
     """
     from pathlib import Path
 
-    out: dict[str, str | None] = {"daily": None, "weekly": None}
+    out: dict[str, str | None] = {"daily": None, "weekly": None, "monthly": None}
     d = Path(reports_dir)
     if not d.is_dir():
         return out
@@ -510,6 +515,8 @@ def check_routine_freshness(
         extra = ""
         if kind == "weekly":
             extra = "（リスク判定・アクションプラン・レビュー・需給が抜けたままです）"
+        elif kind == "monthly":
+            extra = "（売買枠の残り・翌月枠の銘柄・conviction 認定が未確認です）"
         alerts.append({
             "symbol": "ROUTINE", "type": f"{kind}_stale",
             "severity": sev,
@@ -527,9 +534,9 @@ def save_routine_report(
     reports_dir: str = "data/reports",
     logs_dir: str = "data/session_logs/routine",
 ) -> dict[str, str]:
-    """日次／週次レポートを Markdown と JSON の両方に保存する。
+    """日次／週次／月次レポートを Markdown と JSON の両方に保存する。
 
-    ``kind`` は ``"daily"`` / ``"weekly"``。
+    ``kind`` は ``"daily"`` / ``"weekly"`` / ``"monthly"``。
 
     2026-08-06 に日次チェックを3回実行しながら保存を怠った。SKILL.md は保存を
     義務付けているが、**Markdown と JSON を別々に書く手順**だったため
@@ -540,8 +547,9 @@ def save_routine_report(
     import json as _json
     from pathlib import Path
 
-    if kind not in ("daily", "weekly"):
-        raise ValueError(f"kind must be 'daily' or 'weekly', got {kind!r}")
+    if kind not in ("daily", "weekly", "monthly"):
+        raise ValueError(
+            f"kind must be 'daily', 'weekly' or 'monthly', got {kind!r}")
     day = day or date.today()
     stamp = day.strftime("%Y%m%d")
 

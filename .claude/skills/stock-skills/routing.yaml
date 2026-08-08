@@ -115,6 +115,30 @@ examples:
     agents: [health-checker, researcher, risk-assessor, strategist, screener, reviewer]
     review: true
 
+  # --- 定常業務: 月次 (KIK-738) ---
+  # 発注は月1回しか起きないのに、その1回を判断する枠が無かった。
+  # 冷却期間4週・月次上限1回・投入計画がすべて月次なので、意思決定の単位は月。
+  - intent: "月次チェック"
+    mode: routine-monthly
+    agents: [health-checker, strategist, reviewer]
+    review: true
+    note: "売買枠の残り+今月の発注+翌月枠の銘柄確定+conviction認定+目標進捗+実現損益。5-7分"
+
+  - intent: "月次レビュー"
+    mode: routine-monthly
+    agents: [health-checker, strategist, reviewer]
+    review: true
+
+  - intent: "今月の発注どうする"
+    mode: routine-monthly
+    agents: [health-checker, strategist, reviewer]
+    review: true
+
+  - intent: "月初チェック"
+    mode: routine-monthly
+    agents: [health-checker, strategist, reviewer]
+    review: true
+
   - intent: "最新ニュース教えて"
     agent: researcher
 
