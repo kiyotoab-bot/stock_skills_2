@@ -783,3 +783,71 @@ class TestSyncAllEntryPoint:
             m.assert_called_once_with(str(root))
         finally:
             tg._project_root = orig
+
+
+class TestEmbeddingsOnSyncPath:
+    """sync 経路が埋め込みを付けること (KIK-740).
+
+    save 経由だけが埋め込みを付けていたため、Neo4j 停止中に保存 → 復旧後に
+    sync で補完したノードだけがベクトル検索から漏れていた。ノードは作られ
+    件数も合うので出力からは検知できない。
+    """
+
+    def test_helper_delegates_to_the_save_path_builder(self):
+        with patch("src.data.history._helpers._build_embedding",
+                   return_value=("要約", [0.1, 0.2])) as m:
+            sem, emb = graph_sync._embedding("trade", symbol="7203.T")
+        m.assert_called_once_with("trade", symbol="7203.T")
+        assert sem == "要約" and emb == [0.1, 0.2]
+
+    def test_helper_degrades_when_tei_is_down(self):
+        with patch("src.data.history._helpers._build_embedding",
+                   side_effect=RuntimeError("TEI down")):
+            assert graph_sync._embedding("trade") == ("", None)
+
+    @pytest.mark.parametrize("writer,rec,target", [
+        ("_sync_trade", {"symbol": "7203.T", "action": "buy", "date": "2026-08-08",
+                         "shares": 100, "price": 2000}, "merge_trade"),
+        ("_sync_screen", {"date": "2026-08-08", "results": [{"symbol": "7203.T"}]},
+         "merge_screen"),
+        ("_sync_report", {"date": "2026-08-08", "symbol": "7203.T"},
+         "merge_report_full"),
+        ("_sync_research", {"date": "2026-08-08", "target": "半導体"},
+         "merge_research_full"),
+        ("_sync_health", {"date": "2026-08-08", "summary": {}}, "merge_health"),
+        ("_sync_market_context", {"date": "2026-08-08"}, "merge_market_context_full"),
+        ("_sync_stress_test", {"date": "2026-08-08", "scenario": "X"},
+         "merge_stress_test"),
+        ("_sync_forecast", {"date": "2026-08-08"}, "merge_forecast"),
+    ])
+    def test_every_writer_passes_the_embedding(self, writer, rec, target):
+        with patch(f"src.data.graph_store.{target}", return_value=True) as m, \
+             patch("src.data.graph_store.merge_stock"), \
+             patch("src.data.graph_store.tag_theme"), \
+             patch("src.data.graph_store.link_research_supersedes"), \
+             patch("src.data.graph_sync._embedding",
+                   return_value=("要約", [0.5])) as emb:
+            getattr(graph_sync, writer)(rec)
+        emb.assert_called_once()
+        assert m.call_args.kwargs["semantic_summary"] == "要約"
+        assert m.call_args.kwargs["embedding"] == [0.5]
+
+    def test_notes_pass_the_embedding(self, root):
+        _write(root / "data/notes/n.json",
+               {"id": "n1", "date": "2026-08-08", "type": "thesis", "content": "A"})
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.note.merge_note", return_value=True) as m, \
+             patch("src.data.graph_sync._embedding", return_value=("要約", [0.5])):
+            graph_sync._sync_notes(root, result)
+        assert m.call_args.kwargs["semantic_summary"] == "要約"
+        assert m.call_args.kwargs["embedding"] == [0.5]
+
+    def test_cash_note_passes_the_embedding(self, root):
+        _write(root / "data/cash_balance.json",
+               {"JPY": 6296491, "updated_at": "2026-08-04T18:30:00", "memo": "x"})
+        result = {"synced": [], "failed": [], "skipped": []}
+        with patch("src.data.graph_store.merge_cash_balance", return_value=True),              patch("src.data.graph_store.note.merge_note", return_value=True) as m,              patch("src.data.graph_sync._embedding", return_value=("要約", [0.5])):
+            graph_sync._sync_cash(root, result)
+        assert m.call_args.kwargs["semantic_summary"] == "要約"
+        assert m.call_args.kwargs["embedding"] == [0.5]
+        assert m.call_args.kwargs["content"].startswith("現金残高")

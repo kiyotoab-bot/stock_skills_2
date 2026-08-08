@@ -294,3 +294,32 @@ class TestMergeCashBalance:
         session.run.side_effect = Exception("DB error")
         with patch.object(gs, "_get_mode", return_value="full"):
             assert gs.merge_cash_balance("2026-08-04", {"JPY": 1}) is False
+
+
+class TestSyncStockFullDelegatesTrades:
+    """取引レコード → Trade の変換を1箇所に寄せた (KIK-740)."""
+
+    def test_delegates_to_graph_sync(self, tmp_path, monkeypatch):
+        import json as _json
+
+        d = tmp_path / "data" / "history" / "trade"
+        d.mkdir(parents=True)
+        (d / "t.json").write_text(_json.dumps(
+            [{"date": "2026-08-01", "action": "buy", "symbol": "7203.T",
+              "shares": 100, "price": 2000},
+             {"date": "2026-08-02", "action": "buy", "symbol": "OTHER",
+              "shares": 1, "price": 1}]), encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        import src.data.graph_store as gs
+        client = MagicMock()
+        client.get_stock_info.return_value = None      # 1. の yfinance をスキップ
+        with patch("src.data.graph_sync._sync_trade", return_value=True) as m, \
+             patch.object(gs, "_get_mode", return_value="full"), \
+             patch("src.data.graph_query.community.update_stock_community",
+                   return_value=None):
+            result = gs.sync_stock_full("7203.T", client=client)
+        # 対象銘柄のレコードだけを委譲する
+        assert m.call_count == 1
+        assert m.call_args.args[0]["symbol"] == "7203.T"
+        assert result["trades"] == 1

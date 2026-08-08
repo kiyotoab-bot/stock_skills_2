@@ -458,3 +458,33 @@ class TestBuildMonthlyContext:
         assert ctx["budget"]["monthly_used"] == 0
         assert ctx["realized"]["realized_pnl"] == 0.0
         assert ctx["realized"]["excluded_pnl"] == 7000
+
+
+class TestLoadTierRules:
+    """冷却期間・月次上限の出典は sector_matrix.yaml (KIK-740)."""
+
+    def test_reads_the_yaml(self):
+        """KIK-739 は『この yaml は壊れていて読めない』と記録したが誤りだった.
+
+        ワークツリー（HEAD から切る）で検証したため、2026-08-06 の冷却期間
+        改訂を含む未コミットの修正版を見ていなかった。
+        """
+        loaded = MC.load_tier_rules()
+        assert loaded["source"] == "sector_matrix.yaml"
+        assert loaded["rules"]["small"] == {"cooldown_weeks": 4, "monthly_limit": 1}
+        assert loaded["rules"]["medium"]["cooldown_weeks"] == 2
+        assert loaded["rules"]["large"]["monthly_limit"] == 4
+
+    def test_falls_back_when_unreadable(self):
+        with patch("builtins.open", side_effect=OSError("gone")):
+            loaded = MC.load_tier_rules()
+        assert loaded["rules"] == MC._TIER_FALLBACK
+        assert "fallback" in loaded["source"]
+
+    def test_tier_rules_reports_the_yaml_as_source(self):
+        assert MC.tier_rules(40_000)["source"] == "sector_matrix.yaml"
+
+    def test_yaml_values_still_do_not_relax_the_cooldown(self):
+        """yaml から読めても、規模で自動的に緩めない判断は変えない."""
+        r = MC.tier_rules(50_592)
+        assert r["tier_by_size"] == "medium" and r["cooldown_weeks"] == 4

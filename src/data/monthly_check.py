@@ -99,18 +99,55 @@ def load_trades(trade_dir: str = "data/history/trade") -> list[dict]:
     return out
 
 
-# sector_matrix.yaml の scale_rules に対応する。**yaml から読めない**ので写しである。
-#   → `.claude/agents/risk-assessor/sector_matrix.yaml` は YAML として壊れており
-#     （82行目付近で ParserError）、safe_load できない。エージェントが散文として
-#     読む前提のファイルなので、機械的な SSoT にはできない。
-#   ルールを改訂したら **両方** 直すこと。乖離は check_tier_rules() が検出する。
-_TIER_RULES = {
+# sector_matrix.yaml を読めなかったときだけ使う非常用の写し。
+# ルールの出典は yaml 側。改訂するときは yaml を直す。
+#
+# ⚠️ KIK-739 はここに「sector_matrix.yaml は YAML として壊れていて読めない」と
+#    書いたが誤りだった。ワークツリー（HEAD から切る）で検証したため、
+#    2026-08-06 の冷却期間改訂を含む**未コミットの修正版**を見ていなかった。
+#    実際に動いているファイルは正常にパースできる。
+_TIER_FALLBACK = {
     "small":  {"cooldown_weeks": 4, "monthly_limit": 1},   # 〜$50K
     "medium": {"cooldown_weeks": 2, "monthly_limit": 1},   # $50K〜$200K
     "large":  {"cooldown_weeks": 1, "monthly_limit": 4},   # $200K〜
 }
-# 運用値。ティアが上がっても自動では緩めない（下記の理由）
+# 運用ティア。規模が上がっても自動では緩めない（下記の理由）
 _OPERATIVE_TIER = "small"
+_COOLDOWN_RE = re.compile(r"(\d+)\s*週")
+
+
+def load_tier_rules() -> dict:
+    """`sector_matrix.yaml` からティア別の冷却期間・月次上限を読む.
+
+      - 月次上限: `scale_rules.{tier}.max_trades`
+      - 冷却期間: `do_nothing_checks` の「冷却期間」項の `cooldown`（"4週" 等）
+
+    読めなければ `_TIER_FALLBACK` に落ちる。月次チェック自体は動かす。
+    """
+    import os
+
+    import yaml
+
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    path = os.path.join(root, ".claude", "agents", "risk-assessor", "sector_matrix.yaml")
+    rules = {k: dict(v) for k, v in _TIER_FALLBACK.items()}
+    source = "fallback（sector_matrix.yaml を読めず）"
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+        for tier, entry in (doc.get("scale_rules") or {}).items():
+            if tier in rules and isinstance(entry, dict) and "max_trades" in entry:
+                rules[tier]["monthly_limit"] = int(entry["max_trades"])
+        for check in (doc.get("do_nothing_checks") or []):
+            if isinstance(check, dict) and check.get("check") == "冷却期間":
+                for tier, raw in (check.get("cooldown") or {}).items():
+                    m = _COOLDOWN_RE.search(str(raw))
+                    if tier in rules and m:
+                        rules[tier]["cooldown_weeks"] = int(m.group(1))
+        source = "sector_matrix.yaml"
+    except Exception:
+        pass
+    return {"rules": rules, "source": source}
 
 
 def tier_rules(total_assets_usd: float) -> dict:
@@ -129,9 +166,11 @@ def tier_rules(total_assets_usd: float) -> dict:
     そこで運用値は保守側（small）に固定し、ティアが違う場合は
     ``tier_mismatch`` で見せる。緩めるかどうかは人が決める。
     """
+    loaded = load_tier_rules()
+    table = loaded["rules"]
     tier = ("small" if total_assets_usd < 50_000
             else "medium" if total_assets_usd < 200_000 else "large")
-    op = _TIER_RULES[_OPERATIVE_TIER]
+    op = table[_OPERATIVE_TIER]
     near = abs(total_assets_usd - 50_000) < 5_000 or abs(total_assets_usd - 200_000) < 20_000
     return {
         "tier_by_size": tier,
@@ -142,12 +181,12 @@ def tier_rules(total_assets_usd: float) -> dict:
         "near_boundary": near,
         "tier_mismatch": (
             None if tier == _OPERATIVE_TIER else
-            f"規模は {tier}（{_TIER_RULES[tier]['cooldown_weeks']}週 / 月"
-            f"{_TIER_RULES[tier]['monthly_limit']}回）だが、運用は "
+            f"規模は {tier}（{table[tier]['cooldown_weeks']}週 / 月"
+            f"{table[tier]['monthly_limit']}回）だが、運用は "
             f"{_OPERATIVE_TIER}（{op['cooldown_weeks']}週 / 月{op['monthly_limit']}回）"
             "のまま。緩めるかは人が判断する"
         ),
-        "source": "monthly_check._TIER_RULES（sector_matrix.yaml は YAML として壊れており読めない）",
+        "source": loaded["source"],
     }
 
 
