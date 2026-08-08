@@ -10,7 +10,10 @@ reviewers:
   logic_reviewer:
     role: "矛盾・論理整合性・lesson との整合"
     provider: gemini
-    model: gemini-3.1-pro-preview
+    # ⚠️ Pro 系（gemini-3.1-pro-preview 等）は **無料枠では利用不可**。
+    #    無料枠で使えるのは Flash / Flash-Lite のみ（2026-08-07 に公式価格表で確認）。
+    #    有料に切り替えたら gemini-3.6-pro 等に変更してよい。
+    model: gemini-3.6-flash
   data_reviewer:
     role: "数値の正確性・計算ミス・前提の妥当性"
     provider: claude
@@ -36,11 +39,17 @@ available_models:
         cost: { input_per_m: 1.00, output_per_m: 5.00 }
   gemini:
     api_key_env: GEMINI_API_KEY
+    # 無料枠（Google AI Studio・カード登録不要）で使えるのは Flash / Flash-Lite のみ。
+    # Pro 系は "Not available" と公式価格表に明記されている（2026-08-07 確認）。
     models:
+      - model: gemini-3.6-flash
+        cost: { input_per_m: 0.00, output_per_m: 0.00 }   # 無料枠
+      - model: gemini-2.5-flash
+        cost: { input_per_m: 0.00, output_per_m: 0.00 }   # 無料枠・安定版
       - model: gemini-3.1-pro-preview
-        cost: { input_per_m: 2.00, output_per_m: 12.00 }
+        cost: { input_per_m: 2.00, output_per_m: 12.00 }  # 有料専用
       - model: gemini-2.5-pro
-        cost: { input_per_m: 1.25, output_per_m: 10.00 }
+        cost: { input_per_m: 1.25, output_per_m: 10.00 }  # 有料専用
   gpt:
     api_key_env: OPENAI_API_KEY
     models:

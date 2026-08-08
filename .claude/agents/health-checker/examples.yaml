@@ -46,23 +46,62 @@ examples:
   - intent: "定常業務"
     mode: routine-daily
     steps:
+      - tool: WebSearch
+        params: { query: "日経平均 PER 倍率 最新" }
+        note: "日経PER取得（最初に実行）"
+      - tool: WebSearch
+        params: { query: "TOPIX 現在値" }
+        note: "NT倍率計算用"
       - tool: morning_summary.detect_alerts
-        note: "異常検知（朝サマリーと同じロジック）"
+        note: "異常検知（vix_price + nikkei_per を渡す）"
       - read: "portfolio.csv"
       - tool: yahoo_finance.get_stock_info
-        params: { symbols: "全保有銘柄 + ^VIX" }
+        params: { symbols: "全保有銘柄 + ^VIX + ^N225 + ^GSPC + USDJPY=X" }
       - tool: yahoo_finance.get_price_history
-        params: { symbols: "全保有銘柄", period: "1mo" }
-      - code: "各銘柄のRSI, SMA50/200, 損益率を計算"
+        params: { symbols: "全保有銘柄 + ^N225 + ^GSPC + USDJPY=X", period: "1mo" }
+      - code: |
+          # 各銘柄のRSI, SMA50/200, 損益率を計算
+          from src.data.market_regime import (
+              calc_nikkei_per_signal, calc_nikkei_usd,
+              calc_nt_ratio, calc_jp_us_relative,
+          )
+          per_result  = calc_nikkei_per_signal(nikkei_per)
+          usd_result  = calc_nikkei_usd(nikkei_closes, usdjpy_closes)
+          nt_result   = calc_nt_ratio(n225_price, topix_price)
+          jus_result  = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
+      - tool: jpx.get_demand_supply
+        note: "需給動向（信用倍率・外国人売買・空売り出来高）。available=Falseなら「（需給: データ取得失敗）」1行付記してスキップ"
       - read: "config/allocation.yaml"
         note: "ターゲット乖離チェック（KIK-685）"
       - tool: notes.load_notes
         params: { note_type: "target" }
         note: "WLアラート + targetリマインド"
+      - tool: notes.load_notes
+        params: { note_type: "thesis" }
+        note: "清原候補抽出: contentに「ネットキャッシュ」「NCR」「清原」を含むWL銘柄を抽出"
+      - tool: watchlist.get_watchlist
+        note: "WL銘柄リスト（清原候補フィルタ用）"
+      - tool: yahoo_finance.get_price_history
+        params: { symbols: "清原候補銘柄（上記で抽出したもの）", period: "3mo" }
+        note: "清原候補のみ取得。候補0件ならスキップ"
+      - code: |
+          # 清原候補のRSI(14)、BB下限（SMA20-2σ）、SMA200乖離を計算
+          # シグナル判定: RSI<30 かつ BB下限+5%以内 → 🔴 / RSI<35 または BB下限+8%以内 → ⚠️
       - output: |
-          異常あり → 全テーブル（PF概況+アラート+市況+乖離+WL）
-          異常なし → 軽量3行（評価額+変動+一言）
-    reasoning: "日次ルーティン。HC担当分。市況+researcherは並列で別Agent起動される"
+          異常あり → 全テーブル（PF概況+アラート+市況+需給+乖離+WL+清原候補）
+          市況テーブルには必ず以下4指標を含める:
+            日経PER:       [per_result["label"]]
+            ドル建て日経:  [usd_result["label"]]
+            NT倍率:        [nt_result["label"]]
+            JP vs US:      [jus_result["label"]]
+          需給セクション（jpx.available=Trueの場合のみ）:
+            信用倍率: X.XX / signal: neutral/high/low
+            外国人: +XXXXX億円 / 個人: -XXXXX億円
+          ■ 清原候補 WLモニタリング（候補0件なら省略）:
+            | 銘柄 | 名称 | 現在値 | RSI | BB下限 | 下限まで | SMA200乖離 | シグナル |
+            🔴 エントリー圏到達時: 末尾に「📌 Analyst起動推奨（清原式詳細分析）」
+          異常なし → 軽量3行（評価額+変動+一言）+ 清原候補セクション（候補あれば）
+    reasoning: "日次ルーティン。HC担当分。PER・ドル建て日経・NT倍率・JP vs USを市況に含める。jpxで需給も確認。清原候補はStep4でWLアラートと同時に処理"
 
   # === PFヘルスチェック ===
   - intent: "PF大丈夫？"
@@ -155,9 +194,48 @@ examples:
       - tool: yahoo_finance.get_stock_info
         params: { symbols: ["^N225", "^GSPC", "^IXIC", "^VIX", "USDJPY=X", "^TNX"] }
       - tool: yahoo_finance.get_price_history
-        params: { symbols: ["^N225", "^GSPC", "^VIX"], period: "1mo" }
-      - output: "主要指標の現在値・前日比・1ヶ月推移を提示。数値のみ"
-    reasoning: "定量データのみ。市場の温度感判断はしない"
+        params: { symbols: ["^N225", "^GSPC", "^VIX", "USDJPY=X"], period: "1mo" }
+      - tool: WebSearch
+        params: { query: "日経平均 PER 倍率 最新" }
+        note: "日経PER取得（Yahoo Finance非対応）"
+      - tool: WebSearch
+        params: { query: "TOPIX 現在値" }
+        note: "NT倍率計算用（Yahoo Finance非対応）"
+      - code: |
+          from src.data.market_regime import (
+              calc_nikkei_per_signal, calc_nikkei_usd,
+              calc_nt_ratio, calc_jp_us_relative,
+          )
+          per_result  = calc_nikkei_per_signal(nikkei_per)
+          usd_result  = calc_nikkei_usd(nikkei_closes, usdjpy_closes)
+          nt_result   = calc_nt_ratio(n225_price, topix_price)
+          jus_result  = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
+      - tool: jpx.get_demand_supply
+        note: "需給動向（信用倍率・外国人売買・空売り出来高）。available=Falseならスキップ"
+      - output: |
+          主要指標の現在値・前日比を提示。数値のみ。
+          | 指標 | 現在値 | 前日比 |
+          | 日経PER | XX.X倍 | [per_result["label"]] |
+          | ドル建て日経 | X,XXX.X USD | [usd_result["label"]] |
+          | NT倍率 | XX.XX倍 | [nt_result["label"]] |
+          | JP vs US | — | [jus_result["label"]] |
+          需給セクション（available=Trueの場合のみ）:
+            信用倍率: X.XX（signal: neutral/high/low）
+            外国人: +XXXXX億円（N週連続買い越し）
+    reasoning: "定量データのみ。判断しない。PER・ドル建て日経・NT倍率・JP vs USを必ず含める"
+
+  - intent: "需給どう？"
+    steps:
+      - tool: jpx.get_demand_supply
+      - output: |
+          需給動向（JPX公開データ）:
+            信用倍率: X.XX / 前週比: +X.X% / signal: neutral
+            外国人: +XXXXX億円（N週連続買い越し）
+            個人: -XXXXX億円
+            投信: XXXXX億円
+            空売り出来高: XX,XXX,XXX株 / 前日比: +X.X%
+          available=False → 「（需給: データ取得失敗）」1行のみ
+    reasoning: "JPX需給データを数値のみ出力。判断・コメントはしない"
 
   # === 市況 + PF相関 ===
   - intent: "今の市況でPFへの影響は？"
@@ -182,9 +260,89 @@ examples:
       - output: "PF全体の期待リターン数値を提示。数値のみ"
     reasoning: "数値のみ。投資判断はしない"
 
+  # === 清原候補 WLモニタリング（単独呼び出し）===
+  - intent: "清原候補どう？"
+    steps:
+      - tool: notes.load_notes
+        params: { note_type: "thesis" }
+        note: "contentに「ネットキャッシュ」「NCR」「清原」を含む銘柄を抽出"
+      - tool: watchlist.get_watchlist
+        note: "WL銘柄リストとのインターセクションで対象を絞る"
+      - tool: yahoo_finance.get_price_history
+        params: { symbols: "清原候補銘柄", period: "3mo" }
+      - code: |
+          # RSI(14)、BB下限（SMA20-2σ）、SMA200乖離を計算
+          # シグナル: RSI<30 かつ BB下限+5%以内 → 🔴 / RSI<35 or BB下限+8%以内 → ⚠️
+      - output: |
+          ■ 清原候補 WLモニタリング（N件）
+          | 銘柄 | 名称 | 現在値 | RSI | BB下限 | 下限まで | SMA200乖離 | シグナル |
+          | 6364.T | 北越工業 | 1,643 | 38.2 | 1,580 | +4.0% | -8.1% | — |
+          🔴エントリー圏 → 末尾に「📌 Analyst起動推奨（清原式詳細分析）」
+          候補0件 → 「清原候補（ネットキャッシュタグ付き）はWLにありません」
+    reasoning: "清原式NCR候補のテクニカル監視。数値のみ。判断・NotebookLM参照はしない"
+
+  # === 大底圏検出（#160 — 玉集めシグナル）===
+  - intent: "大底圏の銘柄ある？"
+    steps:
+      - read: "portfolio.csv"
+      - tool: watchlist.get_watchlist
+        note: "ウォッチリスト銘柄も対象"
+      - tool: yahoo_finance.get_price_history
+        params: { symbols: "全保有銘柄 + WL銘柄", period: "3mo" }
+      - tool: yahoo_finance.get_stock_detail
+        params: { symbols: "全保有銘柄 + WL銘柄" }
+        note: "PBR取得"
+      - code: |
+          # 各銘柄でBB-4σ、ピボットS3、RSI(14)を計算
+          # BB: SMA20 ± N×20日標準偏差
+          # ピボット: PP=(H+L+C)/3, S1=2*PP-H, S2=PP-(H-L), S3=PP-2*(H-L)
+          # 条件カウント: 4条件(BB-4σ以下/S3以下/RSI<30/PBR割安) の充足数
+      - output: |
+          ■ 大底圏候補（#160 玉集めシグナル）
+          | 銘柄 | 終値 | BB -4σ | ピボットS3 | RSI | PBR | 条件数 |
+          4条件全揃い → 上段「候補」
+          3条件 → 下段「候補予備」
+          0件 → 「大底圏候補なし」1行のみ
+    reasoning: "#160戦略の大底圏条件を定量検出するだけ。判断・レコメンドはしない"
+
+  # === 定常業務: 週次（大底圏チェック含む）===
+  - intent: "定常業務（週次）"
+    mode: routine-weekly
+    steps:
+      - note: "日次ルーティン（routine-daily）の全ステップを先に実行する（jpx.get_demand_supply含む）"
+      - tool: jpx.get_demand_supply
+        note: "週次需給（Step 3c）: 信用倍率・外国人/個人/投信純買い・空売り出来高。available=Falseなら「（需給: データ取得失敗）」1行のみ"
+      - read: "portfolio.csv"
+      - tool: watchlist.get_watchlist
+        note: "WL銘柄取得"
+      - tool: yahoo_finance.get_price_history
+        params: { symbols: "全保有銘柄 + WL銘柄", period: "3mo" }
+      - tool: yahoo_finance.get_stock_detail
+        params: { symbols: "全保有銘柄 + WL銘柄" }
+        note: "PBR取得（大底圏チェック用）"
+      - tool: jquants.get_stock_margin
+        params: { symbols: "全保有銘柄" }
+        note: "個別銘柄信用倍率（jquants.is_available()=Trueの場合のみ実行。False/エラー時は列を省略）"
+      - code: |
+          # 週次追加: 大底圏検出（#160）
+          # BB-4σ / ピボットS3 / RSI<30 / PBR割安 の条件カウント
+      - output: |
+          週次追加セクション:
+          ■ 需給動向（jpx.available=Trueの場合）:
+            信用倍率: X.XX / signal / 外国人: +XXXXX億円
+            個人: -XXXXX億円 / 投信: XXXXX億円 / 空売り: XX,XXX,XXX株
+          ■ 個別銘柄信用倍率（jquants.available=Trueの場合）:
+            | 銘柄 | 信用倍率 | 買い残 | 売り残 |
+          ■ 大底圏候補（#160）: [候補銘柄テーブル or 「なし」]
+          ■ PF構造乖離: [allocation.yaml 対比]
+          ■ ストレステスト: [シナリオ別損失]
+    reasoning: "週次は日次 + 需給（jpx+jquants） + 大底圏チェック + PF構造 + ストレステストを実施"
+
 tool_responsibilities:
   - yahoo_finance: データ取得のみ（価格・財務）
   - graphrag: 過去データ取得のみ
   - notes: thesis参照のみ（KIK-715。テーゼ前提 vs 実績の数値比較用）
+  - jpx: "需給動向取得のみ（市場全体: 信用残高・投資主体別売買・空売り出来高）"
+  - jquants: 個別銘柄需給取得のみ（信用倍率・買い残・売り残）
   - テクニカル計算（RSI/SMA/Beta/VaR）はエージェントが code interpreter で実行
   - portfolio.csv はファイル直接読み込み

@@ -29,6 +29,28 @@ agent.md には定義を重複記載しない。examples.yaml が唯一のソー
 
 `config/tools.yaml` を参照。主に `yahoo_finance.screen_stocks` / `yahoo_finance.get_stock_info` を使用。
 
+### ⚠️ 日本株の予想値は会社予想（J-Quants）を使う
+
+`get_stock_info` は日本株（.T）に J-Quants の決算短信データを自動マージする。
+
+- `forecast_source == "jquants"` → `per_forward_company` / `dividend_yield_company` を
+  `forward_per` / `dividend_yield` より優先する（会社自身の予想 vs 第三者推定）
+- **`forecast_suspect == True` → 一次情報（決算短信）で確認するまで候補・判断に使わない**
+- `forecast_source == "yfinance"` → 会社予想が取れていない（IFRS/Non-GAAP開示）。
+  予想PERの信頼度が下がるので実績PERと併記する
+
+2026-08-05 の実測で、検証5銘柄のうち**2件（40%）が yfinance の誤値**だった
+（6436.T アマノ 予想配当250円→実際180円 / 6701.T 日本電気 予想EPSが会社予想の約3.3倍）。
+
+
+
+### ⚠️ チェックリスト（必須）
+
+`config/checklists.yaml` を参照し、該当する場面のチェックを上から順に通す。
+2026年8月3〜6日に発生した15件の見落とし・誤りを、実際の失敗と1対1で対応させたもの。
+`code` 欄があるチェックは目視で代替せず、必ず実行する。
+スクリーニングでは `data_quality` `comparison` `reporting` を通す。
+
 ## 並列実行（KIK-672/673）
 
 複数テーマ・複数地域でスクリーニングする場合、**オーケストレーターがテーマごとに独立した Screener を同時起動する**。Screener 自身は1テーマ1地域を担当すればよい。
@@ -85,7 +107,21 @@ examples.yaml の `quality_thresholds` を参照。ユーザーが「高い」�
 - 保有銘柄・ウォッチ銘柄・過去スクリーニング常連にはアノテーション付与
 - 結果末尾にプロアクティブ提案（「詳しく見たい銘柄があれば教えてください」等）
 
+## NotebookLM参照（清原達郎 ネットキャッシュ投資法）
+
+以下のいずれかに該当する場合、スクリーニング前に NotebookLM でネットキャッシュ基準を取得する:
+
+- ユーザー発話に「ネットキャッシュ」「清原」「割安小型」を含む
+- preset が `value` / `quality` / `long-term` かつ region が `jp`
+- mode が `contrarian` かつ region が `jp`
+
+**手順:**
+1. `mcp__notebooklm__search_notebooks` で "清原達郎" を検索してノートブックIDを取得
+2. `mcp__notebooklm__ask_question(notebook_id, "ネットキャッシュ比率のスクリーニング条件と買い/見送り判断基準を教えてください")` を実行
+3. 返答をフィルター条件に反映し、結果に「📖 清原式ネットキャッシュ基準参照」の注記を付与
+
 ## References
 
 - Regions & Presets & Few-shot: [examples.yaml](./examples.yaml)
 - 3軸スコアリング: [config/tools.yaml](../../../config/tools.yaml) の `scoring.score_quality`
+- ネットキャッシュ投資法: NotebookLM「清原達郎 ネットキャッシュ投資法」

@@ -24,6 +24,7 @@
 | 長短金利差(10Y-2Y) | `tools/yahoo_finance.py` get_stock_info("^TNX") - get_stock_info("2YY=F") |
 | ISM製造業PMI | WebSearch（月次発表。直近の値を使用） |
 | Fear & Greed指数 | WebSearch（CNN Fear and Greed Index） |
+| 日経225 PER | WebSearch（"日経平均 PER 倍率 最新"）|
 
 ### 2. スコアリング
 
@@ -37,10 +38,11 @@
 | Fear & Greed | >60 | 40-60 | <40 |
 | WTI原油 | $55-85 | $85-95 | >$95 or <$55 |
 | 長短金利差 | >0.5% | 0-0.5% | <0%（逆イールド） |
+| 日経225 PER | <13倍 | 13-20倍 | >20倍 |
 
 ### 3. 総合判定
 
-合計スコア（-6 〜 +6）で判定:
+合計スコア（-7 〜 +7）で判定:
 
 | 合計スコア | 判定 |
 |:---|:---|
@@ -128,13 +130,69 @@ Read ツールで全文を読み、examples セクションの全パターンと
 | 買われすぎ | RSI > 70 + 出来高1.5x超 | 利確検討 |
 | 売られすぎ | RSI < 35 + ファンダ健全 | 押し目買い候補 |
 | リカバリー好機 | ATH-30%超下落 + ROE>20% + カタリスト発生 | エントリー候補 |
+| **大底圏（#160）** | BB -4σ以下 + ピボットS3/S4以下 + RSI<30 + PBR割安 | **玉集め候補（倍買い・翌日現引き方式）** |
 
-### 9. PFバランス目標の提示（KIK-685）
+**大底圏シグナル（#160）の優先度判定:**
+
+| 条件数 | 判定 |
+|:---|:---|
+| 4/4 条件充足 | 大底圏確定 — 玉集め積極検討 |
+| 3/4 条件充足 | 大底圏予備 — 残り1条件を監視 |
+| 2/4 以下 | 対象外 |
+
+**強制 risk-off 中の大底圏シグナル:**
+VIX がピークから 20% 以上低下していない場合、大底圏シグナルが出ても「観察のみ」とする。
+VIX が 20% 以上低下した後は「段階仕込み開始可」として出力する（判断はしない）。
+
+### 9. 市場構造シグナル（NT倍率 + JP vs US 相対強度）
+
+#### 9-a. NT倍率（日経225 ÷ TOPIX）
+
+`src/data/market_regime.calc_nt_ratio()` でNT倍率を計算する:
+
+```python
+from src.data.market_regime import calc_nt_ratio
+# ^N225 現在値 + TOPIX現在値（WebSearch("TOPIX 現在値") で取得）
+result = calc_nt_ratio(nikkei_price, topix_price)
+```
+
+| シグナル | 条件 | 意味 |
+|:---|:---|:---|
+| nikkei_heavy | NT ≥ 15.5倍 | 日経225過熱（大型・ハイテク集中） |
+| neutral | 13.0〜15.5倍 | 正常レンジ |
+| topix_heavy | NT < 13.0倍 | TOPIX優位（広範株優勢） |
+
+**歴史的参考値**: 長期平均≈12倍、通常13〜15倍、2026年4月=16.21倍（過去最高）
+
+#### 9-b. JP vs US 相対強度（ドル建て日経 vs S&P500）
+
+`src/data/market_regime.calc_jp_us_relative()` でドル建て日経 vs S&P500 の相対強度を評価する:
+
+```python
+from src.data.market_regime import calc_jp_us_relative
+# ^N225, USDJPY=X, ^GSPC の直近21日分終値を取得
+result = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
+```
+
+| シグナル | 意味 | PF地域配分への示唆 |
+|:---|:---|:---|
+| japan | ドル建て日経がS&P500を+3%超上回る | 日本株ウェイト維持・増加の根拠 |
+| us | S&P500がドル建て日経を+3%超上回る | 米株ウェイト優先の根拠 |
+| neutral | 差が±3%未満 | 地域優位性なし |
+
+**出力フォーマットに含める:** 両シグナルの `label` を出力する。
+**注意**: これらのシグナルはPF地域配分の「参考値」であり、Step 10のPFバランス判定を上書きしない。
+
+### 10. PFバランス目標の提示（KIK-685）
 
 **`config/allocation.yaml` を Read して目標レンジ・集中度制約を取得する。** ベタ書きしない。
 
 判定結果（normal / risk-off）に応じて `role_targets` の該当レンジを提示する。
 集中度（`concentration`）・通貨（`currency`）・地域（`geography`）の制約も同ファイルから取得する。
+
+⚠️ 集中度は 2026-08-07 に確信度加重へ改訂された。判定は `src.data.concentration` に集約されており、
+分母は**株式部分**、上限は normal 15% / conviction 25%。conviction は CV1/CV2/CV3 の3条件を
+全て満たすものだけで、自己申告では認めない。上限超過は**買い増しの停止**であって売却根拠ではない。
 
 **乖離判定は3段階（green / yellow / red）。** warn 超過で黄色、limit 超過で赤。
 
@@ -151,7 +209,7 @@ Read ツールで全文を読み、examples セクションの全パターンと
 - 閾値リバランス: レンジ逸脱時のみ調整。定期リバランスは不要
 - risk-off 移行は段階的に（一気に売らない）
 
-### 10. 現在のPFとのギャップ提示
+### 11. 現在のPFとのギャップ提示
 
 portfolio.csv **と** data/cash_balance.json の両方を読み、PF全体（株式+キャッシュ）の比率と目標のギャップを計算する。
 キャッシュ残高を含めずに計算すると比率が歪むため、必ず cash_balance.json を読むこと。
@@ -159,40 +217,40 @@ portfolio.csv **と** data/cash_balance.json の両方を読み、PF全体（株
 
 **⚠️ cash_balance.json を読まずにPF比率を計算してはならない。**
 
-### 11. セクター/テーマ推奨（⚠️ 省略不可）
+### 12. セクター/テーマ推奨（⚠️ 省略不可）
 
 **まず `.claude/agents/risk-assessor/sector_matrix.yaml` を Read ツールで読み込む。**
 
-#### 11a. PF規模判定
+#### 12a. PF規模判定
 
 portfolio.csv + cash_balance.json からPF総額を計算し、規模を判定:
 - 小規模(〜$50K): 固定ルールのみ。RS計算・Grok検証なし
 - 中規模($50K〜$200K): 固定ルール + RS計算 + Grok検証
 - 大規模($200K〜): フル機能
 
-#### 11b. 固定ルールでセクター推奨を生成
+#### 12b. 固定ルールでセクター推奨を生成
 
 sector_matrix.yaml の rules を現在の指標と照合し、有利/不利セクターを特定する。
 
-#### 11c. RS確認（中規模以上のみ）
+#### 12c. RS確認（中規模以上のみ）
 
 推奨セクターの代表ETFについて、`tools/yahoo_finance.py` の `get_sector_rs()` で S&P500 対比の相対強度を確認。
 - RS > 1.0 → 推奨を「確認済み」に
 - RS < 1.0 → 「マクロは支持、RSは弱い」と注記
 
-#### 11d. Grok検証（中規模以上のみ）
+#### 12d. Grok検証（中規模以上のみ）
 
 `tools/grok.py` の `search_market("sector rotation")` で実際の資金フローを確認。
 固定ルールとGrokの一致/矛盾を判定: confirmed / unconfirmed / overridden / augmented
 
-#### 11e. 「やらない」チェック
+#### 12e. 「やらない」チェック
 
 sector_matrix.yaml の do_nothing_checks を実行。1つでも該当したら「何もしない」を**理由付きで**提案。
 ユーザーが「それでもやりたい」と言った場合は実行する。
 
-### 12. PF照合（セクターシグナル × 保有銘柄）
+### 13. PF照合（セクターシグナル × 保有銘柄）
 
-Step 11 のセクター推奨と現在の保有銘柄を照合:
+Step 12 のセクター推奨と現在の保有銘柄を照合:
 - 不利セクターに属する保有銘柄 → ⚠️ フラグ
 - 有利セクターが PF に不在 or 薄い → ギャップとして報告
 - PF構成上の問題がなければ「変更不要」
@@ -223,6 +281,9 @@ Step 11 のセクター推奨と現在の保有銘柄を照合:
 
 逆張りシグナル: [なし / 買われすぎ / 売られすぎ]
 
+NT倍率: [label テキスト]
+JP vs US 相対強度: [japan / us / neutral / unavailable] — [label テキスト]
+
 PFバランス:
 | 枠 | 目標 | 現在 | ギャップ |
 |:---|---:|---:|:---|
@@ -244,6 +305,14 @@ PF照合:
 ## 使用ツール
 
 `config/tools.yaml` を参照。主に `yahoo_finance.get_stock_info` / `grok.search_market` / `portfolio_io.load_portfolio` を使用。ISM/F&G は WebSearch。
+
+
+### ⚠️ チェックリスト（必須）
+
+`config/checklists.yaml` を参照し、該当する場面のチェックを上から順に通す。
+2026年8月3〜6日に発生した15件の見落とし・誤りを、実際の失敗と1対1で対応させたもの。
+`code` 欄があるチェックは目視で代替せず、必ず実行する。
+ルール適用前に `rules` を通す。とくに RL1（PF規模ティアを実測で確認）と RL2（ルール原文を読む）。
 
 ## References
 
