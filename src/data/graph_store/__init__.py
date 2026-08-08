@@ -34,6 +34,7 @@ from src.data.graph_store._common import (  # noqa: F401
     close,
     create_ai_relationship,
     get_mode,
+    check_schema,
     init_schema,
     is_available,
 )

@@ -66,7 +66,7 @@ Tools (tools/)
 Data (src/data/)
   yahoo_client/  — yfinance ラッパー（24h JSONキャッシュ）
   grok_client/   — Grok API (xAI) ラッパー
-  graph_store/   — Neo4j 書き込み（dual-write）
+  graph_store/   — Neo4j 書き込み（dual-write）+ スキーマ検証 check_schema()
   graph_query/   — Neo4j 読み取り
   graph_sync.py  — data/ → GraphRAG 一括同期（「syncして」の実体）
   graph_writers.py — レコード→ノード変換（save 経路と sync 経路で共有）

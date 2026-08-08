@@ -312,9 +312,26 @@ weekly は「相場と PF の現状」、monthly は「**今月の売買1回を�
 **Step 0（必須）: ルーティンの鮮度チェック**
 
 ```python
-from src.data.morning_summary import latest_routine_dates, check_routine_freshness
-check_routine_freshness(latest_routine_dates())
+from src.data.morning_summary import check_routine_health
+check_routine_health()     # 鮮度 + GraphRAG のスキーマ をまとめて見る
 ```
+
+**スキーマも見る理由**: `init_schema()` はベクトル索引の失敗を
+`try/except: pass` で握り潰すため、**1つも作られなくても True を返す**。
+実際 2026-08-09 に調べたところ、このDBには索引も制約も1つも無かった
+（Neo4j 既定の LOOKUP 2件のみ）。**埋め込みを全ノードに付けても、
+索引が無ければ `db.index.vector.queryNodes` は呼べず意味検索は一切動かない。**
+「埋め込みが漏れている」より上流の問題なので、こちらを先に見る。
+
+| 出るアラート | 意味 | 対処 |
+|:---|:---|:---|
+| `vector_index_missing` CRITICAL | 意味検索が動かない | `init_schema()` を実行 |
+| `vector_index_not_online` WARN | 構築中または失敗 | 待つ / 作り直す |
+| `constraint_missing` WARN | ノードの重複を防げない | `init_schema()` を実行 |
+| `index_missing` INFO | クエリが遅い | 同上 |
+
+Neo4j 未接続なら黙って飛ばす。`init_schema()` の戻り値は当てにせず、
+**`check_schema()` で実在を確認する**こと。
 
 週次にしか含まれない項目（リスク判定・アクションプラン・レビュー・需給）は、
 **週次を回さないと誰も気づかないまま抜け続ける**。実際 2026-07-27 から 08-06 まで

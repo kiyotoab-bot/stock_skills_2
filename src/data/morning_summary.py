@@ -542,6 +542,29 @@ def check_routine_freshness(
     return alerts
 
 
+def check_routine_health(
+    reports_dir: str = "data/reports",
+    today: date | None = None,
+) -> list[dict]:
+    """日次 Step 0 でまとめて見る「仕組みが生きているか」の確認 (KIK-742).
+
+    ルーティンの鮮度に加えて **GraphRAG のスキーマ**も見る。
+    `init_schema()` はベクトル索引の失敗を握り潰すため、成功したつもりで
+    索引が1つも無い状態が起こりうる（2026-08-09 に実際にそうだった）。
+    埋め込みを全ノードに付けても索引が無ければ意味検索は動かないので、
+    「埋め込みの欠落」より上流のこちらを先に見る。
+
+    Neo4j 未接続なら黙って飛ばす（graceful degradation）。
+    """
+    alerts = check_routine_freshness(latest_routine_dates(reports_dir), today)
+    try:
+        from src.data.graph_store import check_schema
+        alerts.extend(check_schema().get("alerts") or [])
+    except Exception:
+        pass
+    return alerts
+
+
 def save_routine_report(
     kind: str,
     markdown: str,
