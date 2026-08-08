@@ -120,9 +120,18 @@ class TestGetLessonsByTheme:
 
 class TestSaveNoteIntegration:
     def test_lesson_gets_community(self, tmp_path):
+        """⚠️ このモジュールは ``no_auto_mock`` で外部IOの自動モックを外している。
+
+        ``save_note`` は data/ への書き込みと Neo4j への dual-write を両方行うので、
+        ``merge_note`` を止めないと **本番の Neo4j にテストデータが入る**。実際
+        2026-08-07 時点で 'Zﾚｯｽﾝ' 相当のスタブが41件溜まっており、Reviewer に注入
+        される lesson の6割を占めていた。base_dir=tmp_path はローカル側しか守らない。
+        """
         from src.data.note_manager import save_note
 
-        with patch("src.data.lesson_community.merge_lesson_community", return_value=True) as mock_merge:
+        with patch("src.data.lesson_community.merge_lesson_community", return_value=True) as mock_merge, \
+             patch("src.data.graph_store.merge_note", return_value=True) as mock_note, \
+             patch("src.data.graph_store.linker.link_note", return_value=None):
             note = save_note(
                 note_type="lesson",
                 content="損切りは-15%",
@@ -130,6 +139,7 @@ class TestSaveNoteIntegration:
                 expected_action="-15%で撤退",
                 base_dir=str(tmp_path),
             )
+        assert mock_note.called, "merge_note がパッチされず本番Neo4jに書く経路が残っている"
 
         assert note.get("_lesson_community") == "売買ルール"
         mock_merge.assert_called_once()

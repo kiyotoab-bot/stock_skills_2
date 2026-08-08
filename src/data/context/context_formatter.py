@@ -65,7 +65,7 @@ def _format_context(symbol: str, history: dict, skill: str, reason: str,
 
     # Community (KIK-549)
     try:
-        from src.data.graph_query.community import get_stock_community
+        from src.data.graph_query.community_query import get_stock_community
         comm = get_stock_community(symbol)
         if comm:
             peers = comm.get("peers", [])[:5]

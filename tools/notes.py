@@ -18,6 +18,7 @@ from src.data.note_manager import (  # noqa: E402
     load_notes,
     delete_note,
     get_exit_rules,
+    get_stop_levels,
     check_exit_rule,
     check_lesson_conflicts,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "load_notes",
     "delete_note",
     "get_exit_rules",
+    "get_stop_levels",
     "check_exit_rule",
     "check_lesson_conflicts",
 ]

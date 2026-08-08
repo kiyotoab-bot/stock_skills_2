@@ -83,13 +83,13 @@ class TestSelectRelevantLessons:
 
 class TestGetCommunityLessons:
     def test_returns_empty_no_driver(self):
-        from src.data.graph_query.community import get_community_lessons
+        from src.data.graph_query.community_query import get_community_lessons
 
         with patch("src.data.graph_store._get_driver", return_value=None):
             assert get_community_lessons("NVDA") == []
 
     def test_returns_lessons_with_source(self):
-        from src.data.graph_query.community import get_community_lessons
+        from src.data.graph_query.community_query import get_community_lessons
         import src.data.graph_store as gs
 
         driver = MagicMock()
@@ -117,7 +117,7 @@ class TestGetCommunityLessons:
         assert "CEG" in result[0]["symbol"]
 
     def test_graceful_on_error(self):
-        from src.data.graph_query.community import get_community_lessons
+        from src.data.graph_query.community_query import get_community_lessons
         import src.data.graph_store as gs
 
         driver = MagicMock()

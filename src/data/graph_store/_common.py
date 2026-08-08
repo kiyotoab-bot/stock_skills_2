@@ -57,47 +57,70 @@ def get_mode() -> str:
     return _get_mode()
 
 
+_driver_failure: str | None = None
+
+
 def _get_driver():
     """Lazy-init Neo4j driver. Returns None if neo4j package not installed."""
-    global _driver
+    global _driver, _driver_failure
     if _driver is not None:
         return _driver
     try:
         from neo4j import GraphDatabase
+    except ImportError:
+        # 依存パッケージ未導入。Docker の起動状態とは無関係なので区別して記録する。
+        _driver_failure = "missing_package"
+        return None
+    try:
         _driver = GraphDatabase.driver(_NEO4J_URI, auth=(_NEO4J_USER, _NEO4J_PASSWORD))
+        _driver_failure = None
         return _driver
     except Exception:
+        _driver_failure = "connect"
         return None
+
+
+def _unavailable_message() -> str:
+    """Diagnose *why* Neo4j is unavailable instead of always blaming Docker.
+
+    ``neo4j`` は長らく requirements.txt に未記載で、未導入環境では ImportError の
+    まま「Dockerコンテナが起動していない」と表示されていた。原因の取り違えを招くため
+    パッケージ未導入と接続失敗を分けて案内する。
+    """
+    if _driver_failure == "missing_package":
+        return (
+            "⚠️  Neo4jに接続できません\n"
+            "    原因: neo4j パッケージが未インストールです（Dockerの状態とは無関係）\n"
+            "    対処: pip install -r requirements.txt を実行してください\n"
+            "    → Neo4jなしで続行します（コンテキストなし）"
+        )
+    return (
+        "⚠️  Neo4jに接続できません\n"
+        f"    原因: {_NEO4J_URI} に到達できません。Dockerコンテナが未起動の可能性があります\n"
+        "    対処: docker compose up -d を実行してください\n"
+        "    → Neo4jなしで続行します（コンテキストなし）"
+    )
 
 
 def is_available() -> bool:
     """Check if Neo4j is reachable."""
     global _unavailable_warned
+    global _driver_failure
     driver = _get_driver()
     if driver is None:
         if not _unavailable_warned:
-            print(
-                "⚠️  Neo4jに接続できません\n"
-                "    原因: Dockerコンテナが起動していない可能性があります\n"
-                "    対処: docker compose up -d を実行してください\n"
-                "    → Neo4jなしで続行します（コンテキストなし）",
-                file=sys.stderr,
-            )
+            print(_unavailable_message(), file=sys.stderr)
             _unavailable_warned = True
         return False
     try:
         driver.verify_connectivity()
         _unavailable_warned = False  # reset on successful connection
+        _driver_failure = None
         return True
     except Exception:
+        _driver_failure = "connect"
         if not _unavailable_warned:
-            print(
-                "⚠️  Neo4jに接続できません\n"
-                "    原因: Dockerコンテナが起動していない可能性があります\n"
-                "    対処: docker compose up -d を実行してください\n"
-                "    → Neo4jなしで続行します（コンテキストなし）",
-                file=sys.stderr,
-            )
+            print(_unavailable_message(), file=sys.stderr)
             _unavailable_warned = True
         return False
 

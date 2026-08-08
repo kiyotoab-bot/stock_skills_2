@@ -1,5 +1,6 @@
 """Stock info and detail fetching (KIK-449, KIK-531)."""
 
+import datetime
 import socket
 import time
 from typing import Any, Optional
@@ -114,6 +115,174 @@ def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[f
         return []
 
 
+_DIVIDEND_DIVERGENCE_LIMIT = 0.30
+
+
+def _dividend_suspect(rate, trailing_rate) -> Optional[bool]:
+    """Flag a forecast dividend that diverges wildly from the trailing actual.
+
+    yfinance の ``dividendRate``（会社予想 DPS）は実測で誤値が混入する。既知の実害:
+      2026-05-31 9928.T : 130円（実際60円）→ 利回り 7.67% と表示され候補入りしかけた
+      2026-08-05 6436.T : 250円（会社予想180円）→ 利回り 6.44% と誤認して第1弾の推奨に載せた
+    既存の ``_sanitize_anomalies`` は利回り 15% 超しか弾かないため、この帯域を素通りする。
+
+    ⚠️ 自動補正はしない。7453.T 良品計画のように実際に急増配している銘柄も
+    +75.8% で引っかかるため、真偽はエージェントが一次情報で確認する。
+    ここは「そのまま信じるな」という印にとどめる。
+
+    Returns True (要確認) / False (整合) / None (判定不能).
+    """
+    try:
+        r = float(rate)
+        t = float(trailing_rate)
+    except (TypeError, ValueError):
+        return None
+    if r <= 0 or t <= 0:
+        return None
+    # abs(r / t - 1) 形式だと 130/100 - 1 が 0.30000000000000004 になり
+    # ちょうど閾値の値を超過と誤判定する。減算を先に行って誤差を避ける。
+    return abs(r - t) > t * _DIVIDEND_DIVERGENCE_LIMIT
+
+
+_JQ_DIVERGENCE_LIMIT = 0.20
+
+#: 当期末までこの日数を切ると、yfinance の forward 予想は翌期に切り替わっている
+#: 可能性が高い。7453.T 良品計画（8月決算）が 2026-08-07 時点で該当し、
+#: 会社予想EPS 126.19（FY2026/8）と yfinance 157.49（FY2027/8）の +24.8% 乖離を
+#: 「データ異常」と誤検知していた。実際はどちらも正しく、決算期が違うだけ。
+_JQ_FY_ROLLOVER_DAYS = 90
+
+
+def _merge_jquants_forecast(symbol: str, result: dict, today=None) -> None:
+    """日本株の会社予想を J-Quants（決算短信）から上書きマージする。
+
+    yfinance の予想値は第三者推定で、実測で誤りが混入していた:
+      6436.T アマノ  dividendRate 250円（会社予想 180円）→ 利回りを 6.44% と誤認
+      6701.T 日本電気 forwardEps 718.96（会社予想の約3.3倍）→ PER 6.4 と誤認
+    J-Quants は JPX 公式の決算短信そのものなので、取れる限りこちらを一次情報とする。
+
+    追加されるキー:
+      forecast_source            "jquants" / "yfinance" / None
+      forecast_eps_company       会社予想EPS（円）
+      forecast_dps_company       会社予想 年間配当（円）
+      dividend_yield_company     会社予想配当 ÷ 株価
+      per_forward_company        株価 ÷ 会社予想EPS
+      forecast_divergence        yfinance と会社予想の乖離（EPS/配当の最大絶対値）
+      forecast_suspect           説明のつかない乖離が 20% を超えたら True
+      forecast_fy_rollover_likely 当期末が近く yfinance が翌期予想を指している可能性
+      forecast_fiscal_year_end   会社予想が対象とする決算期末
+      jquants_disclosed_date     参照した開示日
+
+    ⚠️ IFRS/Non-GAAP 開示だと FEPS/FNP が空になる（実測: 6701 / 4568 / 9364）。
+      その場合は yfinance の値を残し、``forecast_source`` を "yfinance" にする。
+      値を捏造せず「取れなかった」ことを残すのが目的。
+    """
+    result.setdefault("forecast_source", None)
+    if not str(symbol).upper().endswith(".T"):
+        return  # J-Quants は日本株のみ
+    try:
+        from src.data.jquants_client import get_company_forecast
+    except ImportError:
+        return
+    try:
+        fc = get_company_forecast(symbol)
+    except Exception:  # noqa: BLE001
+        return
+    if not fc.get("available"):
+        return
+
+    result["jquants_disclosed_date"] = fc.get("disclosed_date")
+    price = _num_or_none(result.get("price"))
+    eps_c = fc.get("forecast_eps")
+    dps_c = fc.get("forecast_dps_annual")
+
+    result["forecast_eps_company"] = eps_c
+    result["forecast_dps_company"] = dps_c
+    result["forecast_net_income_company"] = fc.get("forecast_net_income")
+    result["forecast_operating_profit_company"] = fc.get("forecast_operating_profit")
+
+    rollover = _fy_rollover_likely(fc.get("fiscal_year_end"), today)
+    result["forecast_fy_rollover_likely"] = rollover
+    result["forecast_fiscal_year_end"] = _fy_end_str(fc.get("fiscal_year_end"))
+
+    gaps = []          # suspect の判定に使う乖離
+    all_gaps = []      # 記録用（説明のつくものも含む）
+    if eps_c and eps_c > 0:
+        if price and price > 0:
+            result["per_forward_company"] = price / eps_c
+        yf_eps = _num_or_none(result.get("forward_eps"))
+        if yf_eps and yf_eps > 0:
+            gap = abs(yf_eps - eps_c) / eps_c
+            all_gaps.append(gap)
+            # 期末が近いと yfinance は翌期予想に切り替わる。決算期の違いを
+            # データ異常と呼ばない（CP1 と同じ型の誤り）。
+            if not rollover:
+                gaps.append(gap)
+    if dps_c and dps_c > 0:
+        if price and price > 0:
+            result["dividend_yield_company"] = dps_c / price
+        yf_dps = _num_or_none(result.get("dividend_rate"))
+        if yf_dps and yf_dps > 0:
+            gap = abs(yf_dps - dps_c) / dps_c
+            all_gaps.append(gap)
+            gaps.append(gap)
+            # dividend_yield_suspect は yfinance 内部の 予想配当 vs 実績配当 の
+            # 比較でしか立たないので、増配・株式分割でも発火する（7453.T 良品計画:
+            # 予想32円 / 実績18.2円、間に 2025-08-28 の1:2分割と増配）。
+            # 会社予想が予想配当を裏付けているならデータ異常ではない。
+            if gap <= _JQ_DIVERGENCE_LIMIT:
+                result["dividend_yield_suspect"] = False
+                result["dividend_rate_confirmed_by"] = "jquants"
+
+    if fc.get("has_forecast"):
+        result["forecast_source"] = "jquants"
+    elif result.get("forward_per") or result.get("dividend_rate"):
+        result["forecast_source"] = "yfinance"
+
+    if all_gaps:
+        result["forecast_divergence"] = max(all_gaps)
+        result["forecast_suspect"] = bool(
+            gaps and max(gaps) > _JQ_DIVERGENCE_LIMIT
+        )
+
+
+def _fy_end_str(fy_end) -> Optional[str]:
+    """決算期末を ``YYYY-MM-DD`` に正規化する（date / datetime / str / NaT）。"""
+    if fy_end is None:
+        return None
+    # datetime / pd.Timestamp は "2026-08-31T00:00:00" 形式になるので日付部分だけ取る。
+    # pd.NaT は .isoformat() が例外ではなく 'NaT' を返すため、
+    # 最後に必ず fromisoformat で通るかを確かめる。
+    raw = fy_end.isoformat() if isinstance(fy_end, datetime.date) else str(fy_end)
+    text = raw[:10]
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return None
+    return text
+
+
+def _fy_rollover_likely(fy_end, today=None) -> bool:
+    """当期末が近く、yfinance の forward 予想が翌期を指している可能性が高いか。
+
+    決算期末までの残日数が ``_JQ_FY_ROLLOVER_DAYS`` 以内なら True。
+    既に期末を過ぎている（新しい開示待ち）場合も True 扱いにする。
+    """
+    text = _fy_end_str(fy_end)
+    if not text:
+        return False
+    today = today or datetime.date.today()
+    return (datetime.date.fromisoformat(text) - today).days <= _JQ_FY_ROLLOVER_DAYS
+
+
+def _num_or_none(value) -> Optional[float]:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f else None
+
+
 def _build_dividend_history_from_actions(
     ticker, shares_outstanding, max_years: int = 4
 ) -> tuple:
@@ -190,6 +359,9 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             # Valuation
             "per": _safe_get(info, "trailingPE"),
             "forward_per": _safe_get(info, "forwardPE"),
+            # 会社予想との突合に使うため EPS も持つ（forwardPE だけだと乖離を検出できない）
+            "forward_eps": _safe_get(info, "forwardEps"),
+            "trailing_eps": _safe_get(info, "trailingEps"),
             "pbr": _safe_get(info, "priceToBook"),
             "psr": _safe_get(info, "priceToSalesTrailing12Months"),
             # Profitability
@@ -202,6 +374,13 @@ def get_stock_info(symbol: str) -> Optional[dict]:
             # Trailing dividend yield (already a ratio from yfinance, e.g. 0.025 = 2.5%)
             "dividend_yield_trailing": _safe_get(info, "trailingAnnualDividendYield"),
             "payout_ratio": _safe_get(info, "payoutRatio"),
+            # Per-share dividend amounts, kept so the forecast can be cross-checked
+            "dividend_rate": _safe_get(info, "dividendRate"),
+            "dividend_rate_trailing": _safe_get(info, "trailingAnnualDividendRate"),
+            "dividend_yield_suspect": _dividend_suspect(
+                _safe_get(info, "dividendRate"),
+                _safe_get(info, "trailingAnnualDividendRate"),
+            ),
             # Growth
             "revenue_growth": _safe_get(info, "revenueGrowth"),
             "earnings_growth": _safe_get(info, "earningsGrowth"),
@@ -227,6 +406,7 @@ def get_stock_info(symbol: str) -> Optional[dict]:
         }
 
         _sanitize_anomalies(result)
+        _merge_jquants_forecast(symbol, result)
         _write_cache(symbol, result)
         return result
 

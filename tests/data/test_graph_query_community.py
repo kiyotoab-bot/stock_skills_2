@@ -54,21 +54,21 @@ class TestJaccardSimilarity:
     """Unit tests for _compute_jaccard_similarity and _jaccard_single."""
 
     def test_identical_vectors_score_1(self):
-        from src.data.graph_query.community import _jaccard_single
+        from src.data.graph_query.community_detect import _jaccard_single
 
         a = {"screens": {"s1", "s2"}, "themes": {"AI"}, "sectors": {"Tech"}, "news": set()}
         b = {"screens": {"s1", "s2"}, "themes": {"AI"}, "sectors": {"Tech"}, "news": set()}
         assert _jaccard_single(a, b) == pytest.approx(1.0)
 
     def test_disjoint_vectors_score_0(self):
-        from src.data.graph_query.community import _jaccard_single
+        from src.data.graph_query.community_detect import _jaccard_single
 
         a = {"screens": {"s1"}, "themes": {"AI"}, "sectors": {"Tech"}, "news": {"n1"}}
         b = {"screens": {"s2"}, "themes": {"EV"}, "sectors": {"Auto"}, "news": {"n2"}}
         assert _jaccard_single(a, b) == pytest.approx(0.0)
 
     def test_partial_overlap(self):
-        from src.data.graph_query.community import _jaccard_single
+        from src.data.graph_query.community_detect import _jaccard_single
 
         a = {"screens": {"s1", "s2"}, "themes": {"AI"}, "sectors": {"Tech"}, "news": set()}
         b = {"screens": {"s1", "s3"}, "themes": {"AI"}, "sectors": {"Auto"}, "news": set()}
@@ -78,7 +78,7 @@ class TestJaccardSimilarity:
         assert 0.0 < sim < 1.0
 
     def test_cutoff_filtering(self):
-        from src.data.graph_query.community import _compute_jaccard_similarity
+        from src.data.graph_query.community_detect import _compute_jaccard_similarity
 
         vectors = {
             "A": {"screens": {"s1"}, "themes": set(), "sectors": set(), "news": set()},
@@ -88,7 +88,7 @@ class TestJaccardSimilarity:
         assert len(edges) == 0  # disjoint, similarity=0 < 0.5
 
     def test_top_k_limiting(self):
-        from src.data.graph_query.community import _compute_jaccard_similarity
+        from src.data.graph_query.community_detect import _compute_jaccard_similarity
 
         # Create 5 stocks all sharing the same screen → high similarity
         vectors = {
@@ -107,18 +107,18 @@ class TestJaccardSimilarity:
             assert cnt <= 4  # top_k=2 per side, but pair appears once
 
     def test_empty_vectors(self):
-        from src.data.graph_query.community import _compute_jaccard_similarity
+        from src.data.graph_query.community_detect import _compute_jaccard_similarity
 
         assert _compute_jaccard_similarity({}, cutoff=0.3, top_k=10) == []
 
     def test_single_stock(self):
-        from src.data.graph_query.community import _compute_jaccard_similarity
+        from src.data.graph_query.community_detect import _compute_jaccard_similarity
 
         vectors = {"A": {"screens": {"s1"}, "themes": set(), "sectors": set(), "news": set()}}
         assert _compute_jaccard_similarity(vectors, cutoff=0.0, top_k=10) == []
 
     def test_custom_weights(self):
-        from src.data.graph_query.community import _jaccard_single
+        from src.data.graph_query.community_detect import _jaccard_single
 
         a = {"screens": {"s1"}, "themes": {"AI"}, "sectors": set(), "news": set()}
         b = {"screens": {"s1"}, "themes": {"AI"}, "sectors": set(), "news": set()}
@@ -137,7 +137,7 @@ class TestLouvainCommunities:
     """Tests for _run_louvain wrapper."""
 
     def test_two_clusters(self):
-        from src.data.graph_query.community import _run_louvain
+        from src.data.graph_query.community_detect import _run_louvain
 
         # Two dense groups with weak cross-connection
         edges = [
@@ -158,7 +158,7 @@ class TestLouvainCommunities:
         assert all_members == {"A", "B", "C", "D", "E", "F"}
 
     def test_single_node(self):
-        from src.data.graph_query.community import _run_louvain
+        from src.data.graph_query.community_detect import _run_louvain
 
         edges = [("A", "B", 0.5)]
         communities = _run_louvain(edges)
@@ -166,12 +166,12 @@ class TestLouvainCommunities:
         assert total_members == 2
 
     def test_empty_edges(self):
-        from src.data.graph_query.community import _run_louvain
+        from src.data.graph_query.community_detect import _run_louvain
 
         assert _run_louvain([]) == []
 
     def test_community_has_required_keys(self):
-        from src.data.graph_query.community import _run_louvain
+        from src.data.graph_query.community_detect import _run_louvain
 
         edges = [("A", "B", 0.5), ("B", "C", 0.5)]
         communities = _run_louvain(edges)
@@ -192,7 +192,7 @@ class TestDetectCommunities:
     """Integration tests for the full pipeline."""
 
     def test_returns_empty_no_driver(self):
-        from src.data.graph_query.community import detect_communities
+        from src.data.graph_query.community_detect import detect_communities
 
         with patch("src.data.graph_store._get_driver", return_value=None):
             assert detect_communities() == []
@@ -399,7 +399,7 @@ class TestGetSimilarStocks:
 
 class TestAutoNaming:
     def test_sector_and_theme(self):
-        from src.data.graph_query.community import _auto_name_community
+        from src.data.graph_query.community_detect import _auto_name_community
 
         session = MagicMock()
         call_num = [0]
@@ -422,7 +422,7 @@ class TestAutoNaming:
         assert name == "Technology x AI"
 
     def test_sector_only(self):
-        from src.data.graph_query.community import _auto_name_community
+        from src.data.graph_query.community_detect import _auto_name_community
 
         session = MagicMock()
         call_num = [0]
@@ -443,7 +443,7 @@ class TestAutoNaming:
         assert name == "Healthcare"
 
     def test_fallback_name(self):
-        from src.data.graph_query.community import _auto_name_community
+        from src.data.graph_query.community_detect import _auto_name_community
 
         session = MagicMock()
         result = MagicMock()
@@ -460,20 +460,20 @@ class TestAutoNaming:
 
 class TestSaveCommunities:
     def test_mode_off_returns_false(self):
-        from src.data.graph_query.community import _save_communities
+        from src.data.graph_query.community_detect import _save_communities
 
         with patch("src.data.graph_store._get_mode", return_value="off"):
             assert _save_communities([{"community_id": 0, "name": "x", "size": 1, "level": 0, "members": ["A"]}]) is False
 
     def test_no_driver_returns_false(self):
-        from src.data.graph_query.community import _save_communities
+        from src.data.graph_query.community_detect import _save_communities
 
         with patch("src.data.graph_store._get_mode", return_value="full"), \
              patch("src.data.graph_store._get_driver", return_value=None):
             assert _save_communities([]) is False
 
     def test_writes_communities(self, gq_with_driver):
-        from src.data.graph_query.community import _save_communities
+        from src.data.graph_query.community_detect import _save_communities
 
         _, _, session = gq_with_driver
         communities = [

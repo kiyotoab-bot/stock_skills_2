@@ -24,7 +24,7 @@ def reset_driver():
 
 class TestLabelCommunity:
     def test_sector_and_theme(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         call_num = [0]
@@ -49,7 +49,7 @@ class TestLabelCommunity:
         assert label["confidence"] > 0
 
     def test_sector_only(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         call_num = [0]
@@ -72,7 +72,7 @@ class TestLabelCommunity:
         assert label["confidence"] > 0
 
     def test_theme_only(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         call_num = [0]
@@ -94,7 +94,7 @@ class TestLabelCommunity:
         assert label["source"] == "theme"
 
     def test_news_keyword_fallback(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         call_num = [0]
@@ -119,7 +119,7 @@ class TestLabelCommunity:
         assert "semiconductor" in label["name"]
 
     def test_ultimate_fallback(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         result = MagicMock()
@@ -144,7 +144,7 @@ class TestLabelCommunity:
         assert label["source"] == "fallback"
 
     def test_empty_members(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         label = label_community([], session, fallback_id=0)
@@ -152,7 +152,7 @@ class TestLabelCommunity:
         assert label["confidence"] == 0.0
 
     def test_confidence_calculation(self):
-        from src.data.graph_query.community import label_community
+        from src.data.graph_query.community_detect import label_community
 
         session = MagicMock()
         call_num = [0]
@@ -183,7 +183,7 @@ class TestLabelCommunity:
 
 class TestExtractNewsKeyword:
     def test_extracts_common_word(self):
-        from src.data.graph_query.community import _extract_news_keyword
+        from src.data.graph_query.community_detect import _extract_news_keyword
 
         session = MagicMock()
         r1 = MagicMock()
@@ -197,14 +197,14 @@ class TestExtractNewsKeyword:
         assert keyword is not None
 
     def test_returns_none_no_news(self):
-        from src.data.graph_query.community import _extract_news_keyword
+        from src.data.graph_query.community_detect import _extract_news_keyword
 
         session = MagicMock()
         session.run.return_value = iter([])
         assert _extract_news_keyword(["A"], session) is None
 
     def test_filters_stop_words(self):
-        from src.data.graph_query.community import _extract_news_keyword
+        from src.data.graph_query.community_detect import _extract_news_keyword
 
         session = MagicMock()
         r1 = MagicMock()
@@ -217,7 +217,7 @@ class TestExtractNewsKeyword:
         assert keyword is None  # all stop words
 
     def test_japanese_stop_words_filtered(self):
-        from src.data.graph_query.community import _extract_news_keyword
+        from src.data.graph_query.community_detect import _extract_news_keyword
 
         session = MagicMock()
         r1 = MagicMock()
@@ -238,20 +238,20 @@ class TestExtractNewsKeyword:
 
 class TestDiscoverHiddenThemes:
     def test_returns_empty_no_driver(self):
-        from src.data.graph_query.community import discover_hidden_themes
+        from src.data.graph_query.community_detect import discover_hidden_themes
 
         with patch("src.data.graph_store._get_driver", return_value=None):
             assert discover_hidden_themes() == []
 
     def test_returns_empty_no_communities(self):
-        from src.data.graph_query.community import discover_hidden_themes
+        from src.data.graph_query.community_detect import discover_hidden_themes
 
         with patch("src.data.graph_query.community_query.get_communities", return_value=[]):
             with patch("src.data.graph_store._get_driver", return_value=MagicMock()):
                 assert discover_hidden_themes() == []
 
     def test_discovers_news_keyword_themes(self):
-        from src.data.graph_query.community import discover_hidden_themes
+        from src.data.graph_query.community_detect import discover_hidden_themes
 
         driver = MagicMock()
         session = MagicMock()
@@ -299,7 +299,7 @@ class TestDiscoverHiddenThemes:
 class TestAutoNameBackwardCompat:
     def test_returns_string(self):
         """_auto_name_community should still return a plain string."""
-        from src.data.graph_query.community import _auto_name_community
+        from src.data.graph_query.community_detect import _auto_name_community
 
         session = MagicMock()
         call_num = [0]

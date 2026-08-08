@@ -6,6 +6,22 @@ from unittest.mock import MagicMock, patch
 
 pytestmark = pytest.mark.no_auto_mock
 
+def _no_credentials(monkeypatch):
+    """Simulate an environment with no J-Quants credentials.
+
+    ``_client._ensure_env()`` reads ``.env`` itself so that ``src/data/`` entry
+    points work (before 2026-08-05 only ``tools/jquants.py`` loaded it, so the
+    client was silently disabled everywhere else). That means deleting the env
+    vars is not enough — the loader has to be switched off too, otherwise the
+    real credentials come back.
+    """
+    monkeypatch.delenv("JQUANTS_API_REFRESH_TOKEN", raising=False)
+    monkeypatch.delenv("JQUANTS_API_KEY", raising=False)
+    monkeypatch.setenv("JQUANTS_SKIP_DOTENV", "1")
+    import src.data.jquants_client._client as _c
+    monkeypatch.setattr(_c, "_env_loaded", False)
+
+
 
 def _make_margin_df(rows=None) -> pd.DataFrame:
     """Minimal DataFrame matching J-Quants margin interest response."""
@@ -78,8 +94,7 @@ class TestGetStockMargin:
         assert result["wow_change_pct"] < 0
 
     def test_no_api_key_returns_empty(self, monkeypatch):
-        monkeypatch.delenv("JQUANTS_API_REFRESH_TOKEN", raising=False)
-        monkeypatch.delenv("JQUANTS_API_KEY", raising=False)
+        _no_credentials(monkeypatch)
 
         from src.data.jquants_client.margin_interest import get_stock_margin
         result = get_stock_margin("5401.T")
@@ -142,7 +157,6 @@ class TestIsAvailable:
         assert is_available() is True
 
     def test_unavailable_without_keys(self, monkeypatch):
-        monkeypatch.delenv("JQUANTS_API_REFRESH_TOKEN", raising=False)
-        monkeypatch.delenv("JQUANTS_API_KEY", raising=False)
+        _no_credentials(monkeypatch)
         from src.data.jquants_client._client import is_available
         assert is_available() is False

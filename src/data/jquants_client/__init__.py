@@ -1,14 +1,38 @@
-"""J-Quants API クライアント（個別銘柄需給データ）。
+"""J-Quants API クライアント（JPX 公式データ・日本株）。
 
-Standard プラン以上で利用可能。
-- 個別銘柄の週次信用取引残高（信用買い残・売り残・信用倍率）
-- 認証: JQUANTS_API_REFRESH_TOKEN 環境変数（V1）または JQUANTS_API_KEY（V2）
+- 決算短信の会社予想（予想EPS・予想配当・予想利益）: fin_summary
+- 日足 OHLCV / 決算発表予定日: prices
+- 個別銘柄の週次信用取引残高: margin_interest（Standard プラン以上）
+
+認証: JQUANTS_API_KEY（V2）または JQUANTS_API_REFRESH_TOKEN（V1）。
+`.env` は _client._ensure_env() が自前で読むため、エントリポイントに依存しない。
+
+⚠️ 日本株専用。米国株・指数・為替・商品は yahoo_client を使うこと。
 """
 
+from src.data.jquants_client._client import is_available, reset_client  # noqa: F401
+from src.data.jquants_client.fin_summary import (  # noqa: F401
+    analyze_revisions,
+    get_company_forecast,
+    get_forecast_history,
+    normalize_code,
+)
 from src.data.jquants_client.margin_interest import get_stock_margin  # noqa: F401
-from src.data.jquants_client._client import is_available  # noqa: F401
+from src.data.jquants_client.prices import (  # noqa: F401
+    get_daily_bars,
+    get_earnings_calendar,
+    get_next_earnings,
+)
 
 __all__ = [
-    "get_stock_margin",
     "is_available",
+    "reset_client",
+    "get_company_forecast",
+    "get_forecast_history",
+    "analyze_revisions",
+    "get_daily_bars",
+    "get_earnings_calendar",
+    "get_next_earnings",
+    "get_stock_margin",
+    "normalize_code",
 ]

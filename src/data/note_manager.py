@@ -356,6 +356,73 @@ def get_exit_rules(
     return load_notes(note_type="exit-rule", symbol=symbol, base_dir=base_dir)
 
 
+def _note_key(note: dict) -> str:
+    """Sort key for notes: timestamp if present, else date.
+
+    ``load_notes`` sorts by ``date`` only, so notes saved on the same day tie.
+    Stop levels are revised intraday (e.g. 2026-08-04 に 8031.T を ¥4,651 →
+    ¥4,497 へ改訂), so the tie must be broken by ``timestamp``.
+    """
+    return f"{note.get('date', '')}T{note.get('timestamp', '')}"
+
+
+def get_stop_levels(base_dir: str = _NOTES_DIR) -> dict[str, dict]:
+    """Extract the current stop-loss level per symbol from exit-rule notes.
+
+    Returns ``{symbol: {"stop": float|None, "date": str, "raw": str,
+    "conviction": bool}}``.
+
+    - Only the **latest** exit-rule note per symbol is used.
+    - ``stop`` is ``None`` when ``stop_loss`` is free text that cannot be parsed
+      as a number (legacy notes such as ``"終値ベース 直近高値-8%ラチェット 現3553"``).
+      The entry is still returned so callers can warn instead of silently
+      dropping a position from monitoring.
+    - Symbols whose latest ``thesis`` note carries ``conviction_override`` are
+      returned with ``conviction=True`` and ``stop=None``: an old exit-rule note
+      must not resurrect a stop the user has explicitly revoked
+      (e.g. 7453.T 良品計画 は 2026-08-03 に無条件保有へ変更済み).
+    """
+    latest_exit: dict[str, dict] = {}
+    for note in load_notes(note_type="exit-rule", base_dir=base_dir):
+        sym = note.get("symbol")
+        if not sym or not note.get("stop_loss"):
+            continue
+        if sym not in latest_exit or _note_key(note) > _note_key(latest_exit[sym]):
+            latest_exit[sym] = note
+
+    # Conviction overrides win when they are newer than the exit-rule note.
+    conviction: dict[str, dict] = {}
+    for note in load_notes(note_type="thesis", base_dir=base_dir):
+        sym = note.get("symbol")
+        if not sym or not note.get("conviction_override"):
+            continue
+        if sym not in conviction or _note_key(note) > _note_key(conviction[sym]):
+            conviction[sym] = note
+
+    result: dict[str, dict] = {}
+    for sym, note in latest_exit.items():
+        conv = conviction.get(sym)
+        if conv is not None and _note_key(conv) > _note_key(note):
+            result[sym] = {
+                "stop": None, "date": conv.get("date", ""),
+                "raw": "", "conviction": True,
+            }
+            continue
+        raw = str(note.get("stop_loss", "")).strip()
+        try:
+            stop = float(raw.replace(",", ""))
+        except ValueError:
+            stop = None
+        result[sym] = {
+            "stop": stop, "date": note.get("date", ""),
+            "raw": raw, "conviction": False,
+        }
+
+    # A conviction symbol with no exit-rule note at all is not "monitored",
+    # so it is intentionally absent from the result.
+    return result
+
+
 def check_exit_rule(
     symbol: str,
     pnl_pct: float,

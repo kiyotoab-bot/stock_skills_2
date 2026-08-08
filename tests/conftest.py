@@ -125,6 +125,18 @@ def _block_external_io(request, monkeypatch):
     # Grok: ensure no API key → functions return EMPTY_* immediately
     monkeypatch.delenv("XAI_API_KEY", raising=False)
 
+    # J-Quants: never read the real .env from tests. _client._ensure_env() loads
+    # .env itself so that src/data/ entry points work, which would otherwise let
+    # the suite pick up live credentials and hit the API.
+    monkeypatch.setenv("JQUANTS_SKIP_DOTENV", "1")
+    import src.data.jquants_client._client as _jq_client
+    monkeypatch.setattr(_jq_client, "_env_loaded", False)
+
+    # JPX: block all HTTP calls (tests use no_auto_mock to opt-out)
+    import src.data.jpx_client._common as _jpx_common
+    monkeypatch.setattr(_jpx_common, "_fetch_page", lambda url: None)
+    monkeypatch.setattr(_jpx_common, "_fetch_bytes", lambda url: None)
+
     # In-memory cache: clear between tests to prevent cross-test leaks (KIK-531)
     from src.data.yahoo_client._memory_cache import clear_memory_cache
     clear_memory_cache()

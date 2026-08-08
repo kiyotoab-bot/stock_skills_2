@@ -206,7 +206,7 @@ def _load_community_lessons(symbol: str) -> list[dict]:
     Traverses: Stock->BELONGS_TO->Community<-BELONGS_TO<-Stock<-ABOUT<-Note(lesson)
     """
     try:
-        from src.data.graph_query.community import get_community_lessons
+        from src.data.graph_query.community_query import get_community_lessons
         return get_community_lessons(symbol)
     except Exception:
         return []
