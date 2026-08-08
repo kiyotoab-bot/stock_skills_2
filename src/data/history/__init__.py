@@ -1,7 +1,7 @@
 """History store -- save and load screening/report/trade/health/research JSON files.
 
 Sub-modules (KIK-512 split, KIK-517 package, KIK-578 save split):
-  _helpers.py: Internal helpers (_sanitize, _build_embedding, _dual_write_graph)
+  _helpers.py: Internal helpers (_sanitize, _build_embedding, _write_graph)
   save_screen.py: save_screening
   save_report.py: save_report
   save_trade.py: save_trade
@@ -17,7 +17,7 @@ All public functions are re-exported here for backward compatibility.
 __all__ = [
     "Path",
     "_safe_filename", "_history_dir", "_HistoryEncoder",
-    "_sanitize", "_build_embedding", "_dual_write_graph",
+    "_sanitize", "_build_embedding", "_dual_write_graph", "_write_graph",
     "save_screening", "save_report", "save_trade", "save_health",
     "_build_research_summary", "save_research", "save_market_context",
     "save_stress_test", "save_forecast",
@@ -35,6 +35,7 @@ from src.data.history._helpers import (  # noqa: F401
     _sanitize,
     _build_embedding,
     _dual_write_graph,
+    _write_graph,
 )
 
 # Re-export save functions from split sub-modules (KIK-578)

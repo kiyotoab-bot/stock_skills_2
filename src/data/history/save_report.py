@@ -7,7 +7,7 @@ from src.data.history._helpers import (
     _safe_filename,
     _history_dir,
     _sanitize,
-    _dual_write_graph,
+    _write_graph,
 )
 
 
@@ -53,23 +53,8 @@ def save_report(
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_sanitize(payload), f, ensure_ascii=False, indent=2)
 
-    # Neo4j dual-write (KIK-399/413/420) -- graceful degradation
-    def _graph_write(sem_summary, emb):
-        from src.data.graph_store import merge_report_full, merge_stock
-        merge_stock(symbol=symbol, name=data.get("name", ""), sector=data.get("sector", ""))
-        merge_report_full(
-            report_date=today, symbol=symbol, score=score, verdict=verdict,
-            price=data.get("price", 0), per=data.get("per", 0),
-            pbr=data.get("pbr", 0), dividend_yield=data.get("dividend_yield", 0),
-            roe=data.get("roe", 0), market_cap=data.get("market_cap", 0),
-            semantic_summary=sem_summary, embedding=emb,
-        )
-
-    _dual_write_graph(
-        _graph_write, "report",
-        dict(symbol=symbol, name=data.get("name", ""),
-             score=score, verdict=verdict, sector=data.get("sector", "")),
-    )
+    # Neo4j dual-write -- 変換は graph_writers ひとつ（KIK-741）
+    _write_graph("report", payload)
 
     # KIK-434: AI graph linking (graceful degradation)
     try:

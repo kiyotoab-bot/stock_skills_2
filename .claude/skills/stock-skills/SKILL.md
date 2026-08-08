@@ -518,6 +518,10 @@ routing.yaml で `action: direct` に分類される操作はエージェント�
 線形に重くなる）。差分の提示が必要なら呼び出し側でファイルの mtime を見ること。
 
 **実体は `src/data/graph_sync.py` の `sync_all()`**（`tools/graphrag.py` は薄いファサード）。
+レコード → ノードの変換は **`src/data/graph_writers.py` ひとつ**で、
+`save_*()` が保存時に書くときも同じ関数を通る（KIK-741）。
+`save_*()` が JSON に書く **payload がそのままインターフェース**なので、
+保存と同時に書いても、後から同じファイルを読んで sync しても結果は一致する。
 下表の history カテゴリは `_WRITERS` から導出される（`HISTORY_CATEGORIES = tuple(_WRITERS)`）。
 **`save_*()` を追加してカテゴリが増えたら `_WRITERS` に足すこと。**
 `tests/data/test_graph_sync.py::test_every_saved_category_has_a_writer` が

@@ -825,7 +825,7 @@ class TestEmbeddingsOnSyncPath:
              patch("src.data.graph_store.merge_stock"), \
              patch("src.data.graph_store.tag_theme"), \
              patch("src.data.graph_store.link_research_supersedes"), \
-             patch("src.data.graph_sync._embedding",
+             patch("src.data.graph_writers._embedding",
                    return_value=("要約", [0.5])) as emb:
             getattr(graph_sync, writer)(rec)
         emb.assert_called_once()
