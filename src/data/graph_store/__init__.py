@@ -68,6 +68,7 @@ from src.data.graph_store.portfolio import (  # noqa: F401
     merge_trade,
     sync_portfolio,
     sync_stock_full,
+    unrecognized_cash_keys,
 )
 
 # --- market.py: MarketContext + sub-nodes + ThemeTrend (KIK-603) ---

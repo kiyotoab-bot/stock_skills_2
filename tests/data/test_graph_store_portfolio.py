@@ -215,11 +215,62 @@ class TestMergeCashBalance:
     def test_merges_portfolio_anchor(self, gs_with_driver):
         """Portfolio ノードが無い状態でも作られる（MERGE）."""
         gs, _, session = gs_with_driver
+        session.run.return_value.single.return_value = {"ks": []}
         with patch.object(gs, "_get_mode", return_value="full"):
             gs.merge_cash_balance("2026-08-04", {"JPY": 1})
-        cypher = session.run.call_args.args[0]
-        assert "MERGE (p:Portfolio {name: 'default'})" in cypher
-        assert "SET p += $props" in cypher
+        cyphers = [c.args[0] for c in session.run.call_args_list]
+        assert any("MERGE (p:Portfolio {name: 'default'})" in c for c in cyphers)
+        assert any("SET p += $props" in c for c in cyphers)
+
+    def test_stale_currency_property_removed(self, gs_with_driver):
+        """USD を使い切って JSON から消しても cash_usd が残ると過大計上する (KIK-737)."""
+        gs, _, session = gs_with_driver
+        session.run.return_value.single.return_value = {
+            "ks": ["cash_jpy", "cash_usd", "cash_updated_at"]
+        }
+        with patch.object(gs, "_get_mode", return_value="full"):
+            assert gs.merge_cash_balance("2026-08-04", {"JPY": 100}) is True
+        removes = [c.args[0] for c in session.run.call_args_list if "REMOVE" in c.args[0]]
+        assert len(removes) == 1
+        assert "cash_usd" in removes[0]
+        # 今回書き直すキーは消さない
+        assert "cash_jpy" not in removes[0]
+        assert "cash_updated_at" not in removes[0]
+
+    def test_no_stale_property_means_no_remove_query(self, gs_with_driver):
+        gs, _, session = gs_with_driver
+        session.run.return_value.single.return_value = {"ks": ["cash_jpy"]}
+        with patch.object(gs, "_get_mode", return_value="full"):
+            gs.merge_cash_balance("2026-08-04", {"JPY": 100})
+        assert not [c for c in session.run.call_args_list if "REMOVE" in c.args[0]]
+
+    def test_only_cash_prefixed_properties_are_scanned(self, gs_with_driver):
+        """name など cash_ 以外を巻き込むと Portfolio ノードが壊れる."""
+        gs, _, session = gs_with_driver
+        session.run.return_value.single.return_value = {"ks": ["cash_usd"]}
+        with patch.object(gs, "_get_mode", return_value="full"):
+            gs.merge_cash_balance("2026-08-04", {"JPY": 100})
+        joined = " ".join(c.args[0] for c in session.run.call_args_list)
+        assert "STARTS WITH 'cash_'" in joined
+        removes = [c.args[0] for c in session.run.call_args_list if "REMOVE" in c.args[0]]
+        # REMOVE 句に載るのは cash_ 始まりだけ（`{name: 'default'}` は MATCH 側なので
+        # 素朴に "name" を探すと必ず引っかかる。プロパティ参照の形で見る）
+        assert removes
+        removed_props = removes[0].split("REMOVE", 1)[1]
+        assert "p.`name`" not in removed_props
+        assert "p.`cash_usd`" in removed_props
+
+    def test_injection_shaped_property_name_is_ignored(self, gs_with_driver):
+        """keys(p) 由来でもプロパティ名を素で埋め込むので形を検証する."""
+        gs, _, session = gs_with_driver
+        session.run.return_value.single.return_value = {
+            "ks": ["cash_usd", "cash_x` DETACH DELETE p //"]
+        }
+        with patch.object(gs, "_get_mode", return_value="full"):
+            gs.merge_cash_balance("2026-08-04", {"JPY": 100})
+        removes = [c.args[0] for c in session.run.call_args_list if "REMOVE" in c.args[0]]
+        assert removes and "DETACH DELETE" not in removes[0]
+        assert "cash_usd" in removes[0]
 
     def test_no_currency_returns_false_without_writing(self, gs_with_driver):
         gs, _, session = gs_with_driver
