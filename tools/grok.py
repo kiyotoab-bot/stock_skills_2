@@ -6,6 +6,7 @@ XAI_API_KEY 未設定時は graceful degradation（各関数が空値を返す�
 """
 
 import sys
+from typing import Optional
 from pathlib import Path
 
 # プロジェクトルートを sys.path に追加
@@ -42,10 +43,18 @@ except ImportError:
     HAS_GROK = False
 
 
-def search_market(market_or_index: str, timeout: int = 30, context: str = "") -> dict:
-    """Grok で市況を検索。失敗時は Google News + NHK RSS にフォールバック。"""
+def search_market(market_or_index: str, timeout: Optional[int] = None,
+                  context: str = "") -> dict:
+    """Grok で市況を検索。失敗時は Google News + NHK RSS にフォールバック。
+
+    timeout=None のとき src.data.grok_client の既定（90秒）に従う。ここに
+    独自の既定を持たせると、下層を伸ばしてもファサード経由だけ短いままになる。
+    """
     if HAS_GROK:
-        result = _grok_search_market(market_or_index, timeout=timeout, context=context)
+        kwargs = {"context": context}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        result = _grok_search_market(market_or_index, **kwargs)
         # Grok が正常に応答した場合はそのまま返す
         if result.get("price_action") or result.get("raw_response"):
             return result

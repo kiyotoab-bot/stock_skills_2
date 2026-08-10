@@ -4,6 +4,7 @@ Extracted from grok_client.py during KIK-508 submodule split.
 """
 
 from src.data.grok_client._common import (
+    _DEFAULT_TIMEOUT,
     EMPTY_INDUSTRY,
     _call_grok_api,
     _contains_japanese,
@@ -67,7 +68,7 @@ def _build_industry_prompt(industry_or_theme: str, context: str = "") -> str:
 
 def search_industry(
     industry_or_theme: str,
-    timeout: int = 30,
+    timeout: int = _DEFAULT_TIMEOUT,
     context: str = "",
 ) -> dict:
     """Research an industry or theme via X and web search.

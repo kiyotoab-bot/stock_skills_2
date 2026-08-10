@@ -4,6 +4,7 @@ Extracted from grok_client.py during KIK-508 submodule split.
 """
 
 from src.data.grok_client._common import (
+    _DEFAULT_TIMEOUT,
     EMPTY_STOCK_DEEP,
     _call_grok_api,
     _is_japanese_stock,
@@ -95,7 +96,7 @@ def _build_stock_deep_prompt(symbol: str, company_name: str = "", context: str =
 def search_x_sentiment(
     symbol: str,
     company_name: str = "",
-    timeout: int = 30,
+    timeout: int = _DEFAULT_TIMEOUT,
     context: str = "",
 ) -> dict:
     """Search X for stock sentiment using Grok API.
@@ -146,7 +147,7 @@ def search_x_sentiment(
 def search_stock_deep(
     symbol: str,
     company_name: str = "",
-    timeout: int = 30,
+    timeout: int = _DEFAULT_TIMEOUT,
     context: str = "",
 ) -> dict:
     """Deep research on a stock via X and web search.
