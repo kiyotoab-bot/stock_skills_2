@@ -43,6 +43,29 @@ def load_concentration_config(path: str = _DEFAULT_CONFIG) -> dict:
     }
 
 
+_PROVISIONAL_MARKERS = ("仮設定", "仮の値", "仮ストップ", "再算定必須", "暫定")
+
+
+def _is_provisional_stop(notes: list[dict], stop: dict) -> bool:
+    """CV3 を満たしている exit 条件が「仮」かどうか。
+
+    発注前にストップを置いて CV3 を埋めると、実体が未確定のまま
+    conviction 認定が成立し、配分上限が 15%→25% に緩む。ストップは
+    取得価格（簿価×0.85）に依存するので、購入前の値は必ず置き換わる。
+
+    判定は exit-rule ノートの本文に仮であることが書かれているかで行う。
+    書いた本人が「発注日に再算定必須」と明示しているのだから、
+    それを読めばよい——語彙を推測して充足を判定しない（KIK-738 の教訓）。
+    """
+    for n in notes:
+        if (n.get("note_type") or n.get("type")) != "exit-rule":
+            continue
+        content = str(n.get("content") or "")
+        if any(m in content for m in _PROVISIONAL_MARKERS):
+            return True
+    return False
+
+
 def classify_conviction(
     symbol: str,
     notes: list[dict],
@@ -88,16 +111,25 @@ def classify_conviction(
     if not cv3:
         cv3 = any((n.get("note_type") or n.get("type")) == "exit-rule" for n in mine)
 
+    # CV3 が「仮設定」の場合、認定はするが上限は緩めない（KIK-755）。
+    # 9104.T 商船三井では**購入前に**仮のストップを置いて CV3 を埋め、
+    # それで 3/3 認定 → 上限 15%→25% が成立した。exit 条件の実体は
+    # 発注日の再算定を待っている状態なので、上限緩和の根拠にはならない。
+    # 独立レビュー（Gemini）の指摘: 「実体性のない仮の値で CV3 を形式的に
+    # 埋め、上限緩和の口実に使うのは conviction 制度の形骸化」。
+    provisional = _is_provisional_stop(mine, stop)
+
     criteria = {"CV1": cv1, "CV2": cv2, "CV3": cv3}
     if override:
         tier = "conviction_override"
     elif all(criteria.values()):
-        tier = "conviction"
+        tier = "conviction_provisional" if provisional else "conviction"
     else:
         tier = "normal"
 
     reasons = [k for k, v in criteria.items() if not v]
     return {"symbol": symbol, "tier": tier, "criteria": criteria,
+            "provisional": provisional,
             "unmet": reasons, "override": override}
 
 
