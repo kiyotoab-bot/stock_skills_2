@@ -29,6 +29,7 @@ def save_trade(
     hold_days: Optional[int] = None,
     cost_price: Optional[float] = None,
     stock_info: Optional[dict] = None,
+    sleeve: str = "core",
 ) -> str:
     """Save a trade record to JSON.
 
@@ -46,6 +47,10 @@ def save_trade(
         保有日数（KIK-441）。
     cost_price : float, optional
         取得単価（KIK-441）。sell 時に保存。
+    sleeve : str
+        枠（KIK-751）。``core``（中長期・既定）か ``tactical``（短期売買）。
+        ``tactical`` は中長期の冷却期間・月次上限・集中度判定から外れる。
+        既定を core にしてあるので、指定を忘れた取引が短期枠に紛れることはない。
     """
     today = date.today().isoformat()
     now_dt = datetime.now()
@@ -65,6 +70,7 @@ def save_trade(
         "price": price,
         "currency": currency,
         "memo": memo,
+        "sleeve": sleeve,
         "_saved_at": now,
     }
 

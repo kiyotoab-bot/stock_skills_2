@@ -74,6 +74,22 @@ def add_months(d: datetime.date, n: int) -> datetime.date:
 # --- 売買枠 ---------------------------------------------------------------
 
 
+# --- 枠 (KIK-751) -----------------------------------------------------------
+#
+# 中長期の投入計画（core）と短期売買（tactical）を別勘定で回す。
+# 取引レコードに sleeve が無いものはすべて core。既存の履歴を書き換えずに
+# 分離できるようにしてある。
+CORE_SLEEVE = "core"
+TACTICAL_SLEEVE = "tactical"
+
+
+def filter_sleeve(trades: list[dict], sleeve: str = CORE_SLEEVE) -> list[dict]:
+    """指定した枠の取引だけ返す。``sleeve=None`` で全件."""
+    if sleeve is None:
+        return list(trades)
+    return [t for t in trades if (t.get("sleeve") or CORE_SLEEVE) == sleeve]
+
+
 def load_trades(trade_dir: str = "data/history/trade") -> list[dict]:
     """取引履歴を読む（list/dict 形式・キー名の揺れを吸収）."""
     from src.data.common import load_json_records
@@ -95,6 +111,8 @@ def load_trades(trade_dir: str = "data/history/trade") -> list[dict]:
                 # or チェーンだと実現損益 0 を偽として次のキーに落としてしまう
                 "realized_pnl": _first(rec, "realized_pnl", "realized_pl", "pnl"),
                 "memo": rec.get("memo", ""),
+                # KIK-751: 枠の区別。未指定の過去レコードはすべて core（中長期）
+                "sleeve": str(_first(rec, "sleeve", "role") or CORE_SLEEVE).lower(),
             })
     return out
 
@@ -196,6 +214,7 @@ def trade_budget(
     cooldown_weeks: int = 4,
     monthly_limit: int = 1,
     excluded_dates: Optional[set] = None,
+    sleeve: Optional[str] = CORE_SLEEVE,
 ) -> dict:
     """今月あと何回買えるか。冷却期間と月次上限を1つにまとめて返す.
 
@@ -205,9 +224,13 @@ def trade_budget(
     ``excluded_dates`` は枠のカウントから外すだけで、取引が起きた事実は消さない。
     除外した分は ``this_month_trades`` に ``excluded: True`` を付けて残す
     （消すと同じレポートに「今月0回」と「今月8件の実現損益」が並んで矛盾する）。
+
+    ``sleeve`` (KIK-751) で枠を絞る。既定は core（中長期）で、tactical の取引は
+    中長期の冷却期間・月次上限を消費しない。``None`` を渡すと全件を数える。
     """
     today = today or datetime.date.today()
     excluded = excluded_dates or set()
+    trades = filter_sleeve(trades, sleeve)
     dated = [t for t in trades if t.get("date")]
     counted = [t for t in dated if t["date"] not in excluded]
     buys = sorted(t["date"] for t in counted if t.get("action") == "buy")
@@ -221,6 +244,11 @@ def trade_budget(
         cool_end = (datetime.date.fromisoformat(last_buy)
                     + datetime.timedelta(weeks=cooldown_weeks))
         cool_days = (cool_end - today).days
+    elif cooldown_weeks <= 0:
+        # KIK-751: 冷却期間を置かない枠（tactical）。判定すべき冷却が存在しない
+        # ので「買付履歴なし」を塞ぐ理由にしない。塞いでいないものを blockers に
+        # 並べると、can_buy_now=True と矛盾して読める。
+        last_buy, cool_end, cool_days = None, None, 0
     else:
         last_buy, cool_end, cool_days = None, None, None
 
@@ -245,6 +273,7 @@ def trade_budget(
         "cooldown_days_left": max(0, cool_days) if cool_days is not None else None,
         "cooldown_cleared": bool(cool_days is not None and cool_days <= 0),
         "cooldown_weeks": cooldown_weeks,
+        "sleeve": sleeve,
         "monthly_used": used,
         "monthly_limit": monthly_limit,
         "monthly_remaining": remaining,
@@ -498,13 +527,18 @@ def goal_progress(
 
 
 def realized_pnl(trades: list[dict], month: str,
-                 excluded_dates: Optional[set] = None) -> dict:
+                 excluded_dates: Optional[set] = None,
+                 sleeve: Optional[str] = CORE_SLEEVE) -> dict:
     """指定月の確定売買と実現損益。月1回しか売買しないので月次がちょうどよい.
 
     ``excluded_dates``（誤発注日など）は枠のカウントから外すためのもので、
     損益は実際に発生している。**消さずに分けて返す**。
+
+    ``sleeve`` (KIK-751) で枠を絞る。既定は core。tactical の損益を混ぜると
+    「中長期の投入計画がどれだけ効いたか」が測れなくなる。
     """
     excluded = excluded_dates or set()
+    trades = filter_sleeve(trades, sleeve)
     rows = [t for t in trades if (t.get("date") or "")[:7] == month]
     total = 0.0
     parsed = unparsed = 0
@@ -535,6 +569,119 @@ def realized_pnl(trades: list[dict], month: str,
         "unparsed_pnl": unparsed,
         "buys": sum(1 for t in rows if t.get("action") == "buy"),
         "sells": len(sells),
+        "sleeve": sleeve,
+    }
+
+
+# --- 短期売買枠 (KIK-751) ---------------------------------------------------
+
+
+_TACTICAL_DEFAULTS = {
+    "enabled": False, "max_pct_of_total": 5, "max_positions": 1,
+    "monthly_limit": 2, "cooldown_weeks": 0, "max_hold_weeks": 8,
+    "hard_deadline": "12-31", "stop_pct": 8,
+}
+
+
+def _tactical_config() -> dict:
+    """config/allocation.yaml の tactical セクション。読めなければ既定値."""
+    try:
+        import yaml
+        with open("config/allocation.yaml", encoding="utf-8") as fh:
+            cfg = yaml.safe_load(fh) or {}
+        return {**_TACTICAL_DEFAULTS, **(cfg.get("tactical") or {})}
+    except Exception:
+        return dict(_TACTICAL_DEFAULTS)
+
+
+def tactical_status(
+    trades: list[dict],
+    positions: list[dict],
+    total_assets: float,
+    today: Optional[datetime.date] = None,
+    config: Optional[dict] = None,
+) -> dict:
+    """短期売買枠の状態。中長期枠とは完全に別勘定で数える.
+
+    保有期限が肝。「短期のつもりが塩漬けて中長期保有になる」を制度で防ぐために
+    ``max_hold_weeks`` と年末の ``hard_deadline`` の両方を見て、超過したものを
+    ``overdue`` として返す。損益に関係なく手仕舞う対象。
+    """
+    today = today or datetime.date.today()
+    # 部分的な dict を渡されても既定で埋める。埋めないと max_pct_of_total が
+    # 欠けたときに size_cap=0 になり、枠が黙って使えなくなる。
+    cfg = {**_TACTICAL_DEFAULTS, **(config or _tactical_config())}
+    # ``or`` で既定に落とすと 0 を潰す。0 は「置かない」という意思表示なので尊重する
+    max_positions = int(cfg["max_positions"] if cfg.get("max_positions") is not None
+                        else _TACTICAL_DEFAULTS["max_positions"])
+
+    budget = trade_budget(trades, today,
+                          cooldown_weeks=int(cfg.get("cooldown_weeks") or 0),
+                          monthly_limit=int(cfg.get("monthly_limit") or 2),
+                          sleeve=TACTICAL_SLEEVE)
+
+    held = [p for p in positions
+            if str(p.get("role") or "").lower() == TACTICAL_SLEEVE]
+    tac_trades = filter_sleeve(trades, TACTICAL_SLEEVE)
+
+    # 建玉ごとの経過週数。エントリー日は同一銘柄の直近 buy から引く
+    open_positions = []
+    for p in held:
+        sym = p.get("symbol")
+        buys = sorted(t["date"] for t in tac_trades
+                      if t.get("symbol") == sym and t.get("action") == "buy")
+        entry = buys[-1] if buys else None
+        weeks = deadline = None
+        if entry:
+            d = datetime.date.fromisoformat(entry)
+            weeks = (today - d).days / 7
+            deadline = (d + datetime.timedelta(weeks=int(cfg["max_hold_weeks"]))).isoformat()
+        open_positions.append({
+            "symbol": sym, "shares": p.get("shares"), "entry_date": entry,
+            "weeks_held": round(weeks, 1) if weeks is not None else None,
+            "hold_deadline": deadline,
+        })
+
+    # 年末の強制手仕舞い日
+    mm, dd = str(cfg.get("hard_deadline") or "12-31").split("-")
+    year_end = datetime.date(today.year, int(mm), int(dd))
+
+    overdue = []
+    for op in open_positions:
+        if op["weeks_held"] is not None and op["weeks_held"] >= cfg["max_hold_weeks"]:
+            overdue.append(f"{op['symbol']}: 保有{op['weeks_held']}週 "
+                           f"（上限{cfg['max_hold_weeks']}週）")
+        elif op["entry_date"] is None:
+            overdue.append(f"{op['symbol']}: エントリー日が取引履歴から引けない")
+    if today >= year_end and open_positions:
+        overdue.append(f"年末期限 {year_end.isoformat()} を過ぎている")
+
+    cap = total_assets * float(cfg.get("max_pct_of_total") or 0) / 100
+
+    blockers = list(budget["blockers"])
+    if len(open_positions) >= max_positions:
+        blockers.append(f"同時保有上限（{len(open_positions)}/{max_positions}銘柄）")
+    if not cfg.get("enabled"):
+        blockers.append("短期枠が無効（config/allocation.yaml の tactical.enabled）")
+
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "max_pct_of_total": cfg.get("max_pct_of_total"),
+        "size_cap": round(cap),
+        "max_positions": max_positions,
+        "max_hold_weeks": cfg.get("max_hold_weeks"),
+        "year_end_deadline": year_end.isoformat(),
+        "days_to_year_end": (year_end - today).days,
+        "stop_pct": cfg.get("stop_pct"),
+        "monthly_used": budget["monthly_used"],
+        "monthly_limit": budget["monthly_limit"],
+        "monthly_remaining": budget["monthly_remaining"],
+        "open_positions": open_positions,
+        "overdue": overdue,
+        "can_buy_now": budget["monthly_remaining"] > 0
+                       and len(open_positions) < max_positions
+                       and bool(cfg.get("enabled")),
+        "blockers": blockers,
     }
 
 
@@ -585,5 +732,9 @@ def build_monthly_context(
         "realized": realized_pnl(trades, month_key(today), excluded_dates),
         "last_month_realized": realized_pnl(trades, month_key(add_months(today, -1)),
                                             excluded_dates),
+        # KIK-751: 短期枠。core とは別勘定なので実現損益も分けて返す
+        "tactical": tactical_status(trades, positions, equity_value + cash, today),
+        "tactical_realized": realized_pnl(trades, month_key(today), excluded_dates,
+                                          sleeve=TACTICAL_SLEEVE),
         "holdings": [p.get("symbol") for p in positions],
     }

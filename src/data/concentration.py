@@ -154,14 +154,25 @@ def check_concentration(
     single = cfg.get("single_stock", {})
     basis = cfg.get("basis", "equity")
 
+    # KIK-751: 短期枠は集中度の判定対象外。数ヶ月で手仕舞う建玉を
+    # 「1銘柄あたり何%」の枠に混ぜると、中長期の買い増し余地が
+    # 短期売買のたびに動いてしまう。総資産比の参考値には残す。
+    tactical = [p for p in positions
+                if str(p.get("role") or "").lower() == "tactical"]
+    positions = [p for p in positions
+                 if str(p.get("role") or "").lower() != "tactical"]
+    tactical_value = sum(float(p.get("value") or 0) for p in tactical)
+
     equity = sum(float(p.get("value") or 0) for p in positions)
-    total = equity + float(cash or 0)
+    total = equity + float(cash or 0) + tactical_value
     # 判定分母は「現在の株式」と「計画上の株式」の大きい方。
     # 再構築期に現在の株式を使うと最初の1銘柄が必ず100%になる。
     denom = max(equity, float(denominator or 0))
     if equity <= 0:
         return {"basis": basis, "equity": 0.0, "stocks": [], "top3": None,
                 "sectors": [], "verdict": GREEN,
+                "tactical_excluded": [p.get("symbol") for p in tactical],
+                "tactical_value": tactical_value,
                 "note": "株式保有なし — 集中度は判定不能"}
 
     stocks = []
@@ -203,7 +214,11 @@ def check_concentration(
     verdict = RED if RED in levels else (YELLOW if YELLOW in levels else GREEN)
     return {"basis": basis, "equity": equity, "total_assets": total,
             "denominator": denom, "denominator_is_planned": denom > equity,
-            "stocks": stocks, "top3": top3, "sectors": sectors, "verdict": verdict}
+            "stocks": stocks, "top3": top3, "sectors": sectors, "verdict": verdict,
+            # KIK-751: 判定から外した短期枠。黙って消すと「保有しているのに
+            # どのテーブルにも出てこない」銘柄ができる
+            "tactical_excluded": [p.get("symbol") for p in tactical],
+            "tactical_value": tactical_value}
 
 
 def max_additional_shares(
