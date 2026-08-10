@@ -65,7 +65,20 @@ class TestSaveNote:
             save_note("7203.T", "invalid_type", "content", base_dir=str(tmp_path))
 
     def test_save_note_valid_types(self):
-        assert _VALID_TYPES == {"thesis", "observation", "concern", "review", "target", "lesson", "journal", "exit-rule"}
+        assert _VALID_TYPES == {"thesis", "observation", "concern", "review",
+                                "target", "lesson", "journal", "exit-rule",
+                                "order-check"}
+
+    def test_every_valid_type_is_actually_savable(self, tmp_path):
+        """ホワイトリストと save_note の実挙動をずらさない。
+
+        order-check は先に check_order_verification（PO9）が要求してから
+        ホワイトリストに足された。逆順だと「要求する成果物を作れない
+        チェック」ができあがる。
+        """
+        for t in sorted(_VALID_TYPES):
+            note = save_note("7203.T", t, f"{t} の保存確認", base_dir=str(tmp_path))
+            assert note["type"] == t
 
     def test_save_note_lesson_type(self, tmp_path):
         """lesson タイプのノートが保存できること (KIK-408)."""

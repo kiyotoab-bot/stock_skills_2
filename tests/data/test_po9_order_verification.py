@@ -94,3 +94,26 @@ class TestChecklistYaml:
             doc = yaml.safe_load(fh)
         po9 = [i for i in doc["pre_order"]["items"] if i["id"] == "PO9"][0]
         assert "08-04" in po9["why"] and "08-10" in po9["why"]
+
+
+class TestNoteTypeIsSavable:
+    """PO9 が要求する記録を実際に保存できること（KIK-753）。
+
+    ホワイトリストに order-check が無いと save_note が ValueError で弾き、
+    check_order_verification は永久に FAIL のままになる。要求する成果物を
+    作れないチェックは、チェックとして成立しない。
+    """
+
+    def test_order_check_is_a_valid_note_type(self):
+        from src.data.note_manager import _VALID_TYPES
+        assert ORDER_CHECK_NOTE_TYPE in _VALID_TYPES
+
+    def test_save_and_verify_round_trip(self, tmp_path):
+        from src.data.note_manager import save_note, load_notes
+        base = str(tmp_path / "notes")
+        save_note(symbol="7751.T", note_type=ORDER_CHECK_NOTE_TYPE,
+                  content="逆指値・トリガー¥4,350・指値欄空を注文一覧で確認",
+                  base_dir=base)
+        notes = load_notes(base_dir=base)
+        r = check_order_verification("7751.T", "2020-01-01", notes)[0]
+        assert r["status"] == PASS
