@@ -364,6 +364,47 @@ def latest_review_date(reviews_dir: str = "data/reviews") -> Optional[str]:
     return max(dates) if dates else None
 
 
+ORDER_CHECK_NOTE_TYPE = "order-check"
+
+
+def check_order_verification(
+    symbol: str,
+    order_date: str,
+    notes: list[dict],
+) -> list[dict]:
+    """PO9: 発注**後**に証券会社の注文一覧と指示書を突合した記録があるか。
+
+    pre_order の PO1-PO8 はすべて発注**前**の検査であり、指示書が正しいことしか
+    確かめていない。2026年8月に起きた2件はどちらも指示書が正しく、**入力の工程**
+    で食い違った:
+
+      2026-08-04  逆指値（売り）のつもりが**指値売り**として発注され、7銘柄が
+                  寄付きで無条件約定した。記録上のストップにはいずれも未到達
+      2026-08-10  キヤノン買いで指値¥4,635のつもりが**成行**になっており、
+                  指値を超える¥4,651-4,652で約定した（結果は許容範囲）
+
+    6日で2件。planning ではなく entry で起きているので、発注前をいくら固めても
+    捕まらない。ここは「注文一覧を実際に見て突合した」という**記録**を要求する。
+
+    check_review_coverage と同じ考え方で、記録が無ければ FAIL にする。
+    目視で確認したつもりを検証する手段が他にないため、**記録が唯一の証拠**になる。
+    """
+    matched = [
+        n for n in notes
+        if n.get("type") == ORDER_CHECK_NOTE_TYPE
+        and str(n.get("symbol") or "") == symbol
+        and (n.get("date") or "") >= (order_date or "")
+    ]
+    if matched:
+        latest = max(str(n.get("date") or "") for n in matched)
+        return [_result("PO9", PASS,
+                        f"{symbol} の注文突合記録あり（{latest}）")]
+    return [_result("PO9", FAIL,
+                    f"{symbol} の発注後突合記録なし。証券会社の注文一覧を開き、"
+                    "注文種別・価格・株数・有効期限を指示書と照合して "
+                    f'save_note(note_type="{ORDER_CHECK_NOTE_TYPE}") で残すこと')]
+
+
 def check_review_coverage(
     notes: list[dict],
     last_review: Optional[str],
