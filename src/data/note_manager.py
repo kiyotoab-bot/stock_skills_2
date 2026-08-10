@@ -13,7 +13,11 @@ from typing import Optional
 
 
 _NOTES_DIR = "data/notes"
-_VALID_TYPES = {"thesis", "observation", "concern", "review", "target", "lesson", "journal", "exit-rule"}
+# order-check は PO9（発注後の注文突合・KIK-752）が要求する記録。
+# ここに無いと save_note が弾き、check_order_verification が
+# 永久に FAIL のままになる（要求する成果物を作れないチェックになる）。
+_VALID_TYPES = {"thesis", "observation", "concern", "review", "target",
+                "lesson", "journal", "exit-rule", "order-check"}
 _VALID_CATEGORIES = {"stock", "portfolio", "market", "general"}
 
 
