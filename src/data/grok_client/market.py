@@ -6,10 +6,12 @@ Extracted from grok_client.py during KIK-508 submodule split.
 from typing import Optional
 
 from src.data.grok_client._common import (
+    _DEFAULT_TIMEOUT,
     EMPTY_MARKET,
     EMPTY_TRENDING,
     EMPTY_TRENDING_THEMES,
     _call_grok_api,
+    get_error_status,
     _parse_json_response,
     _parse_json_array_response,
 )
@@ -132,7 +134,7 @@ def _build_trending_themes_prompt(region: str = "global") -> str:
 
 def search_market(
     market_or_index: str,
-    timeout: int = 30,
+    timeout: int = _DEFAULT_TIMEOUT,
     context: str = "",
 ) -> dict:
     """Research a market or index via X and web search.
@@ -151,7 +153,12 @@ def search_market(
     """
     raw_text = _call_grok_api(_build_market_prompt(market_or_index, context=context), timeout)
     if not raw_text:
-        return dict(EMPTY_MARKET)
+        # 空で返す理由を落とさない。タイムアウトと「検索したが何も無い」は
+        # 呼び出し側から区別できず、後者と誤読すると原因調査が始まらない。
+        # 2026-08-10 の日次では実際に timeout を「パース失敗」と誤診した。
+        empty = dict(EMPTY_MARKET)
+        empty["error"] = dict(get_error_status())
+        return empty
 
     result = dict(EMPTY_MARKET)
     result["raw_response"] = raw_text
@@ -234,7 +241,7 @@ def search_trending_stocks(
 
 def get_trending_themes(
     region: str = "global",
-    timeout: int = 30,
+    timeout: int = _DEFAULT_TIMEOUT,
 ) -> dict:
     """Discover trending investment themes via Grok X/Web search (KIK-440).
 

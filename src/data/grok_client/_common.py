@@ -126,7 +126,15 @@ def _contains_japanese(text: str) -> bool:
     return any(0x3000 <= ord(c) <= 0x9FFF for c in text)
 
 
-def _call_grok_api(prompt: str, timeout: int = 30, use_tools: bool = True) -> str:
+# x_search / web_search を付けた呼び出しは実測 27〜30秒かかる（2026-08-11）。
+# 既定を 30 にしていたため境界上で成否が運任せになり、タイムアウトすると
+# raw_response ごと空になって「Grok が壊れている」ように見えていた。
+# ライブ検索を挟む以上この所要時間は縮まないので、待つ側を伸ばす。
+_DEFAULT_TIMEOUT = 90
+
+
+def _call_grok_api(prompt: str, timeout: int = _DEFAULT_TIMEOUT,
+                   use_tools: bool = True) -> str:
     """Common request helper for the Grok API.
 
     Parameters
@@ -134,7 +142,7 @@ def _call_grok_api(prompt: str, timeout: int = 30, use_tools: bool = True) -> st
     prompt : str
         Prompt to send to the API.
     timeout : int
-        Request timeout in seconds.
+        Request timeout in seconds. 既定 90 の根拠は ``_DEFAULT_TIMEOUT`` 参照。
     use_tools : bool
         If True (default), attaches x_search and web_search tools.
         Set to False for pure text synthesis without live search (KIK-452).
