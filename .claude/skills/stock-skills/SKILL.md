@@ -642,6 +642,9 @@ Step 7: reviewer    — auto_review で自動挿入
 - `budget.blockers` — 買えない理由を**全部**出す。冷却と月次上限が同時に塞がることがある
 - `slots` の「枠あり銘柄未定」 — これが月次を作った直接の理由。**未定のまま月末を迎えさせない**
 - `conviction` で `qualified=False` の予定銘柄 — 発注日までに認定作業が要る
+- `tier == "conviction_provisional"` — **仮ストップで 3/3 になっている銘柄**。
+  上限は normal の 15% が適用される。発注日に本算定してノートを置き換えるまで
+  25% は使えない（KIK-755）
 - `goal.required_cagr_as_is` と `required_cagr_fully_invested` の**両方**
 - `tier_rules.tier_mismatch` — 規模ティアと運用ティアが違うとき。**自動では緩めない**
 - `conviction` の `exempt=True` — ユーザーが免除した銘柄。認定作業を促さない
