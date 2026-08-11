@@ -102,6 +102,7 @@ Data (src/data/)
   scoring.py     — 3軸品質スコアリング（還元性・成長性・持続性）
   market_regime.py — 市場レジーム指標（ドル建て日経・NT倍率・日経PER・理論株価バンド）
   band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
+  margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
 
 Orchestrator (src/orchestrator/) — KIK-746
   dry_run.py     — routing.yaml + agent定義の整合性検証（API呼ばない）
