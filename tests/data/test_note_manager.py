@@ -197,16 +197,30 @@ class TestSaveNoteLessonFields:
         assert "trigger" not in note
         assert "expected_action" not in note
 
-    def test_non_lesson_ignores_trigger(self, tmp_path):
-        """lesson 以外のタイプでは trigger/expected_action が無視されること."""
+    def test_mismatched_type_raises_instead_of_ignoring(self, tmp_path):
+        """受け付けない種別に渡したら例外。黙って捨てない（KIK-757）。
+
+        以前は無視していたため、渡した側は保存された前提で進んでいた。
+        2026-08-11 に発覚: target ノート43件すべてで trigger が捨てられ、
+        それを読む FT1（再評価の未実行検知）が一度も発火できなかった。
+        """
+        with pytest.raises(ValueError, match="trigger"):
+            save_note(
+                "7203.T", "thesis", "test",
+                trigger="thesis では受け付けない",
+                base_dir=str(tmp_path),
+            )
+
+    def test_target_keeps_trigger(self, tmp_path):
+        """FT1 が読むので target では必ず保存する。"""
         note = save_note(
-            "7203.T", "thesis", "test",
-            trigger="should be ignored",
-            expected_action="should be ignored",
+            "7203.T", "target", "test",
+            trigger="2026-09-01 に再評価",
+            expected_action="エントリー条件を判定する",
             base_dir=str(tmp_path),
         )
-        assert "trigger" not in note
-        assert "expected_action" not in note
+        assert note["trigger"] == "2026-09-01 に再評価"
+        assert note["expected_action"] == "エントリー条件を判定する"
 
     def test_lesson_fields_persisted_in_json(self, tmp_path):
         """trigger/expected_action が JSON ファイルに永続化されること."""
@@ -412,3 +426,43 @@ class TestDeleteNote:
 
     def test_delete_note_nonexistent_dir(self, tmp_path):
         assert delete_note("any_id", base_dir=str(tmp_path / "nonexistent")) is False
+
+
+class TestFollowthroughCanActuallyFire:
+    """FT1 が実データ経路で発火できること（KIK-757）。
+
+    save_note が target の trigger を捨てていたため、FT1 は 43件の target
+    すべてに空文字を読み、**一度も発火できなかった**。FT1 自体が
+    「7/28 に 7259.T を 8/3 再評価と書いて実行しなかった」事故の再発防止
+    として作られたもので、機能していない検査は検査の不在に等しい。
+    """
+
+    def test_saved_target_is_detected_by_ft1(self, tmp_path):
+        import datetime
+        from src.data.checklist_review import check_followthrough
+        from src.data.note_manager import load_notes
+
+        save_note("9104.T", "target", "商船三井 エントリー条件",
+                  trigger="2026-09-07 の発注日",
+                  expected_action="RSI と 60日高値で A/B/C を判定する",
+                  base_dir=str(tmp_path))
+        notes = load_notes(base_dir=str(tmp_path))
+
+        # 期限前は発火しない
+        before = check_followthrough(notes, today=datetime.date(2026, 9, 1))[0]
+        assert before["status"] == "PASS"
+
+        # 期限到来で発火する
+        after = check_followthrough(notes, today=datetime.date(2026, 9, 8))[0]
+        assert after["status"] == "WARN"
+        assert "9104.T" in after["detail"]
+
+    def test_target_without_trigger_stays_silent(self, tmp_path):
+        import datetime
+        from src.data.checklist_review import check_followthrough
+        from src.data.note_manager import load_notes
+
+        save_note("X", "target", "日付を書いていない予定", base_dir=str(tmp_path))
+        r = check_followthrough(load_notes(base_dir=str(tmp_path)),
+                                today=datetime.date(2026, 12, 31))[0]
+        assert r["status"] == "PASS"

@@ -20,6 +20,28 @@ _VALID_TYPES = {"thesis", "observation", "concern", "review", "target",
                 "lesson", "journal", "exit-rule", "order-check"}
 _VALID_CATEGORIES = {"stock", "portfolio", "market", "general"}
 
+# 構造化フィールドを受け付けるノート種別（KIK-757）。
+#
+# ⚠️ trigger / expected_action は **target でも必須**。
+#    checklist_review.check_followthrough（FT1）は target ノートのこの2つを
+#    日付で洗って「○日に再評価すると書いて実行していない項目」を検出する。
+#    2026-08-11 まで lesson 限定で、target では黙って捨てられていたため、
+#    FT1 は 43件の target すべてに対して空文字を読み、**一度も発火できなかった**。
+#    FT1 自体が「7/28 に 7259.T を 8/3 再評価と書いて実行しなかった」事故の
+#    再発防止として作られたものなので、これは検査の不在に等しい。
+_FIELD_TYPES = {
+    "trigger":            {"lesson", "target", "exit-rule"},
+    "expected_action":    {"lesson", "target", "exit-rule"},
+    "stop_loss":          {"exit-rule"},
+    "take_profit":        {"exit-rule"},
+    "key_kpis":           {"thesis"},
+    "sell_triggers":      {"thesis", "target"},
+    "hold_conditions":    {"thesis", "target"},
+    "thesis_status":      {"thesis"},
+    "conviction_override": {"thesis"},
+    "override_reason":    {"thesis"},
+}
+
 
 def _notes_dir(base_dir: str = _NOTES_DIR) -> Path:
     d = Path(base_dir)
@@ -113,36 +135,37 @@ def save_note(
         "source": source,
     }
 
-    # KIK-534: lesson-specific fields
-    if note_type == "lesson":
-        if trigger:
-            note["trigger"] = trigger
-        if expected_action:
-            note["expected_action"] = expected_action
-
-    # KIK-566: exit-rule specific fields
-    if note_type == "exit-rule":
-        if stop_loss:
-            note["stop_loss"] = stop_loss
-        if take_profit:
-            note["take_profit"] = take_profit
-
-    # KIK-715: thesis management structured fields
+    # KIK-757: 構造化フィールドを種別で受け付ける。
+    # **合わない組み合わせは黙って捨てず ValueError を投げる。**
+    # 2026-08-11 まで捨てていたため、渡した側は保存された前提で進んでいた。
     _VALID_THESIS_STATUS = {"active", "attention", "review_needed"}
-    if note_type == "thesis":
-        if key_kpis is not None:
-            note["key_kpis"] = key_kpis
-        if sell_triggers is not None:
-            note["sell_triggers"] = sell_triggers
-        if hold_conditions is not None:
-            note["hold_conditions"] = hold_conditions
-        if thesis_status is not None:
-            if thesis_status not in _VALID_THESIS_STATUS:
-                raise ValueError(
-                    f"Invalid thesis_status: {thesis_status}. "
-                    f"Must be one of {_VALID_THESIS_STATUS}"
-                )
-            note["thesis_status"] = thesis_status
+    given = {
+        "trigger": trigger, "expected_action": expected_action,
+        "stop_loss": stop_loss, "take_profit": take_profit,
+        "key_kpis": key_kpis, "sell_triggers": sell_triggers,
+        "hold_conditions": hold_conditions, "thesis_status": thesis_status,
+        "conviction_override": conviction_override, "override_reason": override_reason,
+    }
+    rejected = [
+        f"{k}（{note_type} では保存されない。"
+        f"{'/'.join(sorted(_FIELD_TYPES[k]))} で使う）"
+        for k, v in given.items()
+        if v is not None and v != "" and note_type not in _FIELD_TYPES[k]
+    ]
+    if rejected:
+        raise ValueError(
+            f"note_type='{note_type}' に指定できないフィールド: " + " / ".join(rejected)
+        )
+
+    if thesis_status is not None and thesis_status not in _VALID_THESIS_STATUS:
+        raise ValueError(
+            f"Invalid thesis_status: {thesis_status}. "
+            f"Must be one of {_VALID_THESIS_STATUS}"
+        )
+
+    for key, value in given.items():
+        if value is not None and value != "":
+            note[key] = value
         if conviction_override is not None:
             note["conviction_override"] = conviction_override
         if override_reason:
