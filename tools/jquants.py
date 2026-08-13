@@ -48,6 +48,9 @@ try:
         get_forecast_history,
         get_next_earnings,
         get_stock_margin,
+        get_company_name,
+        get_company_names,
+        get_listed_info,
         is_available,
         normalize_code,
     )

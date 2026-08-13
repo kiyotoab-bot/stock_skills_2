@@ -17,6 +17,11 @@ from src.data.jquants_client.fin_summary import (  # noqa: F401
     get_forecast_history,
     normalize_code,
 )
+from src.data.jquants_client.listed import (  # noqa: F401
+    get_company_name,
+    get_company_names,
+    get_listed_info,
+)
 from src.data.jquants_client.margin_interest import get_stock_margin  # noqa: F401
 from src.data.jquants_client.prices import (  # noqa: F401
     get_daily_bars,
@@ -34,5 +39,8 @@ __all__ = [
     "get_earnings_calendar",
     "get_next_earnings",
     "get_stock_margin",
+    "get_company_name",
+    "get_company_names",
+    "get_listed_info",
     "normalize_code",
 ]
