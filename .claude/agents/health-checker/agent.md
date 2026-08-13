@@ -272,6 +272,24 @@ target ノートが1件以上あれば、サマリー末尾に件数リマイン
 - 個別の内容は出さない（件数のみ）
 - target ノートが0件なら何も表示しない
 
+### 7-a. 銘柄名は日本語で出す（KIK-758）
+
+銘柄一覧を出力するときは `jquants.get_company_names()` で日本語社名を引く。
+
+```python
+from tools.jquants import get_company_names
+names = get_company_names([h["symbol"] for h in positions])
+# {"7751.T": "キヤノン", "6501.T": "日立製作所", ...}
+```
+
+⚠️ **日本語名を記憶や推測で書かない。** yfinance の `name` は英語表記
+（"CANON INC" / "TOSO CO LTD"）しか返さないため 2026-08-13 まで手で補って
+おり、6501.T を「日立」と書いていた（正しくは「日立製作所」）。
+書き間違えても誰も気づかない。
+
+取れなかった銘柄は symbol がそのまま返る（空文字にはならない）ので、
+J-Quants が使えない環境でも銘柄名が消えたレポートにはならない。
+
 ### 7-b. 半年期日（6ヶ月ルール）（KIK-756）
 
 保有・計画銘柄について `src.data.margin_deadline.check_margin_deadline()` を実行する。
