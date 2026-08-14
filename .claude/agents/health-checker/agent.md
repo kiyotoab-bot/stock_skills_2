@@ -290,6 +290,32 @@ names = get_company_names([h["symbol"] for h in positions])
 取れなかった銘柄は symbol がそのまま返る（空文字にはならない）ので、
 J-Quants が使えない環境でも銘柄名が消えたレポートにはならない。
 
+### 7-c. トレーリングストップ（KIK-759）
+
+保有銘柄について `src.data.stop_formula.check_trailing_stop()` を日次で実行し、
+**切り上がったときだけ**報告する。
+
+```python
+from src.data.stop_formula import check_trailing_stop
+r = check_trailing_stop(closes, book_value=簿価, current_stop=現行ストップ)
+if r["should_raise"]:
+    ...  # ¥現行 → ¥新値、確定利益の増分を出す
+```
+
+統一式は `stop = max(簿価×0.85, min(局面高値×0.92, 現値×(1-0.85σ_h60)))`。
+**手で計算しない。** 2026-08-07 以降この式で運用しながら関数が無く、
+7751.T ¥4,350 / 9104.T ¥5,787 / 6701.T ¥4,609 はすべて手計算だった。
+
+⚠️ **切り下げは提案しない。** 株価が下がれば局面高値基準もボラ基準も下がるが、
+ストップを下げるのは損失の許容幅を広げることでトレーリングの逆。
+`should_raise` は新値 > 現行のときだけ True になる。
+
+⚠️ **簿価に現値を入れない。** 取得前の算定はハード基準（簿価×0.85）が
+意味を失う。購入前の値は仮であり、発注日に簿価で引き直す
+（`conviction_provisional` の判定を参照）。
+
+**発注はユーザーが行う。** 切り上げ可を報告するだけで、自動では動かさない。
+
 ### 7-b. 半年期日（6ヶ月ルール）（KIK-756）
 
 保有・計画銘柄について `src.data.margin_deadline.check_margin_deadline()` を実行する。

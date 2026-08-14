@@ -39,6 +39,7 @@ def get_price_history(symbol: str, period: str = "1y") -> Optional[pd.DataFrame]
             print(f"[yahoo_client] No 'Close' column in history for {symbol}")
             return None
         result = hist[available_cols]
+        result = _patch_latest_bar(symbol, result)
         price_history_cache.set(cache_key, result)
         return result
     except (TimeoutError, socket.timeout) as e:
@@ -108,3 +109,60 @@ def get_stock_news(symbol: str, count: int = 10) -> list[dict]:
     except Exception as e:
         print(f"[yahoo_client] Error fetching news for {symbol}: {e}")
         return []
+
+
+def _patch_latest_bar(symbol: str, hist: "pd.DataFrame") -> "pd.DataFrame":
+    """日本株の最新バーが Close=NaN のとき J-Quants で補う（KIK-759）。
+
+    yfinance は当日〜前営業日のバーを行だけ作って Close を NaN で返すことがある。
+    呼び出し側は ``df["Close"].dropna()`` するので **NaN 行は黙って消え、
+    1日古い終値が「最新」として計算に入る**。エラーも警告も出ない。
+
+    2026-08-15 に保有・計画6銘柄すべてで発生していた。8/14 の終値が全滅し、
+    RSI・SMA・バンドウォーク・半年期日・ストップ距離のすべてが1日ずれていた。
+    tools.yaml は get_daily_bars を「yfinance が最新バーを Close=null で返す
+    不具合の回避にも使う」と書いていたが、**回避策が配線されていなかった**。
+
+    米国株・指数・為替には J-Quants が使えないので何もしない（日本株のみ）。
+    """
+    try:
+        if not str(symbol).upper().endswith((".T", ".S")):
+            return hist
+        close = hist["Close"]
+        if not close.empty and close.iloc[-1] == close.iloc[-1]:
+            return hist          # NaN でなければ触らない
+        valid = close.dropna()
+        if valid.empty:
+            return hist
+        last_valid = str(valid.index[-1])[:10]
+
+        from src.data.jquants_client.prices import get_daily_bars
+
+        bars = get_daily_bars(symbol)
+        if not bars or not bars.get("available"):
+            return hist
+        dates, closes = bars.get("dates") or [], bars.get("closes") or []
+        if not dates or dates[-1] <= last_valid:
+            return hist          # J-Quants も同じか古い
+
+        import pandas as pd
+
+        # NaN 行を落として J-Quants の最新終値を1行足す。
+        # OHLCV のうち Close 以外は J-Quants 側の値を使い、無ければ Close で埋める。
+        patched = hist.loc[hist["Close"].notna()].copy()
+        stamp = pd.Timestamp(dates[-1])
+        if patched.index.tz is not None:
+            stamp = stamp.tz_localize(patched.index.tz)
+        row = {}
+        for col, key in (("Open", "opens"), ("High", "highs"),
+                         ("Low", "lows"), ("Volume", "volumes")):
+            if col not in patched.columns:
+                continue
+            series = bars.get(key) or []
+            row[col] = series[-1] if series else closes[-1]
+        row["Close"] = closes[-1]
+        patched.loc[stamp] = [row.get(c) for c in patched.columns]
+        return patched
+    except Exception:
+        # 補完に失敗しても価格履歴そのものは返す
+        return hist

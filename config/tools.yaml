@@ -28,6 +28,15 @@ tools:
       get_price_history:
         description: "価格履歴取得（RSI・SMA等のテクニカル計算用）"
         when: "テクニカル確認時、ストレステスト時"
+        note: |
+          ⚠️ yfinance は最新バーの行だけ作って Close=NaN で返すことがある。
+          呼び出し側が `df["Close"].dropna()` すると **NaN 行は黙って消え、
+          1日古い終値が「最新」として計算に入る**（警告もエラーも出ない）。
+          2026-08-15 に保有・計画6銘柄すべてで発生し、RSI・SMA・バンドウォーク・
+          半年期日・ストップ距離がすべて1日ずれていた。
+          日本株（.T/.S）は `_patch_latest_bar` が J-Quants で自動補完する（KIK-759）。
+          米国株・指数・為替は J-Quants の対象外なので補完されない。
+          **最新バーの日付は常に確認すること**（checklists.yaml DQ4）。
 
   grok:
     source: tools/grok.py
