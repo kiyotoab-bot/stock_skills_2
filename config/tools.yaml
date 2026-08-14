@@ -267,6 +267,33 @@ tools:
                             7453.T 良品計画 1.56倍 / 6501.T 日立 8.79倍（前週比-62.3%）
           Standard プラン以上必要。JQUANTS_API_KEY / JQUANTS_API_REFRESH_TOKEN で認証
 
+  reit:
+    source: tools/reit.py
+    note: |
+      ⚠️ **J-REIT に株式の指標を当てない。** 2026-08-15 に get_stock_info の値を
+      そのまま提示して誤った:
+        PBR 0.33（yfinance）に対し実際の NAV倍率は 1.52。8951/8952 で 4.7〜4.9倍の
+        誤差があり、**割安に見える方向**に外れていた。投資口分割が未反映とみられる。
+        信用倍率 1881倍（3234.T）も掲載した。REIT は売り残がほぼ無く比率が発散するので
+        15倍/30倍の閾値は当てはまらない。
+
+      J-REIT で見るのは以下。株式の PBR / PER / ROE / 信用倍率ではない:
+        NAV倍率      投資口価格 ÷ 1口当たり純資産(BPS)。1.0割れが割安圏
+        LTV          (総資産 − 純資産) ÷ 総資産。45%未満=保守的 / 55%以上=高め / 60%以上=余力乏しい
+        分配金利回り  1口当たり分配金 ÷ 投資口価格。**決算は半期なので年換算する**
+
+      ⚠️ conviction 認定（CV1）は構造的に取れない。REIT の決算短信は株式と
+      DocType が異なり、会社予想EPS を持たない。上限は normal 15% が適用される。
+
+      ⚠️ 33業種は REIT を「その他」に入れる。セクター分散の判定には乗らない。
+    functions:
+      is_reit:
+        description: "決算短信の DocType から J-REIT かを判定"
+        when: "銘柄を評価する前。REIT なら株式の指標を出さずに get_reit_metrics に切り替える"
+      get_reit_metrics:
+        description: "NAV倍率・LTV・分配金利回り（年換算）を一次情報（J-Quants 決算短信）から算出"
+        when: "J-REIT の評価時。**get_stock_info の PBR/PER を使わない**"
+
   jpx:
     source: tools/jpx.py
     functions:

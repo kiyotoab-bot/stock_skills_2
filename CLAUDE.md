@@ -104,6 +104,7 @@ Data (src/data/)
   band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
   margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
   stop_formula.py — ストップ統一式とトレーリング判定（切り下げはしない）
+  reit_metrics.py — J-REIT の NAV倍率・LTV・分配金利回り（株式の指標は当てない）
 
 Orchestrator (src/orchestrator/) — KIK-746
   dry_run.py     — routing.yaml + agent定義の整合性検証（API呼ばない）
