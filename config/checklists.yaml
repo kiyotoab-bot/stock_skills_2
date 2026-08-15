@@ -39,7 +39,16 @@ data_quality:
       check: "データの基準日を確認したか。最新バーが null で欠けていないか"
       why: "yfinance は最新バーを Close=null で返すことがある"
       incident: "2026-08-04 に84銘柄中83銘柄の最終日が7/31に後退。dropnaすると2日古いデータで判断していた"
-      code: "history().dropna(subset=['Close']) の最終日を出力。marketState と regularMarketTime で補完"
+      code: "src.data.checklist_review.check_data_freshness({symbol: 最終日}, today)"
+      note: |
+        2026-08-15 まで **コードが無く目視に委ねられていた。そして目視されなかった。**
+        yfinance が 8/14 のバーを Close=NaN で返し、dropna() が落とし、
+        保有・計画6銘柄すべてで 8/13 の終値が「最新」として RSI・SMA・
+        バンドウォーク・半年期日・ストップ距離に入っていた。警告もエラーも出ない。
+        **計算を始める前のゲートとして通す。** 個々の計算を直すのではなく、
+        入力が正しい日付かを最初に確かめる。
+        期待営業日は J-Quants 市場カレンダー（祝日・土日を吸収）。
+        1営業日ずれ=WARN / 3営業日以上=FAIL。
     - id: DQ5
       check: "キャッシュを消したつもりが消えていないか"
       why: "キャッシュのファイル名は 6436_T.json（ドット→アンダースコア）"

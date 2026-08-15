@@ -105,6 +105,7 @@ Data (src/data/)
   margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
   stop_formula.py — ストップ統一式とトレーリング判定（切り下げはしない）
   reit_metrics.py — J-REIT の NAV倍率・LTV・分配金利回り（株式の指標は当てない）
+  data_freshness.py — 価格データの基準日検証（DQ4のゲート。計算前に通す）
 
 Orchestrator (src/orchestrator/) — KIK-746
   dry_run.py     — routing.yaml + agent定義の整合性検証（API呼ばない）
