@@ -149,3 +149,37 @@ class TestTrailing:
         r = check_trailing_stop([100.0] * 5, 90.0, current_stop=80.0)
         assert r["should_raise"] is False
         assert r["new_stop"] is None
+
+
+class TestExempt:
+    """conviction_override（ストップを置かないと決めた銘柄）を免除する。
+
+    ``current_stop=None`` は「まだ設定していない」と「置かないと決めた」の
+    両方で起こる。区別しないと免除銘柄に毎回ストップ設定を促すことになり、
+    2026-08-16 の週次で 7453.T 良品計画に実際に「↑可」が出た。
+    """
+
+    def test_exempt_never_raises(self):
+        c = _series(noise=10)
+        r = check_trailing_stop(c, 900.0, current_stop=None, exempt=True)
+        assert r["should_raise"] is False
+        assert r["exempt"] is True
+        assert r["new_stop"] is None
+        assert "conviction_override" in r["label"]
+
+    def test_exempt_overrides_existing_stop(self):
+        """免除銘柄にたまたま現行ストップが残っていても切り上げない。"""
+        c = _series(noise=10)
+        assert check_trailing_stop(c, 900.0, current_stop=1.0,
+                                   exempt=True)["should_raise"] is False
+
+    def test_not_exempt_by_default(self):
+        c = _series(noise=10)
+        r = check_trailing_stop(c, 900.0, current_stop=None)
+        assert r["exempt"] is False
+        assert r["should_raise"] is True
+
+    def test_exempt_with_insufficient_data(self):
+        r = check_trailing_stop([100.0] * 5, 90.0, current_stop=None, exempt=True)
+        assert r["should_raise"] is False
+        assert r["exempt"] is True

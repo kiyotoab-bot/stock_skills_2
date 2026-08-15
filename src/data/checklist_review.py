@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import datetime
-import glob
 import json
 from typing import Any, Optional
 
@@ -182,21 +181,23 @@ def check_cooldown(
     2026-08-06 の改訂で起点を「売買」から「買付」に限定した。
     exit-rule の売却が買い直しをブロックする逆機能を避けるため。
     """
+    from src.data.monthly_check import load_trades
+
     today = today or datetime.date.today()
     excluded = excluded_dates or set()
     buys, all_trades = [], []
-    for f in glob.glob(f"{trade_dir}/*.json"):
-        try:
-            data = json.load(open(f, encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+    # ⚠️ 生JSONを自前で読まない。``save_trade()`` は ``trade_type`` で書き、
+    # 別の経路は ``action`` で書く。ここで ``action`` だけを見ていたため
+    # 2026-08-10 のキヤノン買付（trade_type のみ）が買付として数えられず、
+    # 冷却期間の起点が 2026-07-13 にずれていた（2026-08-16 に発覚）。
+    # 正規化は ``load_trades()`` の1箇所に寄せる。
+    for t in load_trades(trade_dir):
+        d = t.get("date")
+        if not d or d in excluded:
             continue
-        for t in (data if isinstance(data, list) else [data]):
-            d = t.get("date")
-            if not d or d in excluded:
-                continue
-            all_trades.append(d)
-            if (t.get("action") or t.get("type")) == "buy":
-                buys.append(d)
+        all_trades.append(d)
+        if t.get("action") == "buy":
+            buys.append(d)
     if not buys:
         return [_result("PO1", WARN, "買付履歴が読めない")]
     last = max(buys)

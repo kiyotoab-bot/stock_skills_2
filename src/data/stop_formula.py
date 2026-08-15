@@ -111,6 +111,7 @@ def check_trailing_stop(
     closes: Sequence[float],
     book_value: float,
     current_stop: Optional[float],
+    exempt: bool = False,
     **kwargs,
 ) -> dict:
     """現行ストップと統一式を比べ、切り上げ可能かを返す。
@@ -119,11 +120,24 @@ def check_trailing_stop(
     ストップを下げるのは損失の許容幅を広げることであり、
     トレーリングの逆。``should_raise`` は新値 > 現行のときだけ True。
 
+    Parameters
+    ----------
+    exempt : bool
+        ``conviction_override``（ユーザーが無条件保有と明言し、
+        ストップを置かないと決めた銘柄）なら True を渡す。
+        ``should_raise`` は常に False になる。
+
+        ``current_stop=None`` は「まだ設定していない」と
+        「置かないと決めた」の両方で起こり、値だけでは区別できない。
+        区別しないと免除銘柄に毎回ストップ設定を促すことになる
+        （2026-08-16 の週次で 7453.T 良品計画に実際に出た）。
+
     Returns
     -------
     dict
         ``calc_stop`` の結果に以下を加えたもの:
           current_stop / new_stop / should_raise / raise_amount / raise_pct
+          exempt             : 免除銘柄として扱ったか
           locked_profit      : 新ストップ到達時に確定する1株あたり利益
           locked_profit_gain : 切り上げで増える1株あたり確定利益
           label              : 切り上げavailable のときだけ内容を持つ
@@ -132,7 +146,14 @@ def check_trailing_stop(
     if calc["stop"] is None:
         return {**calc, "current_stop": current_stop, "new_stop": None,
                 "should_raise": False, "raise_amount": None, "raise_pct": None,
+                "exempt": bool(exempt),
                 "locked_profit": None, "locked_profit_gain": None}
+
+    if exempt:
+        return {**calc, "current_stop": None, "new_stop": None,
+                "should_raise": False, "raise_amount": None, "raise_pct": None,
+                "exempt": True, "locked_profit": None, "locked_profit_gain": None,
+                "label": "conviction_override — ストップ免除（切り上げ提案しない）"}
 
     new_stop = calc["stop"]
     cur = float(current_stop) if current_stop else None
@@ -143,6 +164,7 @@ def check_trailing_stop(
         "current_stop": cur,
         "new_stop": new_stop,
         "should_raise": should_raise,
+        "exempt": False,
         "raise_amount": round(new_stop - cur) if cur is not None else None,
         "raise_pct": round((new_stop / cur - 1) * 100, 1) if cur else None,
         "locked_profit": round(new_stop - book_value),
