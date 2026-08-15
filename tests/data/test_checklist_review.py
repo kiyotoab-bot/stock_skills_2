@@ -237,6 +237,30 @@ class TestCooldown:
         d = self._write(tmp_path, [{"date": "2026-08-01", "action": "sell", "symbol": "A.T"}])
         assert _by_id(check_cooldown(d, today=TODAY))["PO1"]["status"] == WARN
 
+    def test_trade_type_key_counts_as_buy(self, tmp_path):
+        """``save_trade()`` は ``action`` ではなく ``trade_type`` で書く。
+
+        2026-08-10 のキヤノン買付がこの形式で、``action`` だけを見ていた
+        ため買付として数えられず、冷却期間の起点が 2026-07-13 のまま
+        ずれていた（2026-08-16 発覚）。
+        """
+        d = self._write(tmp_path, [
+            {"date": "2026-07-13", "action": "buy", "symbol": "A.T"},
+            {"date": "2026-08-10", "trade_type": "buy", "symbol": "7751.T"},
+        ])
+        got = _by_id(check_cooldown(d, today=datetime.date(2026, 9, 5)))
+        assert "2026-08-10" in got["PO1"]["detail"]   # 起点は直近の買付
+        assert "2026-09-07" in got["PO1"]["detail"]   # +4週
+        assert got["PO1"]["status"] == FAIL           # 冷却期間中
+
+    def test_trade_type_buy_not_double_counted(self, tmp_path):
+        """``action`` と ``trade_type`` を両方持つレコードでも1件に数える。"""
+        d = self._write(tmp_path, [
+            {"date": "2026-08-03", "action": "buy", "trade_type": "buy", "symbol": "A.T"},
+        ])
+        got = _by_id(check_cooldown(d, today=datetime.date(2026, 8, 31)))
+        assert "今月の売買 1回" in got["PO1"]["detail"]
+
 
 class TestCheckOrder:
     canon = {

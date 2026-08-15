@@ -297,10 +297,20 @@ J-Quants が使えない環境でも銘柄名が消えたレポートにはな�
 
 ```python
 from src.data.stop_formula import check_trailing_stop
-r = check_trailing_stop(closes, book_value=簿価, current_stop=現行ストップ)
+from src.data.concentration import classify_conviction
+
+tier = classify_conviction(symbol, notes, stop_levels)["tier"]
+r = check_trailing_stop(closes, book_value=簿価, current_stop=現行ストップ,
+                        exempt=(tier == "conviction_override"))
 if r["should_raise"]:
     ...  # ¥現行 → ¥新値、確定利益の増分を出す
 ```
+
+⚠️ **`exempt` を必ず渡す。** `current_stop=None` は「まだ設定していない」と
+「置かないと決めた」の両方で起こり、値だけでは区別できない。渡さないと
+`conviction_override` 銘柄に毎回ストップ設定を促すことになる。2026-08-16 の
+週次で 7453.T 良品計画（無条件保有・ストップなしとユーザーが明言）に
+実際に「↑可」が出た。
 
 統一式は `stop = max(簿価×0.85, min(局面高値×0.92, 現値×(1-0.85σ_h60)))`。
 **手で計算しない。** 2026-08-07 以降この式で運用しながら関数が無く、
