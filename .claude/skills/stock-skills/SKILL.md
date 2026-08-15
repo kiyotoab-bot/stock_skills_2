@@ -511,7 +511,18 @@ weekly は「相場と PF の現状」、monthly は「**今月の売買1回を�
 ```python
 from src.data.morning_summary import check_routine_health
 check_routine_health()     # 鮮度 + GraphRAG のスキーマ をまとめて見る
+
+# DQ4: 価格データの基準日（KIK-761）。**計算を始める前に通す**
+from src.data.checklist_review import check_data_freshness
+latest = {s: str(df["Close"].dropna().index[-1])[:10] for s, df in histories.items()}
+for r in check_data_freshness(latest):
+    print(f"[{r['status']}] {r['detail']}")
 ```
+
+⚠️ **DQ4 で WARN / FAIL が出たら、そのまま計算に進まない。** キャッシュを消して
+取り直し、それでも古ければ理由を報告する。1日古いデータで出した RSI・SMA・
+バンドウォーク・半年期日・ストップ距離は、**そう見えるだけで全部間違っている**。
+2026-08-15 に6銘柄すべてで発生し、誰も気づかなかった。
 
 **スキーマも見る理由**: `init_schema()` はベクトル索引の失敗を
 `try/except: pass` で握り潰すため、**1つも作られなくても True を返す**。

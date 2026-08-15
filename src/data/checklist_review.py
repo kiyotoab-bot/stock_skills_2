@@ -364,6 +364,16 @@ def latest_review_date(reviews_dir: str = "data/reviews") -> Optional[str]:
     return max(dates) if dates else None
 
 
+# DQ4 のコード化は循環 import を避けるため別モジュール（KIK-761）。
+# ここから re-export して、DQ 系の入口を1つに保つ。
+def check_data_freshness(latest_by_symbol, today=None, nan_tail_by_symbol=None):
+    """DQ4: 価格データの基準日を検証する。詳細は src.data.data_freshness 参照。"""
+    from src.data.data_freshness import check_data_freshness as _impl
+
+    return _impl(latest_by_symbol, today=today,
+                 nan_tail_by_symbol=nan_tail_by_symbol)
+
+
 ORDER_CHECK_NOTE_TYPE = "order-check"
 
 
