@@ -20,6 +20,7 @@ from src.data.checklist_review import (
     check_followthrough,
     check_order,
     check_pf_tier,
+    check_stop_breach,
     check_stop_sigma,
     summarize,
 )
@@ -162,6 +163,71 @@ class TestStopSigma:
 
     def test_empty_is_na(self):
         assert _by_id(check_stop_sigma({}))["RL5"]["status"] == NA
+
+
+class TestStopBreach:
+    """KIK-765: 逆指値を証券会社に置かない運用（2026-08-17 ユーザー判断）。
+
+    ストップが注文ではなく判断になったので、日次チェックが報告して初めて機能する。
+    報告し忘れを run_review 経由の記録で潰す。
+    """
+
+    STOPS = {
+        "6701.T": {"stop": 4609.0, "closed": False},
+        "8031.T": {"stop": 4536.0, "closed": False},
+        "7453.T": {"stop": None, "closed": False},      # conviction_override
+        "6758.T": {"stop": 3400.0, "closed": True},     # 手仕舞い済み
+    }
+    SIGMAS = {"6701.T": 3.03, "8031.T": 1.57}
+
+    def test_breach_fails_and_says_what_to_do(self):
+        prices = {"6701.T": 4600.0, "8031.T": 4796.0}
+        got = _by_id(check_stop_breach(prices, self.STOPS, self.SIGMAS))["RL6"]
+        assert got["status"] == FAIL
+        assert "6701.T" in got["detail"] and "寄成" in got["detail"]
+
+    def test_exactly_at_the_stop_is_a_breach(self):
+        """終値ベース判定。ちょうど到達したら抵触として扱う."""
+        got = _by_id(check_stop_breach({"6701.T": 4609.0}, self.STOPS, self.SIGMAS))["RL6"]
+        assert got["status"] == FAIL
+
+    def test_within_one_sigma_warns(self):
+        """2026-08-17 の 6701.T: -3.70% / 日次σ3.03% = 1.22σ → まだ WARN ではない."""
+        prices = {"6701.T": 4700.0}          # -1.94% / 3.03 = 0.64σ
+        got = _by_id(check_stop_breach(prices, self.STOPS, self.SIGMAS))["RL6"]
+        assert got["status"] == WARN
+
+    def test_actual_2026_08_17_state_passes(self):
+        prices = {"6701.T": 4786.0, "8031.T": 4796.0}
+        got = _by_id(check_stop_breach(prices, self.STOPS, self.SIGMAS))["RL6"]
+        assert got["status"] == PASS
+
+    def test_all_holdings_are_listed_even_when_green(self):
+        """全green でも表を出す。出さないと『見ていない』と区別がつかない."""
+        prices = {"6701.T": 4786.0, "8031.T": 4796.0}
+        detail = _by_id(check_stop_breach(prices, self.STOPS, self.SIGMAS))["RL6"]["detail"]
+        assert "6701.T" in detail and "8031.T" in detail
+
+    def test_exempt_symbol_is_named_not_dropped(self):
+        """免除銘柄を黙って落とさない（落とすと設定漏れと見分けがつかない）."""
+        prices = {"6701.T": 4786.0, "7453.T": 4345.0}
+        detail = _by_id(check_stop_breach(prices, self.STOPS, self.SIGMAS))["RL6"]["detail"]
+        assert "免除" in detail and "7453.T" in detail
+
+    def test_closed_position_is_not_monitored(self):
+        """手仕舞い済み（KIK-764）は監視対象外。旧ストップで抵触判定しない."""
+        prices = {"6758.T": 3000.0}          # 旧stop 3400 を割っているが売却済み
+        got = _by_id(check_stop_breach(prices, self.STOPS, self.SIGMAS))["RL6"]
+        assert got["status"] == PASS
+        assert "6758.T" not in got["detail"]
+
+    def test_missing_sigma_still_detects_breach(self):
+        """σが無くても抵触判定はできる。σは1σ警告にしか使わない."""
+        got = _by_id(check_stop_breach({"6701.T": 4000.0}, self.STOPS, None))["RL6"]
+        assert got["status"] == FAIL
+
+    def test_no_holdings_is_na(self):
+        assert _by_id(check_stop_breach({}, self.STOPS, self.SIGMAS))["RL6"]["status"] == NA
 
 
 class TestFollowthrough:

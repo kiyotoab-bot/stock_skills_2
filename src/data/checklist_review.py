@@ -129,6 +129,72 @@ def check_stop_sigma(stop_distances: dict[str, float]) -> list[dict]:
     )]
 
 
+def check_stop_breach(prices: dict[str, float],
+                      stop_levels: dict[str, dict],
+                      sigmas: Optional[dict[str, float]] = None) -> list[dict]:
+    """RL6: 終値がストップに抵触していないか（KIK-765）.
+
+    2026-08-17 のユーザー判断で **逆指値を証券会社に置かない**ことになった。
+    ストップは注文ではなく判断になり、日次チェックが報告して初めて機能する。
+    報告し忘れを潰すため、``run_review()`` を通して毎回 ``data/reviews/`` に残す。
+
+    Parameters
+    ----------
+    prices
+        ``{symbol: 終値}``。**保有銘柄だけ**を渡す。判定は終値ベース
+        （ザラ場のヒゲでは執行しない。2026-08-04 からの運用）。
+    stop_levels
+        ``note_manager.get_stop_levels()`` の結果。``closed`` は監視対象外、
+        ``stop is None``（conviction_override 等）は免除として数える。
+    sigmas
+        ``{symbol: 日次σ%}``。あれば「1日のノイズで届く距離か」を WARN で出す。
+
+    Returns
+    -------
+    list[dict]
+        抵触があれば FAIL、1.0日σ以内があれば WARN、どちらも無ければ PASS。
+        ``detail`` には**全銘柄**の距離を載せる。異常時だけ出す形にすると、
+        「今日は表が無い＝見ていない」と区別がつかない。
+    """
+    if not prices:
+        return [_result("RL6", NA, "保有なし")]
+
+    breached, near, ok, exempt = [], [], [], []
+    for sym, px in sorted(prices.items()):
+        info = stop_levels.get(sym) or {}
+        if info.get("closed"):
+            continue
+        stop = info.get("stop")
+        if stop is None:
+            exempt.append(sym)
+            continue
+        dist = (px - stop) / px * 100 if px else None
+        sig = (sigmas or {}).get(sym)
+        mult = (dist / sig) if (dist is not None and sig) else None
+        label = f"{sym} 終値{px:,.0f}/stop{stop:,.0f} {dist:+.2f}%"
+        if mult is not None:
+            label += f"({mult:.2f}σ)"
+        if dist is not None and dist <= 0:
+            breached.append(label)
+        elif mult is not None and mult <= 1.0:
+            near.append(label)
+        else:
+            ok.append(label)
+
+    parts = []
+    if breached:
+        parts.append("🔴抵触 " + " / ".join(breached) + " → 翌営業日の寄成で成行売り")
+    if near:
+        parts.append("⚠1σ以内 " + " / ".join(near))
+    if ok:
+        parts.append("🟢 " + " / ".join(ok))
+    if exempt:
+        parts.append("免除 " + ", ".join(exempt))
+
+    status = FAIL if breached else (WARN if near else PASS)
+    return [_result("RL6", status, " | ".join(parts) or "監視対象なし")]
+
+
 # ---------------------------------------------------------------------------
 # 実行の追跡 (FT)
 # ---------------------------------------------------------------------------

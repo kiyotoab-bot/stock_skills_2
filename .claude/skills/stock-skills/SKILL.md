@@ -272,6 +272,7 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_stop_sigma(dist) + CR.check_followthrough(notes)
           + CR.check_cooldown(excluded_dates=...)
           + CR.check_order(sym, info, rev, margin, cap)
+          + CR.check_stop_breach(prices, get_stop_levels(), sigmas)   # ← 日次で必須
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
 summary = CR.run_review(checks, llm_context=review_prompt)
@@ -279,6 +280,26 @@ summary = CR.run_review(checks, llm_context=review_prompt)
 #           "mechanical_only"（使えなかった場合）
 # → data/reviews/ への保存は run_review が必ず行う
 ```
+
+⚠️ **`check_stop_breach()`（RL6）は日次チェックで必ず入れる。**
+2026-08-17 のユーザー判断で **逆指値を証券会社に置かない**ことになった。
+ストップは注文ではなく**判断**になり、日次チェックが報告して初めて機能する。
+日次を1日飛ばすと、その日は無保護になる。
+
+| 判定 | 条件 | 出力で言うこと |
+|:---|:---|:---|
+| 🔴 FAIL | 終値 <= ストップ | **翌営業日の寄成で成行売り**を指示する |
+| ⚠ WARN | 距離が 1.0日σ以内 | 1日のノイズで届く。翌日の寄りに注意を促す |
+| 🟢 PASS | それ以外 | — |
+
+⚠️ **全green でも保有全銘柄の表を出す**（`detail` に全件入る）。
+異常時だけ出す形にすると「今日は表が無い＝見ていない」と区別がつかない。
+免除銘柄（conviction_override）は「免除」と明記し、黙って落とさない。
+手仕舞い済み（KIK-764 の `closed`）は監視対象外で、旧ストップでは判定しない。
+
+⚠️ 判定は**終値ベース**（ザラ場のヒゲでは執行しない）。証券会社に注文が無い以上、
+場中トリガーは使えない。実測では終値判定＋翌寄成は下位1%が
+¥42,049 → ¥9,765 に悪化する（6701.T・40,000経路）。承知のうえの運用。
 
 | 段階 | 内容 | 条件 |
 |:---|:---|:---|
