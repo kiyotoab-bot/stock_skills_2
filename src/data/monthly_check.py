@@ -113,6 +113,11 @@ def load_trades(trade_dir: str = "data/history/trade") -> list[dict]:
                 "memo": rec.get("memo", ""),
                 # KIK-751: 枠の区別。未指定の過去レコードはすべて core（中長期）
                 "sleeve": str(_first(rec, "sleeve", "role") or CORE_SLEEVE).lower(),
+                # KIK-763: 月次上限の免除（ストップ執行など）。
+                # ⚠️ ここは**ホワイトリスト**なので、載せ忘れたキーは黙って消える。
+                # 保存側 (save_trade) に足しただけでは枠の判定まで届かない。
+                "limit_exempt": bool(rec.get("limit_exempt")),
+                "exempt_reason": rec.get("exempt_reason", ""),
             })
     return out
 
@@ -227,15 +232,29 @@ def trade_budget(
 
     ``sleeve`` (KIK-751) で枠を絞る。既定は core（中長期）で、tactical の取引は
     中長期の冷却期間・月次上限を消費しない。``None`` を渡すと全件を数える。
+
+    取引レコードの ``limit_exempt`` (KIK-763) も枠から外す。ストップ抵触による
+    売却など、裁量で起こしたのではない取引に ``save_trade()`` が付ける印。
+    ``excluded_dates`` が**呼び出し側の記憶に依存する**のに対し、こちらは
+    レコード自身が持つので渡し忘れが起きない。2026-08-17 のルール確定
+    「ストップ執行は月次上限の枠外」を仕組みで担保するのはこちら。
+
+    ⚠️ ``limit_exempt`` は枠だけを外す。実現損益は ``realized_pnl()`` が
+    通常どおり ``realized_pnl`` に計上する（``excluded_pnl`` に回さない）。
+    ``excluded_dates`` は両方から外すので、性質が違う。混同しないこと。
     """
     today = today or datetime.date.today()
     excluded = excluded_dates or set()
     trades = filter_sleeve(trades, sleeve)
     dated = [t for t in trades if t.get("date")]
-    counted = [t for t in dated if t["date"] not in excluded]
+
+    def _off_budget(t: dict) -> bool:
+        return t["date"] in excluded or bool(t.get("limit_exempt"))
+
+    counted = [t for t in dated if not _off_budget(t)]
     buys = sorted(t["date"] for t in counted if t.get("action") == "buy")
     this_month = [
-        {**t, "excluded": t["date"] in excluded}
+        {**t, "excluded": _off_budget(t)}
         for t in dated if t["date"][:7] == month_key(today)
     ]
 
@@ -533,6 +552,13 @@ def realized_pnl(trades: list[dict], month: str,
 
     ``excluded_dates``（誤発注日など）は枠のカウントから外すためのもので、
     損益は実際に発生している。**消さずに分けて返す**。
+
+    ⚠️ ``limit_exempt`` (KIK-763) は**ここでは見ない。これは意図**である。
+    ストップ抵触による売却は月次上限から外すが、実現損益は実在するので
+    ``realized_pnl`` に通常どおり計上する。「枠から外れているのに損益に入っている」
+    のは不整合ではなく、2026-08-17 のルール確定そのもの。
+    ここに ``limit_exempt`` の除外を足すと、目標 ¥10,000,000 への進捗から
+    ストップ執行分が消える。
 
     ``sleeve`` (KIK-751) で枠を絞る。既定は core。tactical の損益を混ぜると
     「中長期の投入計画がどれだけ効いたか」が測れなくなる。

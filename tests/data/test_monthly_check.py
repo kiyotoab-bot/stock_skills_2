@@ -241,6 +241,39 @@ class TestTradeBudget:
         assert len(b["this_month_trades"]) == 1
         assert b["this_month_trades"][0]["excluded"] is True
 
+    # --- KIK-763: ストップ執行は月次上限の枠外（2026-08-17 ユーザー判断） ---
+
+    def test_limit_exempt_trade_does_not_consume_the_monthly_limit(self):
+        """ストップ抵触の売却は枠を食わない。excluded_dates を渡さなくても効く."""
+        trades = self.TRADES + [{"date": "2026-08-05", "action": "sell",
+                                 "symbol": "6701.T", "limit_exempt": True,
+                                 "exempt_reason": "stop-loss 4609 triggered"}]
+        b = MC.trade_budget(trades, TODAY)
+        assert b["monthly_used"] == 0 and b["monthly_remaining"] == 1
+        assert not any("月次上限" in x for x in b["blockers"])
+
+    def test_limit_exempt_trade_is_kept_and_flagged(self):
+        """枠から外しても取引の事実は消さない（excluded_dates と同じ扱い）."""
+        trades = self.TRADES + [{"date": "2026-08-05", "action": "sell",
+                                 "symbol": "6701.T", "limit_exempt": True}]
+        b = MC.trade_budget(trades, TODAY)
+        assert b["excluded_count"] == 1
+        assert len(b["this_month_trades"]) == 1
+        assert b["this_month_trades"][0]["excluded"] is True
+
+    def test_ordinary_sell_still_consumes_the_monthly_limit(self):
+        """免除は明示したときだけ。既定で枠が緩む方向には壊さない."""
+        trades = self.TRADES + [{"date": "2026-08-05", "action": "sell", "symbol": "Y"}]
+        b = MC.trade_budget(trades, TODAY)
+        assert b["monthly_used"] == 1 and b["monthly_remaining"] == 0
+
+    def test_limit_exempt_buy_does_not_become_the_cooldown_anchor(self):
+        """枠外にした買付を冷却期間の起点にしない（判定を1か所に揃える）."""
+        trades = self.TRADES + [{"date": "2026-08-07", "action": "buy",
+                                 "symbol": "Z", "limit_exempt": True}]
+        b = MC.trade_budget(trades, TODAY)
+        assert b["last_buy"] == "2026-07-13"
+
 
 class TestGoalProgress:
     def test_two_required_rates_are_distinguished(self):
@@ -303,6 +336,17 @@ class TestRealizedPnl:
         r = MC.realized_pnl([{"date": "2026-08-01", "action": "sell",
                               "realized_pnl": "n/a"}], "2026-08")
         assert r["unparsed_pnl"] == 1 and r["realized_pnl"] == 0.0
+
+    def test_limit_exempt_pnl_is_counted_normally(self):
+        """KIK-763: 枠から外れても損益は実在する。excluded_pnl に回さない.
+
+        ここを excluded_dates と同じ扱いにすると、ストップ執行の損益が
+        目標 ¥10,000,000 への進捗から消える。
+        """
+        r = MC.realized_pnl([{"date": "2026-08-05", "action": "sell",
+                              "realized_pnl": 71714, "limit_exempt": True}], "2026-08")
+        assert r["realized_pnl"] == 71714.0
+        assert r["excluded_pnl"] == 0.0 and r["excluded_count"] == 0
 
     def test_excluded_dates_are_separated_not_erased(self):
         """枠のカウントから外すだけで、損益は実際に発生している (KIK-739)."""
@@ -392,6 +436,21 @@ class TestLoadTrades:
 
     def test_missing_directory(self, tmp_path):
         assert MC.load_trades(str(tmp_path / "nope")) == []
+
+    def test_limit_exempt_survives_normalization(self, tmp_path):
+        """KIK-763: load_trades はホワイトリスト。載せ忘れると黙って消える.
+
+        save_trade に足しただけでは枠の判定まで届かないので、ここで固定する。
+        """
+        self._write(tmp_path, "a.json", [
+            {"date": "2026-08-05", "action": "sell", "symbol": "6701.T",
+             "limit_exempt": True, "exempt_reason": "stop-loss 4609 triggered"},
+            {"date": "2026-08-06", "action": "sell", "symbol": "Y"},
+        ])
+        out = {t["symbol"]: t for t in MC.load_trades(str(tmp_path))}
+        assert out["6701.T"]["limit_exempt"] is True
+        assert out["6701.T"]["exempt_reason"] == "stop-loss 4609 triggered"
+        assert out["Y"]["limit_exempt"] is False     # 既定で枠を食う側に倒す
 
 
 class TestAddMonths:
