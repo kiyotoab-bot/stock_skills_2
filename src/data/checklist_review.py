@@ -131,12 +131,19 @@ def check_stop_sigma(stop_distances: dict[str, float]) -> list[dict]:
 
 def check_stop_breach(prices: dict[str, float],
                       stop_levels: dict[str, dict],
-                      sigmas: Optional[dict[str, float]] = None) -> list[dict]:
-    """RL6: 終値がストップに抵触していないか（KIK-765）.
+                      sigmas: Optional[dict[str, float]] = None,
+                      histories: Optional[dict[str, list]] = None,
+                      since: Optional[str] = None) -> list[dict]:
+    """RL6: 終値がストップに抵触していないか（KIK-765 / KIK-766）.
 
     2026-08-17 のユーザー判断で **逆指値を証券会社に置かない**ことになった。
     ストップは注文ではなく判断になり、日次チェックが報告して初めて機能する。
     報告し忘れを潰すため、``run_review()`` を通して毎回 ``data/reviews/`` に残す。
+
+    ⚠️ **前回チェック以降の全営業日を見る**（KIK-766）。最新終値だけを見ると、
+    飛ばした日に抵触して翌日戻したケースを取りこぼす。実際に
+    「火曜 4,500（抵触）→ 水曜 4,700（戻す）」を水曜だけ見ると PASS になっていた。
+    ストップは日々の終値に対する規則なので、**間の日も判定対象**である。
 
     Parameters
     ----------
@@ -148,6 +155,12 @@ def check_stop_breach(prices: dict[str, float],
         ``stop is None``（conviction_override 等）は免除として数える。
     sigmas
         ``{symbol: 日次σ%}``。あれば「1日のノイズで届く距離か」を WARN で出す。
+    histories
+        ``{symbol: [(date_str, close), ...]}``（古い順）。``since`` と併せて渡すと
+        その期間の**すべての終値**を抵触判定にかける。
+    since
+        この日付より**後**のバーを見る。``latest_review_date()`` を渡すと
+        「前回チェック以降」になる。省略すると最新終値だけを見る（従来動作）。
 
     Returns
     -------
@@ -159,7 +172,7 @@ def check_stop_breach(prices: dict[str, float],
     if not prices:
         return [_result("RL6", NA, "保有なし")]
 
-    breached, near, ok, exempt = [], [], [], []
+    breached, near, ok, exempt, past = [], [], [], [], []
     for sym, px in sorted(prices.items()):
         info = stop_levels.get(sym) or {}
         if info.get("closed"):
@@ -174,6 +187,16 @@ def check_stop_breach(prices: dict[str, float],
         label = f"{sym} 終値{px:,.0f}/stop{stop:,.0f} {dist:+.2f}%"
         if mult is not None:
             label += f"({mult:.2f}σ)"
+
+        # 飛ばした日の抵触（最新終値では戻っていても見逃さない）
+        if histories and since:
+            hits = [(d, c) for d, c in (histories.get(sym) or [])
+                    if d and d > since and c is not None and c <= stop]
+            if hits and (dist is None or dist > 0):
+                worst = min(hits, key=lambda x: x[1])
+                past.append(f"{sym} {worst[0]} 終値{worst[1]:,.0f}<=stop{stop:,.0f}"
+                            f"（{len(hits)}日）")
+
         if dist is not None and dist <= 0:
             breached.append(label)
         elif mult is not None and mult <= 1.0:
@@ -184,6 +207,9 @@ def check_stop_breach(prices: dict[str, float],
     parts = []
     if breached:
         parts.append("🔴抵触 " + " / ".join(breached) + " → 翌営業日の寄成で成行売り")
+    if past:
+        parts.append("🔴見逃し抵触(前回チェック以降) " + " / ".join(past)
+                     + " → 現値は戻っているが**規則上は抵触済み**。執行するか判断する")
     if near:
         parts.append("⚠1σ以内 " + " / ".join(near))
     if ok:
@@ -191,7 +217,7 @@ def check_stop_breach(prices: dict[str, float],
     if exempt:
         parts.append("免除 " + ", ".join(exempt))
 
-    status = FAIL if breached else (WARN if near else PASS)
+    status = FAIL if (breached or past) else (WARN if near else PASS)
     return [_result("RL6", status, " | ".join(parts) or "監視対象なし")]
 
 
