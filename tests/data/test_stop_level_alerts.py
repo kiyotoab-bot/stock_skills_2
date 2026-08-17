@@ -44,7 +44,7 @@ class TestGetStopLevels:
             "symbol": "6701.T", "type": "exit-rule", "date": "2026-08-04",
             "timestamp": "2026-08-04T18:00:00", "stop_loss": "4091",
         })
-        got = get_stop_levels(base_dir=str(tmp_path))
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades"))
         assert got["6701.T"]["stop"] == 4091.0
 
     def test_same_date_broken_by_timestamp(self, tmp_path):
@@ -57,7 +57,7 @@ class TestGetStopLevels:
             "symbol": "8031.T", "type": "exit-rule", "date": "2026-08-04",
             "timestamp": "2026-08-04T19:00:00", "stop_loss": "4497",
         })
-        got = get_stop_levels(base_dir=str(tmp_path))
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades"))
         assert got["8031.T"]["stop"] == 4497.0
 
     def test_conviction_override_revokes_older_stop(self, tmp_path):
@@ -70,7 +70,7 @@ class TestGetStopLevels:
             "symbol": "7453.T", "type": "thesis", "date": "2026-08-03",
             "timestamp": "2026-08-03T23:00:00", "conviction_override": True,
         })
-        got = get_stop_levels(base_dir=str(tmp_path))
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades"))
         assert got["7453.T"]["conviction"] is True
         assert got["7453.T"]["stop"] is None
 
@@ -83,7 +83,7 @@ class TestGetStopLevels:
             "symbol": "X.T", "type": "exit-rule", "date": "2026-08-04",
             "timestamp": "2026-08-04T10:00:00", "stop_loss": "500",
         })
-        got = get_stop_levels(base_dir=str(tmp_path))
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades"))
         assert got["X.T"]["conviction"] is False
         assert got["X.T"]["stop"] == 500.0
 
@@ -94,7 +94,7 @@ class TestGetStopLevels:
             "timestamp": "2026-07-15T10:00:00",
             "stop_loss": "終値ベース トレーリング 5063(高値更新で切り上がる)",
         })
-        got = get_stop_levels(base_dir=str(tmp_path))
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades"))
         assert "9364.T" in got
         assert got["9364.T"]["stop"] is None
         assert "5063" in got["9364.T"]["raw"]
@@ -104,10 +104,90 @@ class TestGetStopLevels:
             "symbol": "A.T", "type": "exit-rule", "date": "2026-08-01",
             "timestamp": "2026-08-01T10:00:00",
         })
-        assert get_stop_levels(base_dir=str(tmp_path)) == {}
+        assert get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades")) == {}
 
     def test_empty_dir(self, tmp_path):
-        assert get_stop_levels(base_dir=str(tmp_path)) == {}
+        assert get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "no_trades")) == {}
+
+
+class TestClosedPositionsDropOutOfTheLedger:
+    """KIK-764: 売り切った銘柄のストップを台帳に残さない.
+
+    ノート側に「ストップを外した」を書く手段が無い（stop_loss が空の exit-rule は
+    読み飛ばされるので、新しいノートを足しても古い値が勝つ）。2026-08-17 の
+    棚卸しで台帳14件中7件が手仕舞い済みだった。
+    """
+
+    def _trades(self, tmp_path, rows):
+        d = tmp_path / "trades"
+        d.mkdir(exist_ok=True)
+        (d / "t.json").write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        return str(d)
+
+    def _stop_note(self, tmp_path, symbol, date, stop):
+        _write(tmp_path, f"{symbol}.json", {
+            "symbol": symbol, "type": "exit-rule", "date": date,
+            "timestamp": f"{date}T10:00:00", "stop_loss": stop,
+        })
+
+    def test_sold_out_position_is_marked_closed(self, tmp_path):
+        self._stop_note(tmp_path, "6758.T", "2026-08-03", "3400")
+        td = self._trades(tmp_path, [
+            {"date": "2026-07-09", "action": "buy", "symbol": "6758.T", "shares": 100},
+            {"date": "2026-08-04", "action": "sell", "symbol": "6758.T", "shares": 100},
+        ])
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=td)
+        assert got["6758.T"]["closed"] is True
+        assert got["6758.T"]["stop"] is None          # 買い直しても復活させない
+        assert got["6758.T"]["closed_on"] == "2026-08-04"
+        assert got["6758.T"]["raw"] == "3400"         # 履歴としては残す
+
+    def test_partial_sell_then_restated_stop_survives(self, tmp_path):
+        """6701.T: 8/4 に半分売却 → 8/15 に引き直し。消してはいけない."""
+        self._stop_note(tmp_path, "6701.T", "2026-08-15", "4609")
+        td = self._trades(tmp_path, [
+            {"date": "2026-04-13", "action": "buy", "symbol": "6701.T", "shares": 200},
+            {"date": "2026-08-04", "action": "sell", "symbol": "6701.T", "shares": 100},
+        ])
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=td)
+        assert got["6701.T"]["closed"] is False
+        assert got["6701.T"]["stop"] == 4609.0
+
+    def test_sell_older_than_the_note_does_not_close(self, tmp_path):
+        """売却のあとにストップを置き直したなら、それは現役の建玉."""
+        self._stop_note(tmp_path, "A.T", "2026-08-15", "1000")
+        td = self._trades(tmp_path, [
+            {"date": "2026-08-04", "action": "sell", "symbol": "A.T", "shares": 100},
+        ])
+        assert get_stop_levels(base_dir=str(tmp_path), trade_dir=td)["A.T"]["closed"] is False
+
+    def test_planned_buy_with_provisional_stop_is_kept(self, tmp_path):
+        """9104.T: 未保有だが9月購入予定の仮ストップ。売却履歴が無いので残す."""
+        self._stop_note(tmp_path, "9104.T", "2026-08-10", "5787")
+        td = self._trades(tmp_path, [])
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=td)
+        assert got["9104.T"]["closed"] is False
+        assert got["9104.T"]["stop"] == 5787.0
+
+    def test_unreadable_trade_history_closes_nothing(self, tmp_path):
+        """読めないことを『全部手仕舞い済み』と誤読しない。安全側は消さない."""
+        self._stop_note(tmp_path, "B.T", "2026-08-01", "900")
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "missing"))
+        assert got["B.T"]["closed"] is False
+        assert got["B.T"]["stop"] == 900.0
+
+    def test_conviction_entry_also_carries_the_flag(self, tmp_path):
+        """免除銘柄でもキーの形を揃える（呼び出し側の KeyError を防ぐ）."""
+        _write(tmp_path, "a.json", {
+            "symbol": "7453.T", "type": "exit-rule", "date": "2026-07-03",
+            "timestamp": "2026-07-03T10:00:00", "stop_loss": "3282",
+        })
+        _write(tmp_path, "b.json", {
+            "symbol": "7453.T", "type": "thesis", "date": "2026-08-03",
+            "timestamp": "2026-08-03T23:00:00", "conviction_override": True,
+        })
+        got = get_stop_levels(base_dir=str(tmp_path), trade_dir=str(tmp_path / "none"))
+        assert got["7453.T"]["closed"] is False and got["7453.T"]["closed_on"] is None
 
 
 # ---------------------------------------------------------------------------
