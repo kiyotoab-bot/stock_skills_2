@@ -393,11 +393,44 @@ def _note_key(note: dict) -> str:
     return f"{note.get('date', '')}T{note.get('timestamp', '')}"
 
 
-def get_stop_levels(base_dir: str = _NOTES_DIR) -> dict[str, dict]:
+def _closed_positions(trade_dir: str) -> dict[str, str]:
+    """売り切った銘柄と、その最終売却日を返す（KIK-764）.
+
+    「売り切った」= 買い株数の合計 - 売り株数の合計 <= 0 かつ売却履歴がある。
+    取引履歴が読めなければ **空を返す**。読めないことを「全部手仕舞い済み」と
+    誤読すると、保有中の銘柄のストップを消してしまう。安全側は「消さない」。
+    """
+    try:
+        from src.data.monthly_check import load_trades
+        trades = load_trades(trade_dir)
+    except Exception:
+        return {}
+
+    net: dict[str, float] = {}
+    last_sell: dict[str, str] = {}
+    for t in trades:
+        sym, date = t.get("symbol"), t.get("date")
+        if not sym or not date:
+            continue
+        try:
+            shares = float(t.get("shares") or 0)
+        except (TypeError, ValueError):
+            shares = 0.0
+        if t.get("action") == "buy":
+            net[sym] = net.get(sym, 0.0) + shares
+        else:
+            net[sym] = net.get(sym, 0.0) - shares
+            if date > last_sell.get(sym, ""):
+                last_sell[sym] = date
+    return {s: d for s, d in last_sell.items() if net.get(s, 0.0) <= 0}
+
+
+def get_stop_levels(base_dir: str = _NOTES_DIR,
+                    trade_dir: str = "data/history/trade") -> dict[str, dict]:
     """Extract the current stop-loss level per symbol from exit-rule notes.
 
     Returns ``{symbol: {"stop": float|None, "date": str, "raw": str,
-    "conviction": bool}}``.
+    "conviction": bool, "closed": bool, "closed_on": str|None}}``.
 
     - Only the **latest** exit-rule note per symbol is used.
     - ``stop`` is ``None`` when ``stop_loss`` is free text that cannot be parsed
@@ -408,6 +441,20 @@ def get_stop_levels(base_dir: str = _NOTES_DIR) -> dict[str, dict]:
       returned with ``conviction=True`` and ``stop=None``: an old exit-rule note
       must not resurrect a stop the user has explicitly revoked
       (e.g. 7453.T 良品計画 は 2026-08-03 に無条件保有へ変更済み).
+    - **手仕舞い済みの銘柄は ``closed=True`` / ``stop=None`` で返す**（KIK-764）。
+      ノートには「ストップを外した」を書く手段が無く（``stop_loss`` が空の
+      exit-rule ノートは読み飛ばされるので、新しいノートを足しても古い値が勝つ）、
+      売却後もストップが台帳に残り続けていた。2026-08-17 の棚卸しで
+      14件中7件が手仕舞い済みだった。
+
+      危険なのは残ること自体ではなく、**買い直したときに古い簿価ベースの
+      ストップが現行値として復活する**こと。6758.T ソニーは簿価フロア ¥3,400 の
+      ストップが残ったまま WL の再監視対象で、現値は ¥3,780 だった。
+
+      判定は「最終売却日 > exit-rule ノートの日付 かつ 差引株数 <= 0」。
+      日付条件があるので、**一部売却したあとにストップを引き直した銘柄は消えない**
+      （6701.T は 2026-08-04 に半分売却したが 08-15 に再設定しており対象外）。
+      ノートは消さない。履歴は残したまま、監視対象から外す。
     """
     latest_exit: dict[str, dict] = {}
     for note in load_notes(note_type="exit-rule", base_dir=base_dir):
@@ -426,6 +473,8 @@ def get_stop_levels(base_dir: str = _NOTES_DIR) -> dict[str, dict]:
         if sym not in conviction or _note_key(note) > _note_key(conviction[sym]):
             conviction[sym] = note
 
+    closed_on = _closed_positions(trade_dir)
+
     result: dict[str, dict] = {}
     for sym, note in latest_exit.items():
         conv = conviction.get(sym)
@@ -433,6 +482,7 @@ def get_stop_levels(base_dir: str = _NOTES_DIR) -> dict[str, dict]:
             result[sym] = {
                 "stop": None, "date": conv.get("date", ""),
                 "raw": "", "conviction": True,
+                "closed": False, "closed_on": None,
             }
             continue
         raw = str(note.get("stop_loss", "")).strip()
@@ -440,9 +490,15 @@ def get_stop_levels(base_dir: str = _NOTES_DIR) -> dict[str, dict]:
             stop = float(raw.replace(",", ""))
         except ValueError:
             stop = None
+        note_date = note.get("date", "")
+        sold_on = closed_on.get(sym)
+        # 売却がノートより**後**のときだけ手仕舞い扱い。逆だと、一部売却の
+        # あとにストップを引き直した銘柄まで消える
+        is_closed = bool(sold_on and note_date and sold_on > note_date)
         result[sym] = {
-            "stop": stop, "date": note.get("date", ""),
-            "raw": raw, "conviction": False,
+            "stop": None if is_closed else stop,
+            "date": note_date, "raw": raw, "conviction": False,
+            "closed": is_closed, "closed_on": sold_on if is_closed else None,
         }
 
     # A conviction symbol with no exit-rule note at all is not "monitored",
