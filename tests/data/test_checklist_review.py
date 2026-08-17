@@ -227,6 +227,21 @@ class TestCooldown:
             d, excluded_dates={"2026-08-04"}, today=datetime.date(2026, 8, 10)))
         assert got["PO1"]["status"] == PASS
 
+    def test_limit_exempt_sell_does_not_block(self, tmp_path):
+        """KIK-763: ストップ執行は月次上限に数えない。日付を渡さなくても効く.
+
+        trade_budget と判定を揃えてある。片方だけ直すと同じレポートに
+        「今月0回（budget）」と「今月1回（PO1）」が並ぶ。
+        """
+        d = self._write(tmp_path, [
+            {"date": "2026-07-13", "action": "buy", "symbol": "A.T"},
+            {"date": "2026-08-04", "action": "sell", "symbol": "B.T",
+             "limit_exempt": True, "exempt_reason": "stop-loss triggered"},
+        ])
+        got = _by_id(check_cooldown(d, today=datetime.date(2026, 8, 10)))
+        assert got["PO1"]["status"] == PASS
+        assert "今月の売買 0回" in got["PO1"]["detail"]
+
     def test_cooldown_not_elapsed_fails(self, tmp_path):
         d = self._write(tmp_path, [{"date": "2026-08-01", "action": "buy", "symbol": "A.T"}])
         got = _by_id(check_cooldown(d, today=datetime.date(2026, 8, 10)))

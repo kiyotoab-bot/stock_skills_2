@@ -180,6 +180,11 @@ def check_cooldown(
 
     2026-08-06 の改訂で起点を「売買」から「買付」に限定した。
     exit-rule の売却が買い直しをブロックする逆機能を避けるため。
+
+    レコードの ``limit_exempt`` (KIK-763) が立っている取引は月次上限に数えない。
+    ストップ抵触による売却がこれにあたる（2026-08-17 のルール確定）。
+    ``trade_budget()`` と同じ判定にしてある。片方だけ直すと、同じレポートに
+    「今月0回（PO1）」と「今月1回（budget）」が並ぶ。
     """
     from src.data.monthly_check import load_trades
 
@@ -193,7 +198,7 @@ def check_cooldown(
     # 正規化は ``load_trades()`` の1箇所に寄せる。
     for t in load_trades(trade_dir):
         d = t.get("date")
-        if not d or d in excluded:
+        if not d or d in excluded or t.get("limit_exempt"):
             continue
         all_trades.append(d)
         if t.get("action") == "buy":

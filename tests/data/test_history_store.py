@@ -230,6 +230,21 @@ class TestSaveTrade:
         assert data["symbol"] == "AAPL"
         assert data["shares"] == 5
 
+    def test_limit_exempt_is_written_with_its_reason(self, tmp_path):
+        """KIK-763: ストップ執行を月次上限の枠外にする印。理由もセットで残す."""
+        path = save_trade("6701.T", "sell", 100, 4609.0, "JPY", "2026-08-20",
+                          base_dir=str(tmp_path), limit_exempt=True,
+                          exempt_reason="stop-loss 4609 triggered")
+        data = _read_json(path)
+        assert data["limit_exempt"] is True
+        assert data["exempt_reason"] == "stop-loss 4609 triggered"
+
+    def test_limit_exempt_defaults_to_absent(self, tmp_path):
+        """既定では書かない。付け忘れた取引は通常どおり枠を消費する側に倒す."""
+        path = save_trade("AAPL", "sell", 5, 180.0, "USD", "2026-02-14",
+                          base_dir=str(tmp_path))
+        assert "limit_exempt" not in _read_json(path)
+
     def test_save_file_naming(self, tmp_path):
         # KIK-744: ファイル名末尾に HHMMSSffffff_<6hex> が付与される（同秒衝突防止）
         path = save_trade("7203.T", "buy", 100, 2850.0, "JPY", "2026-02-14", base_dir=str(tmp_path))

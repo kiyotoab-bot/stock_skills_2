@@ -30,6 +30,8 @@ def save_trade(
     cost_price: Optional[float] = None,
     stock_info: Optional[dict] = None,
     sleeve: str = "core",
+    limit_exempt: bool = False,
+    exempt_reason: str = "",
 ) -> str:
     """Save a trade record to JSON.
 
@@ -51,6 +53,20 @@ def save_trade(
         枠（KIK-751）。``core``（中長期・既定）か ``tactical``（短期売買）。
         ``tactical`` は中長期の冷却期間・月次上限・集中度判定から外れる。
         既定を core にしてあるので、指定を忘れた取引が短期枠に紛れることはない。
+    limit_exempt : bool
+        月次上限のカウントから外す（KIK-763）。**ストップ抵触による売却**など、
+        裁量で起こしたのではない取引に付ける。2026-08-17 ユーザー判断。
+
+        ⚠️ 外れるのは**月次上限だけ**。実現損益・総資産・配分・集中度には
+        通常どおり計上される。ここが ``excluded_dates`` との違いで、
+        あちらは枠と実現損益の**両方**から外す（``excluded_pnl`` に回る）。
+        ストップ執行の損益は実在するので ``excluded_dates`` を流用してはならない。
+
+        既定 False。付け忘れた取引は通常どおり枠を消費するので、
+        「黙って枠が増えている」方向には壊れない。
+    exempt_reason : str
+        ``limit_exempt=True`` にした理由。後から検証できるように必ず書く
+        （例: "stop-loss 4609 triggered"）。
     """
     today = date.today().isoformat()
     now_dt = datetime.now()
@@ -85,6 +101,11 @@ def save_trade(
         payload["hold_days"] = hold_days
     if cost_price is not None:
         payload["cost_price"] = cost_price
+
+    # KIK-763: 月次上限の免除。True のときだけ書く（既存レコードと同じ形を保つ）
+    if limit_exempt:
+        payload["limit_exempt"] = True
+        payload["exempt_reason"] = exempt_reason
 
     d = _history_dir("trade", base_dir)
     path = d / filename
