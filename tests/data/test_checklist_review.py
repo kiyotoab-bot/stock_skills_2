@@ -230,6 +230,70 @@ class TestStopBreach:
         assert _by_id(check_stop_breach({}, self.STOPS, self.SIGMAS))["RL6"]["status"] == NA
 
 
+class TestStopBreachOnSkippedDays:
+    """KIK-766: 前回チェック以降の全営業日を見る.
+
+    最新終値だけを見ると「火曜に割って水曜に戻した」を取りこぼす。
+    ストップは日々の終値に対する規則なので、間の日も判定対象。
+    日次チェックを毎日回せるとは限らない以上、ここを塞がないと
+    「回した日はたまたま戻っていた」で規則が空振りする。
+    """
+
+    STOPS = {"6701.T": {"stop": 4609.0, "closed": False},
+             "7453.T": {"stop": None, "closed": False}}
+    SIGMAS = {"6701.T": 3.03}
+    HIST = {"6701.T": [("2026-08-17", 4786.0), ("2026-08-18", 4500.0),
+                       ("2026-08-19", 4700.0)]}
+
+    def test_breach_on_a_skipped_day_is_caught(self):
+        got = _by_id(check_stop_breach({"6701.T": 4700.0}, self.STOPS, self.SIGMAS,
+                                       histories=self.HIST, since="2026-08-17"))["RL6"]
+        assert got["status"] == FAIL
+        assert "2026-08-18" in got["detail"] and "見逃し" in got["detail"]
+
+    def test_without_since_keeps_the_old_behaviour(self):
+        """後方互換。histories/since を渡さなければ最新終値だけを見る."""
+        got = _by_id(check_stop_breach({"6701.T": 4700.0}, self.STOPS,
+                                       self.SIGMAS))["RL6"]
+        assert got["status"] == WARN          # 4,700 は 0.64σ
+
+    def test_bars_on_or_before_since_are_not_rechecked(self):
+        """前回チェック済みの日を蒸し返さない（since より後だけ見る）."""
+        hist = {"6701.T": [("2026-08-17", 4500.0), ("2026-08-18", 4700.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4700.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == WARN
+        assert "見逃し" not in got["detail"]
+
+    def test_multiple_skipped_breaches_report_the_worst(self):
+        hist = {"6701.T": [("2026-08-18", 4550.0), ("2026-08-19", 4400.0),
+                           ("2026-08-20", 4700.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4700.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert "4,400" in got["detail"] and "2日" in got["detail"]
+
+    def test_current_breach_is_not_double_reported(self):
+        """今日も抵触しているなら通常の抵触として出す。二重に言わない."""
+        hist = {"6701.T": [("2026-08-18", 4500.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4500.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == FAIL
+        assert "見逃し" not in got["detail"]
+
+    def test_exempt_symbol_is_not_scanned(self):
+        """免除銘柄は履歴を見ない（ストップが無いので抵触の概念がない）."""
+        hist = {"7453.T": [("2026-08-18", 1.0)]}
+        got = _by_id(check_stop_breach({"7453.T": 4345.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == PASS and "免除" in got["detail"]
+
+    def test_history_without_since_is_ignored(self):
+        """since が無ければ走査しない。全期間を蒸し返すと毎日 FAIL になる."""
+        got = _by_id(check_stop_breach({"6701.T": 4700.0}, self.STOPS, self.SIGMAS,
+                                       histories=self.HIST))["RL6"]
+        assert got["status"] == WARN
+
+
 class TestFollowthrough:
     def test_the_aisin_incident(self):
         """7/28に『8/3に再評価』と書いて実行しなかった件。"""

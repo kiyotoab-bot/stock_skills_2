@@ -272,7 +272,9 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_stop_sigma(dist) + CR.check_followthrough(notes)
           + CR.check_cooldown(excluded_dates=...)
           + CR.check_order(sym, info, rev, margin, cap)
-          + CR.check_stop_breach(prices, get_stop_levels(), sigmas)   # ← 日次で必須
+          + CR.check_stop_breach(prices, get_stop_levels(), sigmas,
+                                 histories=hist,               # {sym: [(date, close), ...]}
+                                 since=CR.latest_review_date())  # ← 日次で必須
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
 summary = CR.run_review(checks, llm_context=review_prompt)
@@ -282,24 +284,42 @@ summary = CR.run_review(checks, llm_context=review_prompt)
 ```
 
 ⚠️ **`check_stop_breach()`（RL6）は日次チェックで必ず入れる。**
-2026-08-17 のユーザー判断で **逆指値を証券会社に置かない**ことになった。
-ストップは注文ではなく**判断**になり、日次チェックが報告して初めて機能する。
-日次を1日飛ばすと、その日は無保護になる。
 
 | 判定 | 条件 | 出力で言うこと |
 |:---|:---|:---|
-| 🔴 FAIL | 終値 <= ストップ | **翌営業日の寄成で成行売り**を指示する |
+| 🔴 FAIL | 終値 <= ストップ | 執行状況を確認する（注文が入っていれば約定済みのはず） |
+| 🔴 FAIL | **前回チェック以降に一度でも抵触**（KIK-766） | 現値が戻っていても**規則上は抵触済み**。扱いを判断する |
 | ⚠ WARN | 距離が 1.0日σ以内 | 1日のノイズで届く。翌日の寄りに注意を促す |
 | 🟢 PASS | それ以外 | — |
+
+⚠️ **`since` を渡さないと、飛ばした日の抵触を取りこぼす**（KIK-766）。
+最新終値しか見ないので「火曜に割って水曜に戻す」を水曜だけ見ると PASS になる。
+実際にその挙動を確認して塞いだ。`since=CR.latest_review_date()` を渡し、
+`histories` に前回チェック以降を含む終値系列を入れること。
+**日次を毎日回せるとは限らない以上、ここを塞がないと規則が空振りする。**
 
 ⚠️ **全green でも保有全銘柄の表を出す**（`detail` に全件入る）。
 異常時だけ出す形にすると「今日は表が無い＝見ていない」と区別がつかない。
 免除銘柄（conviction_override）は「免除」と明記し、黙って落とさない。
 手仕舞い済み（KIK-764 の `closed`）は監視対象外で、旧ストップでは判定しない。
 
-⚠️ 判定は**終値ベース**（ザラ場のヒゲでは執行しない）。証券会社に注文が無い以上、
-場中トリガーは使えない。実測では終値判定＋翌寄成は下位1%が
-¥42,049 → ¥9,765 に悪化する（6701.T・40,000経路）。承知のうえの運用。
+**発注状況と RL6 の役割（2026-08-17 に方針が2回動いた。最終はこちら）**
+
+同日の経緯: 発注指示書を作成 →「発注しない・手動監視」に変更 → **最終的にユーザーが発注**。
+古い note（`manual-stop-watch-2026-08-17`）に「発注しない」と書いてあるが、
+**後から発注しているのでそちらが有効**。
+
+| | 逆指値を置いている（現状） | 置いていない場合 |
+|:---|:---|:---|
+| 執行 | **場中トリガー・成行**（証券会社が執行） | 終値判定 → 翌営業日の寄成 |
+| RL6 の役割 | 注文が生きているかの確認・切り上げ余地の検出 | **唯一の安全網**。1日飛ばすと無保護 |
+| 実測の下位1%（6701.T・40,000経路・税引後） | **¥42,049** | ¥9,765 |
+
+⚠️ **ストップを切り上げたら「新規発注」ではなく「訂正」**で行う。
+取消→新規だと、その間だけ無保護になる。訂正のたびに注文一覧の実物で突合し
+`note_type="order-check"` を残す（PO9）。
+⚠️ 抵触して約定したら `save_trade(..., limit_exempt=True, exempt_reason="stop-loss ...")`
+で記録する（KIK-763。月次上限の枠外になる）。
 
 | 段階 | 内容 | 条件 |
 |:---|:---|:---|
