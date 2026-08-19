@@ -104,6 +104,8 @@ Data (src/data/)
   band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
   margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
   stop_formula.py — ストップ統一式とトレーリング判定（切り下げはしない）
+                    ボラ基準の現値は直近3日平均（KIK-768。毎日の終値ノイズで
+                    ラチェットが積み上がり、ストップが株価に収束するのを防ぐ）
   reit_metrics.py — J-REIT の NAV倍率・LTV・分配金利回り（株式の指標は当てない）
   data_freshness.py — 価格データの基準日検証（DQ4のゲート。計算前に通す）
 
