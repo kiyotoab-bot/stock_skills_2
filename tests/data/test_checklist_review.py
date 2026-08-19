@@ -294,6 +294,62 @@ class TestStopBreachOnSkippedDays:
         assert got["status"] == WARN
 
 
+class TestStopBreachIntraday:
+    """KIK-767: ザラ場でトリガーに触れたか（逆指値を置いている場合の本命）.
+
+    2026-08-19 に 6701.T が安値 ¥4,551 でトリガー ¥4,609 に触れて約定したのに、
+    終値 ¥4,662 で戻したため RL6 は PASS を返していた。
+    注文を置いている以上、見るべきはザラ場。
+    """
+
+    STOPS = {"6701.T": {"stop": 4609.0, "closed": False},
+             "7453.T": {"stop": None, "closed": False}}
+    SIGMAS = {"6701.T": 3.03}
+
+    def test_the_2026_08_19_case(self):
+        """安値でトリガー到達・終値は戻す。実際に取りこぼした形."""
+        hist = {"6701.T": [("2026-08-18", 4650.0, 4650.0),
+                           ("2026-08-19", 4662.0, 4551.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4662.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == FAIL
+        assert "ザラ場" in got["detail"] and "4,551" in got["detail"]
+        assert "約定済みのはず" in got["detail"]
+
+    def test_two_tuple_history_keeps_the_old_behaviour(self):
+        """安値を渡さなければ終値だけを見る（後方互換）."""
+        hist = {"6701.T": [("2026-08-19", 4662.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4662.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == WARN
+        assert "ザラ場" not in got["detail"]
+
+    def test_low_above_trigger_does_not_fire(self):
+        hist = {"6701.T": [("2026-08-19", 4700.0, 4650.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4700.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == WARN and "ザラ場" not in got["detail"]
+
+    def test_lows_argument_covers_the_current_bar(self):
+        """histories を組まなくても当日の安値だけで判定できる."""
+        got = _by_id(check_stop_breach({"6701.T": 4662.0}, self.STOPS, self.SIGMAS,
+                                       lows={"6701.T": 4551.0}))["RL6"]
+        assert got["status"] == FAIL and "(当日)" in got["detail"]
+
+    def test_exempt_symbol_is_not_scanned_intraday(self):
+        hist = {"7453.T": [("2026-08-19", 4242.0, 1.0)]}
+        got = _by_id(check_stop_breach({"7453.T": 4242.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert got["status"] == PASS and "免除" in got["detail"]
+
+    def test_multiple_touches_report_the_worst(self):
+        hist = {"6701.T": [("2026-08-18", 4620.0, 4600.0),
+                           ("2026-08-19", 4662.0, 4551.0)]}
+        got = _by_id(check_stop_breach({"6701.T": 4662.0}, self.STOPS, self.SIGMAS,
+                                       histories=hist, since="2026-08-17"))["RL6"]
+        assert "4,551" in got["detail"] and "2日" in got["detail"]
+
+
 class TestFollowthrough:
     def test_the_aisin_incident(self):
         """7/28に『8/3に再評価』と書いて実行しなかった件。"""
@@ -319,6 +375,40 @@ class TestFollowthrough:
 
     def test_empty_is_pass(self):
         assert _by_id(check_followthrough([], TODAY))["FT1"]["status"] == PASS
+
+    # --- KIK-767: 済んだ項目を閉じられるようにする ---
+
+    DONE = [{"id": "t1", "type": "target", "symbol": "6701.T",
+             "trigger": "2026-08-03 に発注", "expected_action": "逆指値を出す"}]
+
+    def test_resolves_closes_the_item(self):
+        """閉じる手段が無いと期限到来後は永久 WARN。恒久ノイズは無視される."""
+        notes = self.DONE + [{"id": "o1", "type": "observation",
+                              "resolves": "t1", "content": "発注した"}]
+        assert _by_id(check_followthrough(notes, TODAY))["FT1"]["status"] == PASS
+
+    def test_unresolved_item_still_warns(self):
+        assert _by_id(check_followthrough(self.DONE, TODAY))["FT1"]["status"] == WARN
+
+    def test_only_the_referenced_item_is_closed(self):
+        notes = self.DONE + [
+            {"id": "t2", "type": "target", "symbol": "X.T", "trigger": "2026-08-03 に別件"},
+            {"id": "o1", "type": "observation", "resolves": "t1", "content": "発注した"},
+        ]
+        got = _by_id(check_followthrough(notes, TODAY))["FT1"]
+        assert got["status"] == WARN
+        assert "X.T" in got["detail"] and "6701.T" not in got["detail"]
+
+    def test_resolves_pointing_nowhere_is_harmless(self):
+        notes = self.DONE + [{"id": "o1", "type": "observation",
+                              "resolves": "does-not-exist"}]
+        assert _by_id(check_followthrough(notes, TODAY))["FT1"]["status"] == WARN
+
+    def test_the_target_note_itself_is_kept(self):
+        """resolves は『やった』の記録。予定が存在した事実は消さない."""
+        notes = self.DONE + [{"id": "o1", "type": "observation", "resolves": "t1"}]
+        check_followthrough(notes, TODAY)
+        assert any(n.get("id") == "t1" for n in notes)
 
 
 class TestCooldown:
