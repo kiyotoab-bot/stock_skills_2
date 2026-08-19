@@ -466,3 +466,47 @@ class TestFollowthroughCanActuallyFire:
         r = check_followthrough(load_notes(base_dir=str(tmp_path)),
                                 today=datetime.date(2026, 12, 31))[0]
         assert r["status"] == "PASS"
+
+    # --- KIK-767: resolves で済んだ target を閉じる ---
+
+    def test_resolves_closes_an_overdue_target(self, tmp_path):
+        """FT1 に完了を伝える手段が無く、期限到来後は永久 WARN だった."""
+        import datetime
+        from src.data.checklist_review import check_followthrough
+        from src.data.note_manager import load_notes
+
+        t = save_note("9104.T", "target", "9月に発注する", base_dir=str(tmp_path),
+                      trigger="2026-09-07 以降", expected_action="発注する")
+        after = datetime.date(2026, 9, 8)
+        assert check_followthrough(load_notes(base_dir=str(tmp_path)),
+                                   today=after)[0]["status"] == "WARN"
+
+        save_note("9104.T", "observation", "発注した。約定 @6,500",
+                  base_dir=str(tmp_path), resolves=t["id"])
+        assert check_followthrough(load_notes(base_dir=str(tmp_path)),
+                                   today=after)[0]["status"] == "PASS"
+
+    def test_resolves_is_persisted_and_reloadable(self, tmp_path):
+        from src.data.note_manager import load_notes
+
+        save_note("X.T", "observation", "やった", base_dir=str(tmp_path),
+                  resolves="note_2026-08-17_abc")
+        got = [n for n in load_notes(base_dir=str(tmp_path)) if n.get("resolves")]
+        assert len(got) == 1 and got[0]["resolves"] == "note_2026-08-17_abc"
+
+    def test_resolves_rejected_for_exit_rule(self, tmp_path):
+        """使えない種別に渡したら黙って捨てず ValueError（KIK-757 の方針）."""
+        with pytest.raises(ValueError, match="resolves"):
+            save_note("X.T", "exit-rule", "本文", base_dir=str(tmp_path),
+                      stop_loss="100", resolves="note_x")
+
+    def test_the_target_note_survives_being_resolved(self, tmp_path):
+        """閉じても予定が存在した事実は履歴に残す."""
+        from src.data.note_manager import load_notes
+
+        t = save_note("Y.T", "target", "予定", base_dir=str(tmp_path),
+                      trigger="2026-08-03 に実行")
+        save_note("Y.T", "observation", "実行した", base_dir=str(tmp_path),
+                  resolves=t["id"])
+        ids = {n["id"] for n in load_notes(base_dir=str(tmp_path))}
+        assert t["id"] in ids

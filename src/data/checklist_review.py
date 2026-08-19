@@ -133,46 +133,58 @@ def check_stop_breach(prices: dict[str, float],
                       stop_levels: dict[str, dict],
                       sigmas: Optional[dict[str, float]] = None,
                       histories: Optional[dict[str, list]] = None,
-                      since: Optional[str] = None) -> list[dict]:
-    """RL6: 終値がストップに抵触していないか（KIK-765 / KIK-766）.
+                      since: Optional[str] = None,
+                      lows: Optional[dict[str, float]] = None) -> list[dict]:
+    """RL6: ストップに抵触していないか（KIK-765 / KIK-766 / KIK-767）.
 
-    2026-08-17 のユーザー判断で **逆指値を証券会社に置かない**ことになった。
-    ストップは注文ではなく判断になり、日次チェックが報告して初めて機能する。
-    報告し忘れを潰すため、``run_review()`` を通して毎回 ``data/reviews/`` に残す。
+    ストップは日次チェックが報告して初めて機能する。報告し忘れを潰すため、
+    ``run_review()`` を通して毎回 ``data/reviews/`` に残す。
 
-    ⚠️ **前回チェック以降の全営業日を見る**（KIK-766）。最新終値だけを見ると、
-    飛ばした日に抵触して翌日戻したケースを取りこぼす。実際に
-    「火曜 4,500（抵触）→ 水曜 4,700（戻す）」を水曜だけ見ると PASS になっていた。
-    ストップは日々の終値に対する規則なので、**間の日も判定対象**である。
+    ⚠️ **判定が2種類ある。混同しない**（KIK-767）:
+
+    ========  ====================  ==================================
+    見る値    意味                  どちらが効くか
+    ========  ====================  ==================================
+    ザラ場安値  逆指値が**発動**した   証券会社に注文を置いている場合
+    終値        規則上の**抵触**       注文が無く終値判定で運用する場合
+    ========  ====================  ==================================
+
+    2026-08-19 に 6701.T が **ザラ場安値 ¥4,551 でトリガー ¥4,609 に触れて約定**
+    したのに、終値は ¥4,662 で戻したため RL6 は PASS を返していた。
+    注文を置いている以上、**見るべきはザラ場**である。安値を渡すこと。
+
+    ⚠️ **前回チェック以降の全営業日を見る**（KIK-766）。最新バーだけを見ると、
+    飛ばした日の抵触を取りこぼす。
 
     Parameters
     ----------
     prices
-        ``{symbol: 終値}``。**保有銘柄だけ**を渡す。判定は終値ベース
-        （ザラ場のヒゲでは執行しない。2026-08-04 からの運用）。
+        ``{symbol: 終値}``。**保有銘柄だけ**を渡す。
     stop_levels
         ``note_manager.get_stop_levels()`` の結果。``closed`` は監視対象外、
         ``stop is None``（conviction_override 等）は免除として数える。
     sigmas
         ``{symbol: 日次σ%}``。あれば「1日のノイズで届く距離か」を WARN で出す。
     histories
-        ``{symbol: [(date_str, close), ...]}``（古い順）。``since`` と併せて渡すと
-        その期間の**すべての終値**を抵触判定にかける。
+        ``{symbol: [(date, close), ...]}`` または ``[(date, close, low), ...]``
+        （古い順）。3要素で渡すと**安値でも判定する**。``since`` と併用する。
     since
         この日付より**後**のバーを見る。``latest_review_date()`` を渡すと
-        「前回チェック以降」になる。省略すると最新終値だけを見る（従来動作）。
+        「前回チェック以降」になる。省略すると最新バーだけを見る（従来動作）。
+    lows
+        ``{symbol: 当日の安値}``。``histories`` を使わないときの簡易指定。
 
     Returns
     -------
     list[dict]
-        抵触があれば FAIL、1.0日σ以内があれば WARN、どちらも無ければ PASS。
+        発動・抵触があれば FAIL、1.0日σ以内があれば WARN、どちらも無ければ PASS。
         ``detail`` には**全銘柄**の距離を載せる。異常時だけ出す形にすると、
         「今日は表が無い＝見ていない」と区別がつかない。
     """
     if not prices:
         return [_result("RL6", NA, "保有なし")]
 
-    breached, near, ok, exempt, past = [], [], [], [], []
+    breached, near, ok, exempt, past, fired = [], [], [], [], [], []
     for sym, px in sorted(prices.items()):
         info = stop_levels.get(sym) or {}
         if info.get("closed"):
@@ -188,10 +200,23 @@ def check_stop_breach(prices: dict[str, float],
         if mult is not None:
             label += f"({mult:.2f}σ)"
 
-        # 飛ばした日の抵触（最新終値では戻っていても見逃さない）
-        if histories and since:
-            hits = [(d, c) for d, c in (histories.get(sym) or [])
-                    if d and d > since and c is not None and c <= stop]
+        bars = [b for b in (histories or {}).get(sym) or []
+                if since and b and b[0] and b[0] > since]
+
+        # ザラ場でトリガーに触れたか = 逆指値なら**発動している**（KIK-767）
+        touches = [(b[0], b[2]) for b in bars if len(b) > 2
+                   and b[2] is not None and b[2] <= stop]
+        today_low = (lows or {}).get(sym)
+        if today_low is not None and today_low <= stop:
+            touches.append(("(当日)", today_low))
+        if touches:
+            worst = min(touches, key=lambda x: x[1])
+            fired.append(f"{sym} {worst[0]} 安値{worst[1]:,.0f}<=trigger{stop:,.0f}"
+                         f"（{len(touches)}日）")
+
+        # 終値ベースの抵触。飛ばした日も見る（KIK-766）
+        if bars:
+            hits = [(b[0], b[1]) for b in bars if b[1] is not None and b[1] <= stop]
             if hits and (dist is None or dist > 0):
                 worst = min(hits, key=lambda x: x[1])
                 past.append(f"{sym} {worst[0]} 終値{worst[1]:,.0f}<=stop{stop:,.0f}"
@@ -205,10 +230,13 @@ def check_stop_breach(prices: dict[str, float],
             ok.append(label)
 
     parts = []
+    if fired:
+        parts.append("🔴ザラ場でトリガー到達 " + " / ".join(fired)
+                     + " → 逆指値を置いているなら**約定済みのはず**。口座を確認する")
     if breached:
-        parts.append("🔴抵触 " + " / ".join(breached) + " → 翌営業日の寄成で成行売り")
+        parts.append("🔴終値抵触 " + " / ".join(breached) + " → 注文が無ければ翌営業日の寄成で成行売り")
     if past:
-        parts.append("🔴見逃し抵触(前回チェック以降) " + " / ".join(past)
+        parts.append("🔴見逃し抵触(前回チェック以降・終値) " + " / ".join(past)
                      + " → 現値は戻っているが**規則上は抵触済み**。執行するか判断する")
     if near:
         parts.append("⚠1σ以内 " + " / ".join(near))
@@ -217,7 +245,7 @@ def check_stop_breach(prices: dict[str, float],
     if exempt:
         parts.append("免除 " + ", ".join(exempt))
 
-    status = FAIL if (breached or past) else (WARN if near else PASS)
+    status = FAIL if (fired or breached or past) else (WARN if near else PASS)
     return [_result("RL6", status, " | ".join(parts) or "監視対象なし")]
 
 
@@ -234,11 +262,28 @@ def check_followthrough(
     2026-07-28 に「7259.T を 8/3 に再評価」と記録しながら実行せず、
     その未実行のまま 8/3 に約定した。予定を書くだけで実行しないと、
     **その予定を前提に意思決定が進む**。
+
+    ⚠️ **済んだ項目は閉じられる**（KIK-767）。別のノートに ``resolves`` として
+    target の id を書くと、その項目は overdue から外れる。
+
+        save_note(note_type="observation", resolves="note_2026-08-17_portfolio_xxxx",
+                  content="発注した。約定は ...")
+
+    閉じる手段が無いと、期限が来た項目は**永久に WARN のまま**になる。
+    恒久ノイズになれば無視されるようになり、FT1 を作った目的そのものが失われる。
+    実際 2026-08-19 に、発注済みの指示書が WARN として残り続けていた。
+    ストップ台帳（KIK-764）と同じ「閉じる手段が無い」構造だった。
+
+    ⚠️ ノートは消さない。``resolves`` は「やった」の記録であって、
+    予定が存在した事実は履歴に残す。
     """
     today = today or datetime.date.today()
+    resolved = {str(n.get("resolves")) for n in notes if n.get("resolves")}
     overdue = []
     for n in notes:
         if n.get("type") != "target":
+            continue
+        if str(n.get("id")) in resolved:
             continue
         text = " ".join(str(n.get(k) or "") for k in ("trigger", "expected_action"))
         if not text.strip():

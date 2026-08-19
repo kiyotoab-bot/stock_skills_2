@@ -40,6 +40,9 @@ _FIELD_TYPES = {
     "thesis_status":      {"thesis"},
     "conviction_override": {"thesis"},
     "override_reason":    {"thesis"},
+    # KIK-767: 済んだ target を閉じる。どの note_type からでも閉じられる
+    # （実行の記録は observation にも lesson にもなるため）
+    "resolves":           {"observation", "lesson", "target", "review", "thesis"},
 }
 
 
@@ -67,6 +70,8 @@ def save_note(
     thesis_status: Optional[str] = None,  # active / attention / review_needed
     conviction_override: Optional[bool] = None,
     override_reason: Optional[str] = None,
+    # KIK-767: 済んだ target の id を入れると FT1 がその項目を閉じる
+    resolves: Optional[str] = None,
 ) -> dict:
     """Save a note to JSON file and Neo4j.
 
@@ -145,6 +150,7 @@ def save_note(
         "key_kpis": key_kpis, "sell_triggers": sell_triggers,
         "hold_conditions": hold_conditions, "thesis_status": thesis_status,
         "conviction_override": conviction_override, "override_reason": override_reason,
+        "resolves": resolves,
     }
     rejected = [
         f"{k}（{note_type} では保存されない。"

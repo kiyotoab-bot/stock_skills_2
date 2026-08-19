@@ -273,7 +273,7 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_cooldown(excluded_dates=...)
           + CR.check_order(sym, info, rev, margin, cap)
           + CR.check_stop_breach(prices, get_stop_levels(), sigmas,
-                                 histories=hist,               # {sym: [(date, close), ...]}
+                                 histories=hist,   # {sym: [(date, close, low), ...]} ← 安値を入れる
                                  since=CR.latest_review_date())  # ← 日次で必須
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
@@ -285,9 +285,21 @@ summary = CR.run_review(checks, llm_context=review_prompt)
 
 ⚠️ **`check_stop_breach()`（RL6）は日次チェックで必ず入れる。**
 
+**判定は2種類ある。混同しない**（KIK-767）:
+
+| 見る値 | 意味 | どちらが効くか |
+|:---|:---|:---|
+| **ザラ場安値** | 逆指値が**発動**した | **証券会社に注文を置いている場合（現状）** |
+| 終値 | 規則上の**抵触** | 注文が無く終値判定で運用する場合 |
+
+⚠️ **注文を置いている以上、見るべきはザラ場。`histories` に安値を入れること。**
+2026-08-19 に 6701.T が **ザラ場安値 ¥4,551 でトリガー ¥4,609 に触れて約定**したのに、
+終値は ¥4,662 に戻したため RL6 は PASS を返していた。**発動を検知できていなかった。**
+
 | 判定 | 条件 | 出力で言うこと |
 |:---|:---|:---|
-| 🔴 FAIL | 終値 <= ストップ | 執行状況を確認する（注文が入っていれば約定済みのはず） |
+| 🔴 FAIL | **ザラ場安値 <= トリガー**（KIK-767） | **逆指値を置いているなら約定済みのはず。口座を確認する** |
+| 🔴 FAIL | 終値 <= ストップ | 注文が無ければ翌営業日の寄成で成行売り |
 | 🔴 FAIL | **前回チェック以降に一度でも抵触**（KIK-766） | 現値が戻っていても**規則上は抵触済み**。扱いを判断する |
 | ⚠ WARN | 距離が 1.0日σ以内 | 1日のノイズで届く。翌日の寄りに注意を促す |
 | 🟢 PASS | それ以外 | — |
@@ -373,6 +385,20 @@ summary = CR.run_review(checks, llm_context=review_prompt)
 実行しないまま、その予定を前提に意思決定が進んだ**事例が実際に起きている
 （7/28に「7259.Tを8/3に再評価」と記録 → 未実行のまま8/3に約定）。
 `load_notes(note_type="target")` の `trigger` / `expected_action` を日付で洗うこと。
+
+⚠️ **済んだ項目は必ず閉じる**（KIK-767）。別のノートに `resolves` として target の id を書く。
+
+```python
+save_note(note_type="observation", resolves=target_note_id,
+          content="発注した。約定 @4,609.1 ×100株")
+```
+
+閉じないと、期限が来た項目は**永久に WARN のまま**になる。恒久ノイズになれば
+無視されるようになり、FT1 を作った目的そのものが失われる。実際 2026-08-19 に、
+**発注済みの指示書が WARN として残り続けていた**。
+ストップ台帳（KIK-764）と同じ「閉じる手段が無い」構造だった。
+
+⚠️ ノートは消さない。`resolves` は「やった」の記録であって、予定が存在した事実は履歴に残す。
 
 ## Execution
 
