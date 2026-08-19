@@ -28,12 +28,25 @@ SIGMA_WINDOW = 20            # σ_h60 の h は 20日ホライズン
 SIGMA_LOOKBACK = 60          # 日次σ の推定に使う本数
 PHASE_HIGH_LOOKBACK = 60     # 局面高値の窓
 
+# ボラ基準に使う「現値」を直近 N 日の平均にする（KIK-768 / 2026-08-19 ユーザー判断）
+#
+# ラチェットは上げるだけなので、毎日の終値ノイズに反応すると**上げだけが積み上がり**、
+# ストップが株価に収束していく。実際 6701.T は 8営業日で 4,091 → 4,609（+12.7%）まで
+# 上がり、設計の 3.8σ に対し **0.37σ** の距離になったところで平常の押しに刈られた。
+#
+# 実測（12銘柄・1年・1,075日）: 上昇日の翌5営業日で -3%超下げる割合は
+# 0.5σ未満で45% / 2σ超で46% と**上昇の大きさによらずほぼ一定**。
+# つまり「大きな上昇日の終値だけ信用できない」わけではなく、
+# **終値は毎日ぶれる**というだけ。だからスパイク日を除外するのではなく平滑化する。
+ANCHOR_SMOOTH = 3
+
 
 def calc_stop(
     closes: Sequence[float],
     book_value: float,
     sigma_lookback: int = SIGMA_LOOKBACK,
     phase_high_lookback: int = PHASE_HIGH_LOOKBACK,
+    anchor_smooth: int = ANCHOR_SMOOTH,
 ) -> dict:
     """統一式でストップを算定する。
 
@@ -46,6 +59,9 @@ def calc_stop(
         現値に連動して意味を失う。購入前の算定は仮の値であり、
         発注日に簿価で引き直すこと（concentration の
         conviction_provisional 判定を参照）。
+    anchor_smooth : int
+        ボラ基準に使う「現値」を直近 N 日の平均にする（KIK-768。既定 3）。
+        1 を渡すと従来どおり当日終値。σ と局面高値は平滑しない。
 
     Returns
     -------
@@ -53,14 +69,20 @@ def calc_stop(
         stop            : float | None
         hard_floor      : 簿価×0.85
         phase_high_base : 局面高値×0.92
-        vol_base        : 現値×(1-0.85σ)
+        vol_base        : **平滑アンカー**×(1-0.85σ)
+        anchor          : ボラ基準に使った平滑値
+        anchor_smooth   : 使った平滑日数
         binding         : "hard" | "phase_high" | "vol" — どれが効いたか
         current_price / phase_high / daily_sigma_pct / distance_pct / distance_sigma
         label           : 人間可読1行
+
+    ``current_price`` は**当日終値のまま**（距離の表示に使う）。
+    平滑値は ``anchor`` で別に返す。混ぜると「今いくらか」が読めなくなる。
     """
     _na = {
         "stop": None, "hard_floor": None, "phase_high_base": None, "vol_base": None,
-        "binding": None, "current_price": None, "phase_high": None,
+        "binding": None, "current_price": None, "anchor": None, "anchor_smooth": None,
+        "phase_high": None,
         "daily_sigma_pct": None, "distance_pct": None, "distance_sigma": None,
         "label": "データ不足",
     }
@@ -76,9 +98,15 @@ def calc_stop(
     sigma = statistics.pstdev(rets[-sigma_lookback:])
     phase_high = max(closes[-phase_high_lookback:])
 
+    # ボラ基準のアンカーだけ平滑化する（KIK-768）。
+    # σ と局面高値は生の終値のまま: σ は平滑すると過小評価になり、
+    # 高値は「実際につけた値」であって平均する意味がない。
+    n = max(1, min(int(anchor_smooth or 1), len(closes)))
+    anchor = sum(float(x) for x in closes[-n:]) / n
+
     hard = book_value * HARD_FLOOR_RATIO
     phase_base = phase_high * PHASE_HIGH_RATIO
-    vol_base = price * (1 - SIGMA_MULTIPLIER * sigma * (SIGMA_WINDOW ** 0.5))
+    vol_base = anchor * (1 - SIGMA_MULTIPLIER * sigma * (SIGMA_WINDOW ** 0.5))
 
     inner = min(phase_base, vol_base)
     stop = max(hard, inner)
@@ -97,6 +125,8 @@ def calc_stop(
         "vol_base": round(vol_base),
         "binding": binding,
         "current_price": price,
+        "anchor": round(anchor, 1),
+        "anchor_smooth": n,
         "phase_high": phase_high,
         "daily_sigma_pct": round(sigma * 100, 2),
         "distance_pct": round(dist_pct, 2),
