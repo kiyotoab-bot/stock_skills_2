@@ -275,6 +275,7 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_stop_breach(prices, get_stop_levels(), sigmas,
                                  histories=hist,   # {sym: [(date, close, low), ...]} ← 安値を入れる
                                  since=CR.latest_review_date())  # ← 日次で必須
+          + CR.check_holding_age(positions, notes)   # ← 週次/月次で必須（KIK-770）
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
 summary = CR.run_review(checks, llm_context=review_prompt)
@@ -358,9 +359,38 @@ t["raise_worth_it"]  # 実行に値するか（MIN_RAISE_GAIN_YEN = ¥3,000 以�
 ⚠️ 抵触して約定したら `save_trade(..., limit_exempt=True, exempt_reason="stop-loss ...")`
 で記録する（KIK-763。月次上限の枠外になる）。
 
+**時間軸の出口 — HD1 / HD2（KIK-770 / 2026-08-24 ユーザー判断）**
+
+中長期枠 core には**時間軸の出口が無かった**。短期枠 tactical には `max_hold_weeks 8` が
+あるのに、core の出口はストップ（価格が下がったら）とテーゼ崩壊（業績が壊れたら）だけで、
+**「〇年持って報われなければ見直す」経路が存在しなかった**。
+その結果 **塩漬けと長期保有を機械的に区別できない**。
+
+```python
+CR.check_holding_age(positions, notes)   # 既定 HOLDING_REVIEW_YEARS = 3
+```
+
+| ID | 判定 | 内容 |
+|:---|:---|:---|
+| HD1 | 取得から3年経過した銘柄の**強制再判定** | 期日超過で WARN。取得日不明も WARN |
+| HD2 | `sell_triggers` の欠落 | テーゼ崩壊の定義が無い銘柄を WARN |
+
+- **保有期限ではない。売却は強制しない。** 期日に「持ち続ける理由を書き直す」だけ
+- 再判定は**期日より後の `thesis` ノート**を書くことで閉じる（期日前の thesis は取得時のものなので閉じない）
+- `conviction_override` は HD1 を**免除するが、免除した事実を出力に明示する**。
+  黙って落とすと設定漏れと見分けがつかない（RL6 と同じ方針）
+- ⚠️ **HD2 は `conviction_override` でも免除しない。** 無条件保有でも
+  「何をもってテーゼが死んだとするか」は要る。免除するのは期日であって定義ではない
+- `sell_triggers` は `thesis` / `target` どちらのノートにあってもよい
+  （7751.T は売り上がり計画＝`target` に書いてある）
+
+⚠️ **N=3年にしたので、この仕組みは 2028-09 まで一度も発火しない**
+（現保有の最古が 7453.T の 2025-09-04）。**当面の実効はすべて HD2 側にある。**
+「入れたから安心」と読まないこと。
+
 | 段階 | 内容 | 条件 |
 |:---|:---|:---|
-| 1 | 機械的チェック（12項目） | **常に実行** |
+| 1 | 機械的チェック（DQ / RL / FT / PO / HD / REVIEW の全項目） | **常に実行** |
 | 2 | 外部LLMによる独立レビュー | 実際に叩いて使えたときだけ |
 | 3 | `data/reviews/` への記録 | **1でも2でも必ず** |
 

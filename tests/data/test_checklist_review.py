@@ -20,6 +20,7 @@ from src.data.checklist_review import (
     check_followthrough,
     check_order,
     check_pf_tier,
+    check_holding_age,
     check_stop_breach,
     check_stop_sigma,
     summarize,
@@ -690,3 +691,86 @@ class TestRunReview:
         from src.data import checklist_review as CR
         src = inspect.getsource(CR.llm_availability)
         assert 'provider == "claude"' in src
+
+
+class TestHoldingAge:
+    """KIK-770: 中長期枠の時間軸の出口（2026-08-24 ユーザー判断・3年サイクル）.
+
+    短期枠 tactical には max_hold_weeks 8 があるのに、中長期 core には
+    時間軸の出口が一切無かった。ストップは「価格が下がったら」、テーゼは
+    「業績が壊れたら」の出口で、「〇年持って報われなければ見直す」経路が無く、
+    **塩漬けと長期保有を区別できなかった**。
+
+    ⚠️ 保有期限ではなく強制再判定。売却は強制しない。
+    """
+
+    POS = [{"symbol": "A.T", "purchase_date": "2020-01-15"},
+           {"symbol": "B.T", "purchase_date": "2026-06-22"}]
+    TODAY = datetime.date(2026, 8, 24)
+
+    def test_default_cycle_is_three_years(self):
+        from src.data.checklist_review import HOLDING_REVIEW_YEARS
+        assert HOLDING_REVIEW_YEARS == 3
+
+    def test_overdue_holding_warns(self):
+        got = _by_id(check_holding_age(self.POS, [], self.TODAY))
+        assert got["HD1"]["status"] == WARN
+        assert "A.T" in got["HD1"]["detail"] and "再判定が必要" in got["HD1"]["detail"]
+
+    def test_within_cycle_shows_the_next_date(self):
+        got = _by_id(check_holding_age([self.POS[1]], [], self.TODAY))
+        assert got["HD1"]["status"] == PASS
+        assert "2029-06-22" in got["HD1"]["detail"]
+
+    def test_thesis_after_the_due_date_closes_it(self):
+        """再判定は thesis ノートを書くことで完了とみなす."""
+        notes = [{"symbol": "A.T", "type": "thesis", "date": "2024-05-01"}]
+        got = _by_id(check_holding_age([self.POS[0]], notes, self.TODAY))
+        assert got["HD1"]["status"] == PASS and "再判定済み" in got["HD1"]["detail"]
+
+    def test_thesis_before_the_due_date_does_not_close_it(self):
+        """期日より前の thesis では閉じない（取得時に書いたものが該当する）."""
+        notes = [{"symbol": "A.T", "type": "thesis", "date": "2020-01-20"}]
+        got = _by_id(check_holding_age([self.POS[0]], notes, self.TODAY))
+        assert got["HD1"]["status"] == WARN
+
+    def test_conviction_override_is_exempt_but_named(self):
+        """黙って落とさない。設定漏れと見分けがつかなくなる（RL6 と同じ方針）."""
+        notes = [{"symbol": "A.T", "type": "thesis", "date": "2020-02-01",
+                  "conviction_override": True}]
+        got = _by_id(check_holding_age([self.POS[0]], notes, self.TODAY))
+        assert got["HD1"]["status"] == PASS
+        assert "免除" in got["HD1"]["detail"] and "A.T" in got["HD1"]["detail"]
+
+    def test_missing_purchase_date_is_flagged(self):
+        got = _by_id(check_holding_age([{"symbol": "X.T"}], [], self.TODAY))
+        assert got["HD1"]["status"] == WARN and "取得日不明" in got["HD1"]["detail"]
+
+    def test_hd2_flags_symbols_without_sell_triggers(self):
+        got = _by_id(check_holding_age(self.POS, [], self.TODAY))
+        assert got["HD2"]["status"] == WARN
+        assert "A.T" in got["HD2"]["detail"] and "B.T" in got["HD2"]["detail"]
+
+    def test_hd2_accepts_sell_triggers_from_any_note_type(self):
+        """thesis でも target でもよい（7751.T は売り上がり計画=target に書いてある）."""
+        notes = [{"symbol": "A.T", "type": "target", "sell_triggers": ["x"]},
+                 {"symbol": "B.T", "type": "thesis", "sell_triggers": ["y"]}]
+        got = _by_id(check_holding_age(self.POS, notes, self.TODAY))
+        assert got["HD2"]["status"] == PASS
+
+    def test_hd2_is_not_exempted_by_conviction_override(self):
+        """無条件保有でも『何をもってテーゼが死んだとするか』は要る."""
+        notes = [{"symbol": "A.T", "type": "thesis", "date": "2020-02-01",
+                  "conviction_override": True}]
+        got = _by_id(check_holding_age([self.POS[0]], notes, self.TODAY))
+        assert got["HD1"]["status"] == PASS      # 期日は免除
+        assert got["HD2"]["status"] == WARN      # sell_triggers は免除しない
+
+    def test_leap_day_purchase_does_not_crash(self):
+        pos = [{"symbol": "L.T", "purchase_date": "2024-02-29"}]
+        got = _by_id(check_holding_age(pos, [], datetime.date(2026, 1, 1)))
+        assert got["HD1"]["status"] == PASS and "2027-02-28" in got["HD1"]["detail"]
+
+    def test_empty_portfolio_is_na(self):
+        got = _by_id(check_holding_age([], [], self.TODAY))
+        assert got["HD1"]["status"] == NA and got["HD2"]["status"] == NA
