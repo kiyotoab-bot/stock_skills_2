@@ -258,3 +258,86 @@ class TestSmoothedAnchor:
         sm = check_trailing_stop(c, 900.0, 100.0, anchor_smooth=3)
         assert sm["vol_base"] < raw["vol_base"]
         assert sm["anchor_smooth"] == 3 and raw["anchor_smooth"] == 1
+
+
+class TestRaiseThreshold:
+    """KIK-769: 切り上げの実行閾値（2026-08-24 ユーザー判断・案C）.
+
+    確定利益の増加が ¥3,000 に届かない切り上げは実行しない。
+    2026-08-24 に 8031.T が +¥4,300、7259.T が **+¥100** の切り上げ可となり、
+    後者は訂正操作と PO9 突合の手間に見合わなかった。
+
+    ⚠️ should_raise（式の上で切り上げられるか）は変えない。
+    「操作する価値があるか」は raise_worth_it に分ける。混ぜると
+    台帳と注文がずれた理由が追えなくなる。
+    """
+
+    def _rising(self):
+        """現行ストップより上の値が出る系列。"""
+        return _series(noise=10)
+
+    def test_default_threshold_is_3000(self):
+        from src.data.stop_formula import MIN_RAISE_GAIN_YEN
+        assert MIN_RAISE_GAIN_YEN == 3000
+
+    def test_small_raise_is_not_worth_it(self):
+        """+¥100（7259.T の実例）は見送り."""
+        c = self._rising()
+        new = calc_stop(c, 900.0)["stop"]
+        t = check_trailing_stop(c, 900.0, new - 1, shares=100)   # 1円×100株=¥100
+        assert t["should_raise"] is True        # 式の上では切り上げられる
+        assert t["raise_gain_yen"] == 100
+        assert t["raise_worth_it"] is False
+        assert "見送り推奨" in t["label"]
+
+    def test_large_raise_is_worth_it(self):
+        c = self._rising()
+        new = calc_stop(c, 900.0)["stop"]
+        t = check_trailing_stop(c, 900.0, new - 43, shares=100)  # 43円×100株=¥4,300
+        assert t["raise_gain_yen"] == 4300
+        assert t["raise_worth_it"] is True
+        assert "訂正推奨" in t["label"]
+
+    def test_boundary_is_inclusive(self):
+        """ちょうど閾値なら実行する側."""
+        c = self._rising()
+        new = calc_stop(c, 900.0)["stop"]
+        t = check_trailing_stop(c, 900.0, new - 30, shares=100)  # ¥3,000
+        assert t["raise_gain_yen"] == 3000 and t["raise_worth_it"] is True
+
+    def test_shares_drive_the_verdict_not_percent(self):
+        """同じ切り上げ幅でも株数が違えば結論が変わる（金額基準の要点）."""
+        c = self._rising()
+        new = calc_stop(c, 900.0)["stop"]
+        small = check_trailing_stop(c, 900.0, new - 10, shares=100)   # ¥1,000
+        big = check_trailing_stop(c, 900.0, new - 10, shares=400)     # ¥4,000
+        assert small["raise_pct"] == big["raise_pct"]                 # %は同じ
+        assert small["raise_worth_it"] is False and big["raise_worth_it"] is True
+
+    def test_without_shares_the_verdict_is_unknown(self):
+        """判定不能を False（見送り）と取り違えない."""
+        c = self._rising()
+        new = calc_stop(c, 900.0)["stop"]
+        t = check_trailing_stop(c, 900.0, new - 43)
+        assert t["raise_gain_yen"] is None
+        assert t["raise_worth_it"] is None
+        assert "見送り" not in t["label"] and "訂正推奨" not in t["label"]
+
+    def test_threshold_is_configurable(self):
+        c = self._rising()
+        new = calc_stop(c, 900.0)["stop"]
+        t = check_trailing_stop(c, 900.0, new - 10, shares=100, min_gain_yen=500)
+        assert t["raise_gain_yen"] == 1000 and t["raise_worth_it"] is True
+
+    def test_no_raise_leaves_the_fields_none(self):
+        c = self._rising()
+        high = calc_stop(c, 900.0)["stop"] * 2
+        t = check_trailing_stop(c, 900.0, high, shares=100)
+        assert t["should_raise"] is False
+        assert t["raise_gain_yen"] is None and t["raise_worth_it"] is None
+
+    def test_exempt_symbol_has_the_keys(self):
+        """免除銘柄でもキーの形を揃える（呼び出し側の KeyError を防ぐ）."""
+        c = self._rising()
+        t = check_trailing_stop(c, 900.0, None, exempt=True, shares=100)
+        assert t["raise_gain_yen"] is None and t["raise_worth_it"] is None
