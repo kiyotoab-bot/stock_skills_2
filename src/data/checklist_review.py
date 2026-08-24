@@ -250,6 +250,110 @@ def check_stop_breach(prices: dict[str, float],
 
 
 # ---------------------------------------------------------------------------
+# 時間軸の出口 (HD) — KIK-770
+# ---------------------------------------------------------------------------
+
+# 中長期枠の強制再判定サイクル（2026-08-24 ユーザー判断）
+#
+# 短期枠 tactical には max_hold_weeks 8 / hard_deadline 12-31 があるのに、
+# **中長期 core には時間軸の出口が一切無かった**。
+# ストップは「価格が下がったら」、テーゼは「業績が壊れたら」の出口で、
+# 「〇年持って報われなければ見直す」という経路が存在しなかった。
+# → **塩漬けと長期保有を区別する仕組みが無い**状態だった。
+#
+# ⚠️ 保有期限（期限が来たら売る）ではなく**強制再判定**にしてある。
+# 中長期で期限売りを課すのは長期保有の否定になる。売却は強制しない。
+HOLDING_REVIEW_YEARS = 3
+
+
+def _add_years(d: datetime.date, n: int) -> datetime.date:
+    try:
+        return d.replace(year=d.year + n)
+    except ValueError:          # 2/29
+        return d.replace(year=d.year + n, day=28)
+
+
+def check_holding_age(positions: list[dict],
+                      notes: list[dict],
+                      today: Optional[datetime.date] = None,
+                      years: int = HOLDING_REVIEW_YEARS) -> list[dict]:
+    """HD1/HD2: 中長期保有の強制再判定と、テーゼ崩壊の定義の有無（KIK-770）.
+
+    HD1  取得から ``years`` 年を超え、その後 thesis ノートが1件も無い銘柄を WARN。
+         再判定は thesis ノートを書くことで完了とみなす（期日より後の日付なら可）。
+    HD2  保有しているのに ``sell_triggers`` が1件も書かれていない銘柄を WARN。
+
+    ⚠️ **HD2 のほうが実務上は重い。** 再判定サイクルを3年にすると、
+    その間の出口は sell_triggers とストップだけになる。テーゼ崩壊の定義が
+    無ければ「テーゼが死んでいるのに気づかない」経路は塞がらない。
+
+    ⚠️ ``conviction_override`` の銘柄は HD1 を免除するが、**免除として名前を出す**。
+    黙って落とすと「設定漏れ」と見分けがつかない（RL6 と同じ方針）。
+    HD2 は免除しない — 無条件保有でも「何をもってテーゼが死んだとするか」は要る。
+    """
+    today = today or datetime.date.today()
+    if not positions:
+        return [_result("HD1", NA, "保有なし"), _result("HD2", NA, "保有なし")]
+
+    conviction, thesis_dates, has_triggers = set(), {}, set()
+    for n in notes:
+        sym = n.get("symbol")
+        if not sym:
+            continue
+        if n.get("type") == "thesis":
+            if n.get("conviction_override"):
+                conviction.add(sym)
+            if n.get("date"):
+                thesis_dates.setdefault(sym, []).append(str(n["date"]))
+        if n.get("sell_triggers"):
+            has_triggers.add(sym)
+
+    overdue, exempt, ok, no_trig = [], [], [], []
+    for p in positions:
+        sym = p.get("symbol")
+        if not sym:
+            continue
+        if sym not in has_triggers:
+            no_trig.append(sym)
+        raw = p.get("purchase_date")
+        try:
+            bought = datetime.date.fromisoformat(str(raw)[:10])
+        except (TypeError, ValueError):
+            overdue.append(f"{sym} 取得日不明")
+            continue
+        due = _add_years(bought, years)
+        if sym in conviction:
+            exempt.append(f"{sym}(期日 {due})")
+            continue
+        if today < due:
+            ok.append(f"{sym} 次回 {due}")
+            continue
+        # 期日を過ぎている。期日より後の thesis があれば再判定済み
+        if any(d > due.isoformat() for d in thesis_dates.get(sym, [])):
+            ok.append(f"{sym} 再判定済み")
+        else:
+            overdue.append(f"{sym} 取得 {bought}／期日 {due} を超過")
+
+    parts = []
+    if overdue:
+        parts.append("🔴 再判定が必要 " + " / ".join(overdue))
+    if ok:
+        parts.append("🟢 " + " / ".join(ok))
+    if exempt:
+        parts.append("免除(conviction_override) " + ", ".join(exempt))
+    hd1 = _result("HD1", WARN if overdue else PASS,
+                  " | ".join(parts) or f"{years}年サイクルの対象なし")
+
+    hd2 = _result(
+        "HD2", WARN if no_trig else PASS,
+        ("sell_triggers 未記載: " + ", ".join(sorted(no_trig))
+         + " → テーゼ崩壊の定義が無く、出口がストップだけになっている")
+        if no_trig else f"{len(positions)}銘柄すべて sell_triggers あり",
+    )
+    return [hd1, hd2]
+
+
+# ---------------------------------------------------------------------------
 # 実行の追跡 (FT)
 # ---------------------------------------------------------------------------
 
