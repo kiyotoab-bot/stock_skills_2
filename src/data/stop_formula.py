@@ -28,6 +28,20 @@ SIGMA_WINDOW = 20            # σ_h60 の h は 20日ホライズン
 SIGMA_LOOKBACK = 60          # 日次σ の推定に使う本数
 PHASE_HIGH_LOOKBACK = 60     # 局面高値の窓
 
+# 切り上げを実行する最低ライン（KIK-769 / 2026-08-24 ユーザー判断）
+#
+# 確定利益の増加がこれに届かない切り上げは実行しない。
+# 2026-08-24 に 8031.T が +¥4,300、7259.T が **+¥100** の切り上げ可となり、
+# 後者は証券会社での訂正操作と PO9 突合の手間に見合わなかった。
+#
+# ⚠️ 注文を触るたびに入力ミスの機会が生まれる（2026-08-04 の7銘柄誤発注、
+# 2026-08-10 の指値→成行）。小さい切り上げのために毎回触るのは割に合わない。
+# ⚠️ 逆に、閾値を設けると「塵も積もれば」を捨てることになる。承知のうえの選択。
+#
+# 金額基準にしたのは、判断の対象が「手間とリスクに見合うか」だから。
+# %基準だと株価水準によって同じ%でも金額が変わる。
+MIN_RAISE_GAIN_YEN = 3000
+
 # ボラ基準に使う「現値」を直近 N 日の平均にする（KIK-768 / 2026-08-19 ユーザー判断）
 #
 # ラチェットは上げるだけなので、毎日の終値ノイズに反応すると**上げだけが積み上がり**、
@@ -142,6 +156,8 @@ def check_trailing_stop(
     book_value: float,
     current_stop: Optional[float],
     exempt: bool = False,
+    shares: Optional[float] = None,
+    min_gain_yen: float = MIN_RAISE_GAIN_YEN,
     **kwargs,
 ) -> dict:
     """現行ストップと統一式を比べ、切り上げ可能かを返す。
@@ -161,6 +177,15 @@ def check_trailing_stop(
         「置かないと決めた」の両方で起こり、値だけでは区別できない。
         区別しないと免除銘柄に毎回ストップ設定を促すことになる
         （2026-08-16 の週次で 7453.T 良品計画に実際に出た）。
+    shares : float, optional
+        保有株数。渡すと切り上げの金額効果を出し、実行に値するかを判定する。
+    min_gain_yen : float
+        切り上げの実行閾値（KIK-769 / 2026-08-24 ユーザー判断。既定 ¥3,000）。
+        **確定利益の増加がこの額に届かない切り上げは実行しない。**
+
+        ⚠️ **``should_raise`` は変えない。** 「式の上で切り上げられる」ことと
+        「操作する価値がある」ことは別で、混ぜると台帳と注文がずれた理由が
+        追えなくなる。判定は ``raise_worth_it`` に分ける。
 
     Returns
     -------
@@ -170,19 +195,24 @@ def check_trailing_stop(
           exempt             : 免除銘柄として扱ったか
           locked_profit      : 新ストップ到達時に確定する1株あたり利益
           locked_profit_gain : 切り上げで増える1株あたり確定利益
+          raise_gain_yen     : 切り上げで増える確定利益の総額（shares 必須。無ければ None）
+          raise_worth_it     : 実行に値するか（raise_gain_yen >= min_gain_yen）。
+                               shares を渡さなければ None＝判定不能
           label              : 切り上げavailable のときだけ内容を持つ
     """
+    _NA_EXTRA = {"raise_gain_yen": None, "raise_worth_it": None}
     calc = calc_stop(closes, book_value, **kwargs)
     if calc["stop"] is None:
         return {**calc, "current_stop": current_stop, "new_stop": None,
                 "should_raise": False, "raise_amount": None, "raise_pct": None,
                 "exempt": bool(exempt),
-                "locked_profit": None, "locked_profit_gain": None}
+                "locked_profit": None, "locked_profit_gain": None, **_NA_EXTRA}
 
     if exempt:
         return {**calc, "current_stop": None, "new_stop": None,
                 "should_raise": False, "raise_amount": None, "raise_pct": None,
                 "exempt": True, "locked_profit": None, "locked_profit_gain": None,
+                **_NA_EXTRA,
                 "label": "conviction_override — ストップ免除（切り上げ提案しない）"}
 
     new_stop = calc["stop"]
@@ -200,9 +230,24 @@ def check_trailing_stop(
         "locked_profit": round(new_stop - book_value),
         "locked_profit_gain": (round(new_stop - cur) if cur is not None else None),
     }
+
+    # 実行に値するかは金額で見る（KIK-769）。should_raise とは分ける
+    gain = out["locked_profit_gain"]
+    if should_raise and gain is not None and shares:
+        out["raise_gain_yen"] = round(gain * float(shares))
+        out["raise_worth_it"] = out["raise_gain_yen"] >= min_gain_yen
+    else:
+        out["raise_gain_yen"] = None
+        out["raise_worth_it"] = None
+
     if should_raise and cur is not None:
         out["label"] = (f"ストップ切り上げ可 ¥{cur:,.0f} → ¥{new_stop:,.0f}"
                         f"（+{out['raise_pct']:.1f}% / {calc['binding']} 基準）")
+        if out["raise_worth_it"] is False:
+            out["label"] += (f" ⏭ 見送り推奨（確定利益 +¥{out['raise_gain_yen']:,.0f} "
+                             f"< 閾値 ¥{min_gain_yen:,.0f}）")
+        elif out["raise_worth_it"] is True:
+            out["label"] += f" 🟡 訂正推奨（確定利益 +¥{out['raise_gain_yen']:,.0f}）"
     elif should_raise:
         out["label"] = f"ストップ未設定 → ¥{new_stop:,.0f}（{calc['binding']} 基準）"
     else:
