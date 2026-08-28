@@ -360,6 +360,9 @@ examples:
     operation: watchlist_add
     pattern: A
     header: "🎯 [direct] ウォッチリスト追加"
+    # KIK-772: 登録と同時に entry_conditions EC1-EC5 を通し、条件を target ノートに残す。
+    # EC5（需給: 信用倍率15倍未満 / 半年期日 pressure でない）を落とさない。
+    checklist: entry_conditions
 
   - intent: "ウォッチリスト見せて"
     action: direct
