@@ -255,9 +255,15 @@ Output &amp; Visibility v1 の Layer 2 仕様に統合された。
 | 改訂率・前年比・進捗率・リターンの計算 | `comparison` |
 | 売買可否・ストップ・配分の判定 | `rules` |
 | WLチェック・日次/週次チェック・候補提示 | `reporting` `data_quality` |
+| **WL登録・エントリー条件を書くとき** | **`entry_conditions` の EC1-EC5**（KIK-772） |
 | **発注指示書を出す直前** | **`pre_order` の PO1-PO8** |
 | **発注した直後** | **`pre_order` の PO9（注文一覧との突合）** |
 | すべての場面 | `followthrough` |
+
+⚠️ **候補を並べるときは `reporting` の RP6（需給）を必ず通す**（KIK-772）。
+バリュエーションだけで順位を付けると、順位そのものが間違う。
+2026-08-28 に 5803.T フジクラを growth 候補の筆頭に置いたが、
+信用倍率 18.46倍（週内 +43.5%）・半年期日 pressure で、**需給に一言も触れていなかった**。
 
 ### 機械的レビュー（必須・KIK-734）
 
@@ -722,6 +728,26 @@ Step 8: reviewer（auto_review で自動挿入）
 
 - Step 3c（需給）は `jpx.get_demand_supply()` を呼び出す。`available=False` の場合は `（需給: データ取得失敗）` を1行付記してスキップ
 - Step 3c の出力項目: 信用倍率（market）/ 外国人純買い / 個人純買い / 投信純買い。判断コメントは付けず数値のみ
+
+**⚠️ Step 3c は「市場」と「保有」で終わらせない — 候補銘柄も出す（KIK-772）**
+
+`jpx.get_demand_supply()` は市場全体の数字しか返さない。**買う候補の需給は別に取る。**
+
+```python
+from src.data.checklist_review import check_supply_demand
+import tools.jquants as jq
+from src.data.margin_deadline import check_margin_deadline
+
+cands = [...]                                  # WL・投入予定・screener の結果
+margins   = {s: jq.get_stock_margin(s) for s in cands}
+deadlines = {s: check_margin_deadline(closes[s], dates[s]) for s in cands}
+for r in check_supply_demand(margins, deadlines):   # SD1 / SD2
+    print(f"[{r['status']}] {r['id']}: {r['detail']}")
+```
+
+⚠️ **候補を保有と混ぜない。** 保有の需給は「持ち続けるか」、候補の需給は「今その値段で
+買えるか」で、判断が違う。
+
 - Step 7 のスクリーニングは、ターゲット乖離red / exit-rule到達 / バリュートラップ疑いがある場合に起動
 - **「やらないチェック」はscreener起動を阻害しない。** 「やらないチェック」該当時は結果に「📋 WL候補（買い保留）」ラベルを付与
 - 課題なし → 「現状維持が最善」と出力し、Step 7 をスキップ

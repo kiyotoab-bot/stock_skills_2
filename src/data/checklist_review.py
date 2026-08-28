@@ -544,19 +544,135 @@ def check_order(
     if positions is not None:
         out += _check_order_concentration(symbol, info, positions, tier, denominator)
 
-    if not margin or not margin.get("available"):
-        out.append(_result("PO7", WARN, "信用倍率が取得できていない"))
-    else:
-        r = margin.get("margin_ratio")
-        try:
-            r = float(r)
-        except (TypeError, ValueError):
-            r = None
+    out.append(_margin_result("PO7", margin))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 需給 (SD) — KIK-772
+# ---------------------------------------------------------------------------
+
+#: 信用倍率の閾値。PO7（発注直前）と SD1（候補段階）で**同じ値を使う**。
+#: 別々に持つと、候補段階で通した銘柄が発注日に落ちる理由が説明できなくなる。
+MARGIN_RATIO_FAIL = 30.0
+MARGIN_RATIO_WARN = 15.0
+
+#: 半年期日で買いを止める局面。
+#: ``flying`` は「需給整理が先行して底打ちしやすい」ので**止めない**
+#: （``margin_deadline.check_margin_deadline`` の定義に従う）。
+#: ``cleared`` / ``no_overhang`` も重石が無い。止めるのは ``pressure`` だけ。
+DEADLINE_BLOCKING_PHASES = ("pressure",)
+
+
+def _margin_ratio(margin: Optional[dict]) -> Optional[float]:
+    if not margin or not margin.get("available", True):
+        return None
+    try:
+        return float(margin.get("margin_ratio"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _margin_result(item_id: str, margin: Optional[dict]) -> dict:
+    """信用倍率ひとつを PO7 / SD1 共通のルールで判定する。"""
+    if not margin or not margin.get("available", True):
+        return _result(item_id, WARN, "信用倍率が取得できていない")
+    r = _margin_ratio(margin)
+    if r is None:
+        return _result(item_id, WARN, "信用倍率が数値でない")
+    status = FAIL if r >= MARGIN_RATIO_FAIL else (
+        WARN if r >= MARGIN_RATIO_WARN else PASS)
+    return _result(item_id, status, f"信用倍率 {r:.2f}倍")
+
+
+def check_supply_demand(
+    margins: dict[str, dict],
+    deadlines: Optional[dict[str, dict]] = None,
+) -> list[dict]:
+    """SD1 / SD2 — **買い候補**の需給を判定する（KIK-772）。
+
+    ⚠️ **PO7 は発注直前にしか火が点かない。** それが問題だった。
+
+    2026-08-28 の週次レビューで 5803.T フジクラを growth 候補の筆頭に挙げたが、
+    信用倍率 **18.46倍（買残2,239万株・週内 +43.5%）** で PO7 なら WARN、
+    さらに半年期日が **pressure（2026-11-13・天井から -32.0%）** だった。
+    **需給に一言も触れずに候補表の一番上に置いていた。**
+    同じ日に 6701.T NEC も 28.64倍（+89.7%）で FAIL 閾値の目前だった。
+
+    エントリー条件を数週間前に書き、候補が「条件充足」で寝たまま発注日を迎えると、
+    **その日に初めて PO7 で弾かれる**。だから候補段階（WLチェック・週次）でも
+    同じ閾値を当てる。
+
+    Parameters
+    ----------
+    margins
+        ``{symbol: jquants.get_stock_margin() の結果}``。**買い候補**を渡す。
+        保有銘柄を混ぜない（保有は RL6 と週次の需給テーブルの仕事）。
+    deadlines
+        ``{symbol: margin_deadline.check_margin_deadline() の結果}``。
+        省略すると SD2 は N/A。
+
+    Returns
+    -------
+    list[dict]
+        SD1（信用倍率）と SD2（半年期日）。**全候補を detail に載せる**。
+        異常だけ出すと「表が無い＝見ていない」と区別がつかない（RL6 と同じ方針）。
+    """
+    if not margins:
+        return [_result("SD1", NA, "候補なし"), _result("SD2", NA, "候補なし")]
+
+    heavy, warn, light, unknown = [], [], [], []
+    for sym in sorted(margins):
+        r = _margin_ratio(margins.get(sym))
         if r is None:
-            out.append(_result("PO7", WARN, "信用倍率が数値でない"))
+            unknown.append(sym)
+        elif r >= MARGIN_RATIO_FAIL:
+            heavy.append(f"{sym} {r:.2f}倍")
+        elif r >= MARGIN_RATIO_WARN:
+            warn.append(f"{sym} {r:.2f}倍")
         else:
-            status = FAIL if r >= 30 else (WARN if r >= 15 else PASS)
-            out.append(_result("PO7", status, f"信用倍率 {r:.2f}倍"))
+            light.append(f"{sym} {r:.2f}倍")
+
+    parts = []
+    if heavy:
+        parts.append("🔴 " + " / ".join(heavy))
+    if warn:
+        parts.append("🟡 " + " / ".join(warn))
+    if light:
+        parts.append("🟢 " + " / ".join(light))
+    if unknown:
+        parts.append("取得不可 " + " / ".join(unknown))
+    status = FAIL if heavy else (WARN if (warn or unknown) else PASS)
+    out = [_result("SD1", status,
+                   f"信用倍率（FAIL≥{MARGIN_RATIO_FAIL:.0f} / WARN≥{MARGIN_RATIO_WARN:.0f}）: "
+                   + " | ".join(parts))]
+
+    if not deadlines:
+        out.append(_result("SD2", NA, "半年期日を渡していない"))
+        return out
+
+    blocked, clear, missing = [], [], []
+    for sym in sorted(margins):
+        d = deadlines.get(sym) or {}
+        phase = d.get("phase")
+        if not phase or phase == "unavailable":
+            missing.append(sym)
+        elif phase in DEADLINE_BLOCKING_PHASES:
+            blocked.append(f"{sym} {phase}({d.get('deadline')} / 天井{d.get('peak_date')} "
+                           f"{d.get('drawdown_pct')}%)")
+        else:
+            clear.append(f"{sym} {phase}")
+
+    parts = []
+    if blocked:
+        parts.append("🔴 " + " / ".join(blocked))
+    if clear:
+        parts.append("🟢 " + " / ".join(clear))
+    if missing:
+        parts.append("判定不可 " + " / ".join(missing))
+    out.append(_result("SD2", WARN if (blocked or missing) else PASS,
+                       "半年期日（pressure のみ買いを止める。flying は底打ちしやすく止めない）: "
+                       + " | ".join(parts)))
     return out
 
 

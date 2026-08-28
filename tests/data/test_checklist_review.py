@@ -21,6 +21,7 @@ from src.data.checklist_review import (
     check_order,
     check_pf_tier,
     check_holding_age,
+    check_supply_demand,
     check_stop_breach,
     check_stop_sigma,
     summarize,
@@ -774,3 +775,70 @@ class TestHoldingAge:
     def test_empty_portfolio_is_na(self):
         got = _by_id(check_holding_age([], [], self.TODAY))
         assert got["HD1"]["status"] == NA and got["HD2"]["status"] == NA
+
+
+class TestSupplyDemand:
+    """KIK-772: 買い候補の需給を候補段階で見る.
+
+    PO7（信用倍率）は発注直前にしか火が点かなかった。2026-08-28 の週次で
+    5803.T フジクラを growth 候補の筆頭に置いたが、信用倍率 18.46倍
+    （週内 +43.5%）・半年期日 pressure で、**需給に一言も触れていなかった**。
+    """
+
+    M = {"A.T": {"available": True, "margin_ratio": 33.43},   # FAIL 圏
+         "B.T": {"available": True, "margin_ratio": 18.46},   # WARN 圏
+         "C.T": {"available": True, "margin_ratio": 1.93}}    # PASS 圏
+
+    def test_thresholds_are_shared_with_po7(self):
+        """PO7 と SD1 が別々の閾値を持つと、候補段階で通した銘柄が
+        発注日に落ちる理由を説明できなくなる。"""
+        from src.data.checklist_review import MARGIN_RATIO_FAIL, MARGIN_RATIO_WARN
+        assert (MARGIN_RATIO_FAIL, MARGIN_RATIO_WARN) == (30.0, 15.0)
+        po7 = _by_id(check_order("A.T", {"price": 100.0}, margin=self.M["A.T"]))["PO7"]
+        sd1 = _by_id(check_supply_demand({"A.T": self.M["A.T"]}))["SD1"]
+        assert po7["status"] == sd1["status"] == FAIL
+
+    def test_heaviest_symbol_sets_the_verdict(self):
+        got = _by_id(check_supply_demand(self.M))
+        assert got["SD1"]["status"] == FAIL and "A.T 33.43倍" in got["SD1"]["detail"]
+
+    def test_warn_band_without_fail(self):
+        got = _by_id(check_supply_demand({k: self.M[k] for k in ("B.T", "C.T")}))
+        assert got["SD1"]["status"] == WARN and "B.T 18.46倍" in got["SD1"]["detail"]
+
+    def test_all_light_passes(self):
+        got = _by_id(check_supply_demand({"C.T": self.M["C.T"]}))
+        assert got["SD1"]["status"] == PASS
+
+    def test_every_candidate_is_listed_even_when_pass(self):
+        """異常だけ出すと『表が無い＝見ていない』と区別がつかない（RL6 と同じ方針）."""
+        got = _by_id(check_supply_demand(self.M))
+        for sym in self.M:
+            assert sym in got["SD1"]["detail"]
+
+    def test_unavailable_margin_warns_not_passes(self):
+        got = _by_id(check_supply_demand({"X.T": {"available": False}}))
+        assert got["SD1"]["status"] == WARN and "取得不可" in got["SD1"]["detail"]
+
+    def test_sd2_blocks_only_pressure(self):
+        """flying は『需給整理が先行して底打ちしやすい』ので止めない."""
+        d = {"A.T": {"phase": "flying"}, "B.T": {"phase": "pressure",
+             "deadline": "2026-11-13", "peak_date": "2026-05-13", "drawdown_pct": -32.0},
+             "C.T": {"phase": "no_overhang"}}
+        got = _by_id(check_supply_demand(self.M, d))
+        assert got["SD2"]["status"] == WARN
+        assert "B.T pressure" in got["SD2"]["detail"]
+        assert "A.T flying" in got["SD2"]["detail"]   # 免除ではなく明示する
+
+    def test_sd2_passes_when_no_pressure(self):
+        d = {k: {"phase": "cleared"} for k in self.M}
+        got = _by_id(check_supply_demand(self.M, d))
+        assert got["SD2"]["status"] == PASS
+
+    def test_sd2_is_na_without_deadlines(self):
+        got = _by_id(check_supply_demand(self.M))
+        assert got["SD2"]["status"] == NA
+
+    def test_no_candidates_is_na(self):
+        got = _by_id(check_supply_demand({}))
+        assert got["SD1"]["status"] == NA and got["SD2"]["status"] == NA
