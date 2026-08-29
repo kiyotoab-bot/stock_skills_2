@@ -210,23 +210,35 @@ examples:
   - intent: "月次チェック"
     mode: routine-monthly
     agents: [health-checker, strategist, reviewer]
+    pattern: C
+    header: "🎯 [routine-monthly] 月次チェック"
     review: true
+    pf_state_required: true
     note: "売買枠の残り+今月の発注+翌月枠の銘柄確定+conviction認定+目標進捗+実現損益。5-7分"
 
   - intent: "月次レビュー"
     mode: routine-monthly
     agents: [health-checker, strategist, reviewer]
+    pattern: C
+    header: "🎯 [routine-monthly] 月次レビュー"
     review: true
+    pf_state_required: true
 
   - intent: "今月の発注どうする"
     mode: routine-monthly
     agents: [health-checker, strategist, reviewer]
+    pattern: C
+    header: "🎯 [routine-monthly] 今月の発注判断"
     review: true
+    pf_state_required: true
 
   - intent: "月初チェック"
     mode: routine-monthly
     agents: [health-checker, strategist, reviewer]
+    pattern: C
+    header: "🎯 [routine-monthly] 月初チェック"
     review: true
+    pf_state_required: true
 
   - intent: "最新ニュース教えて"
     agent: researcher

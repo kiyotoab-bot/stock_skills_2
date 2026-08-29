@@ -407,9 +407,11 @@ r = check_margin_deadline([float(x) for x in df["Close"].dropna()],
 **対象抽出:**
 ```python
 from tools.notes import load_notes
-from tools.watchlist import get_watchlist
+from tools.watchlist import list_watchlists, load_watchlist
 
-wl_symbols = [s['symbol'] for s in get_watchlist()]
+# ⚠️ load_watchlist() が返すのは **シンボル文字列のリスト**（dict ではない）。
+#    引数なしだと "default" だけになるので、全リストを走査して統合する。
+wl_symbols = sorted({sym for name in list_watchlists() for sym in load_watchlist(name)})
 candidates = []
 for sym in wl_symbols:
     notes = load_notes(symbol=sym)
