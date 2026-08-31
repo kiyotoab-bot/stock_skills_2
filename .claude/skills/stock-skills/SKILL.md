@@ -658,9 +658,12 @@ from src.data.morning_summary import check_routine_health
 check_routine_health()     # 鮮度 + GraphRAG のスキーマ をまとめて見る
 
 # DQ4: 価格データの基準日（KIK-761）。**計算を始める前に通す**
-from src.data.checklist_review import check_data_freshness
-latest = {s: str(df["Close"].dropna().index[-1])[:10] for s, df in histories.items()}
-for r in check_data_freshness(latest):
+# DQ8: 系列の途中の欠落（KIK-773）。**DQ4 とセットで通す**
+from src.data.checklist_review import check_data_freshness, check_series_gaps
+dates = {s: [str(d)[:10] for d in df["Close"].dropna().index] for s, df in histories.items()}
+for r in check_data_freshness({s: v[-1] for s, v in dates.items()}):
+    print(f"[{r['status']}] {r['detail']}")
+for r in check_series_gaps(dates):          # ← DQ8
     print(f"[{r['status']}] {r['detail']}")
 ```
 
@@ -668,6 +671,13 @@ for r in check_data_freshness(latest):
 取り直し、それでも古ければ理由を報告する。1日古いデータで出した RSI・SMA・
 バンドウォーク・半年期日・ストップ距離は、**そう見えるだけで全部間違っている**。
 2026-08-15 に6銘柄すべてで発生し、誰も気づかなかった。
+
+⚠️ **DQ4 だけでは足りない。DQ8 を必ず併せて通す**（KIK-773）。
+DQ4 は**最新バーの日付しか見ない**ので、系列の途中が抜けていても最新日が
+正しければ PASS を返す。2026-08-31 に yfinance の `^N225` が **2026-08-28 の
+バーを丸ごと欠落**させ、DQ4 は PASS のまま「前日比」が 08-27 との比較になり
+**+0.27% と報告した（正しくは -0.14%）**。外部ソースの報道値と食い違って
+初めて気づいた。欠落は前日比だけでなく RSI・SMA・σ にも静かに入り込む。
 
 **スキーマも見る理由**: `init_schema()` はベクトル索引の失敗を
 `try/except: pass` で握り潰すため、**1つも作られなくても True を返す**。

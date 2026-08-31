@@ -737,6 +737,18 @@ def check_data_freshness(latest_by_symbol, today=None, nan_tail_by_symbol=None):
                  nan_tail_by_symbol=nan_tail_by_symbol)
 
 
+def check_series_gaps(dates_by_symbol, today=None, lookback=30):
+    """DQ8: 価格系列の途中に欠落した営業日が無いか。詳細は src.data.data_freshness 参照。
+
+    ⚠️ DQ4 とは別物。DQ4 は**最新バーの日付**しか見ないので、系列の途中が
+    抜けていても最新日が正しければ PASS を返す。2026-08-31 に ^N225 の
+    2026-08-28 が丸ごと欠落し、前日比を +0.27%（正 -0.14%）と誤報告した。
+    """
+    from src.data.data_freshness import check_series_gaps as _impl
+
+    return _impl(dates_by_symbol, today=today, lookback=lookback)
+
+
 ORDER_CHECK_NOTE_TYPE = "order-check"
 
 

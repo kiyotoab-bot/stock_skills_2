@@ -147,3 +147,82 @@ class TestWithoutCalendar:
         r = df.check_data_freshness(latest, today=_d("2026-08-15"))[0]
         assert r["status"] == WARN
         assert "7751.T" in r["detail"]
+
+
+class TestCheckSeriesGaps:
+    """DQ8: 系列の**途中**の欠落 — KIK-773.
+
+    2026-08-31: yfinance の ^N225 が 2026-08-28 のバーを丸ごと欠落させた。
+    最新バーは 08-31 で正しいので DQ4 は PASS。しかし前日比が 08-27 との
+    比較になり +0.27%（正 -0.14%）と誤報告した。
+    """
+
+    _BIZ = ["2026-08-10", "2026-08-12", "2026-08-13", "2026-08-14", "2026-08-17"]
+
+    def test_no_gap_passes(self):
+        r = df.check_series_gaps({"A": self._BIZ}, today=_d("2026-08-17"))[0]
+        assert r["status"] == PASS
+        assert "欠落なし" in r["detail"]
+
+    def test_interior_gap_warns(self):
+        """途中の1本欠落を WARN で拾う。"""
+        series = [d for d in self._BIZ if d != "2026-08-13"]
+        r = df.check_series_gaps({"A": series}, today=_d("2026-08-17"))[0]
+        assert r["status"] == WARN
+        assert "2026-08-13" in r["detail"]
+        assert "1本欠落" in r["detail"]
+
+    def test_three_gaps_fail(self):
+        r = df.check_series_gaps(
+            {"A": ["2026-08-10", "2026-08-17"]}, today=_d("2026-08-17"))[0]
+        assert r["status"] == FAIL
+
+    def test_dq4_passes_while_dq8_fails(self):
+        """DQ4 では捕まらないことを明示する（この差が KIK-773 の理由）。"""
+        series = [d for d in self._BIZ if d != "2026-08-13"]
+        dq4 = df.check_data_freshness({"A": series[-1]}, today=_d("2026-08-17"))[0]
+        dq8 = df.check_series_gaps({"A": series}, today=_d("2026-08-17"))[0]
+        assert dq4["status"] == PASS
+        assert dq8["status"] == WARN
+
+    def test_non_business_day_absence_is_not_a_gap(self):
+        """休場日・週末が無いのは欠落ではない。"""
+        r = df.check_series_gaps({"A": self._BIZ}, today=_d("2026-08-17"))[0]
+        assert r["status"] == PASS
+
+    def test_series_starting_late_is_not_a_gap(self):
+        """新規上場などで系列が途中から始まるのは欠落ではない。"""
+        r = df.check_series_gaps(
+            {"A": ["2026-08-14", "2026-08-17"]}, today=_d("2026-08-17"))[0]
+        assert r["status"] == PASS
+
+    def test_series_ending_early_is_not_a_gap(self):
+        """末尾の古さは DQ4 の担当。DQ8 は穴だけを見る。"""
+        r = df.check_series_gaps(
+            {"A": ["2026-08-10", "2026-08-12"]}, today=_d("2026-08-17"))[0]
+        assert r["status"] == PASS
+
+    def test_lookback_limits_the_window(self):
+        r = df.check_series_gaps(
+            {"A": ["2026-08-10", "2026-08-14", "2026-08-17"]},
+            today=_d("2026-08-17"), lookback=2)[0]
+        assert r["status"] == PASS   # 窓は 08-14/08-17 のみ
+
+    def test_empty_input_is_na(self):
+        assert df.check_series_gaps({}, today=_d("2026-08-17"))[0]["status"] == NA
+
+    def test_no_calendar_is_na(self, monkeypatch):
+        """カレンダーが無いときは相対比較に落とさない。
+
+        全銘柄が同じ日を落としている可能性があり、銘柄間比較では検知にならない。
+        """
+        monkeypatch.setattr(df, "_load_calendar", lambda: [])
+        r = df.check_series_gaps({"A": self._BIZ}, today=_d("2026-08-17"))[0]
+        assert r["status"] == NA
+
+    def test_facade_matches_impl(self):
+        from src.data.checklist_review import check_series_gaps as facade
+
+        series = [d for d in self._BIZ if d != "2026-08-13"]
+        assert (facade(series_by := {"A": series}, today=_d("2026-08-17"))[0]["status"]
+                == df.check_series_gaps(series_by, today=_d("2026-08-17"))[0]["status"])

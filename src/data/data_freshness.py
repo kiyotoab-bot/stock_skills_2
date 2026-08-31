@@ -175,3 +175,104 @@ def check_data_freshness(
                 "（yfinance が最新バーを Close=null で返す既知の挙動）",
             ))
     return results
+
+
+# ---------------------------------------------------------------------------
+# DQ8: 系列の途中の欠落 (KIK-773)
+# ---------------------------------------------------------------------------
+
+# 何本欠けたら何を出すか
+GAP_WARN_BARS = 1     # 1本でも欠けたら WARN
+GAP_FAIL_BARS = 3     # 3本以上欠けたら FAIL
+
+# 既定の検査窓（営業日）
+GAP_LOOKBACK = 30
+
+
+def check_series_gaps(
+    dates_by_symbol: dict,
+    today: Optional[datetime.date] = None,
+    lookback: int = GAP_LOOKBACK,
+) -> list[dict]:
+    """DQ8: 価格系列の**途中**に欠落した営業日が無いかを見る（KIK-773）.
+
+    ⚠️ **DQ4 では捕まらない。** DQ4 は最新バーの日付しか見ないので、
+    系列の途中が抜けていても最新日が正しければ PASS を返す。
+
+    2026-08-31 に判明した実害:
+      yfinance の ``^N225`` は **2026-08-28 のバーが丸ごと欠落**していた。
+      最新バーは 2026-08-31 で正しいため DQ4 は PASS。しかし「前日比」が
+      8/27 との比較になり、**+0.27% と報告した（正しくは -0.14%）**。
+      Grok の報道値 -93.63円 と食い違って初めて気づいた。
+      J-Quants の TOPIX には 8/28 があり、そちらは正しかった。
+
+    前日比だけの問題ではない。欠落は RSI・SMA・σ・バンドウォーク・
+    ストップ距離のすべてに静かに入り込む。**警告もエラーも出ない。**
+
+    Parameters
+    ----------
+    dates_by_symbol : dict
+        ``{symbol: [ISO日付, ...]}``。``df["Close"].dropna().index`` を
+        ISO文字列にして渡す。**dropna した後**を渡すこと——NaN 行が
+        残ったままだと「バーはある」と誤判定する（DQ4 と同じ理由）。
+    lookback : int
+        直近何営業日を検査するか。既定 30。古い期間の歯抜けは
+        銘柄の上場時期や取引停止など正当な理由があるので見ない。
+
+    Returns
+    -------
+    list[dict]
+        ``_result`` 形式（id / status / detail）。id は "DQ8"。
+        カレンダーが取れないときは NA（銘柄間の相対比較はしない——
+        全銘柄が同じ日を落としている可能性があり、検知にならない）。
+    """
+    from src.data.checklist_review import FAIL, NA, PASS, WARN, _result
+
+    today = today or datetime.date.today()
+    if not dates_by_symbol:
+        return [_result("DQ8", NA, "検証対象の銘柄がない")]
+
+    cal = _load_calendar()
+    if not cal:
+        return [_result("DQ8", NA, "市場カレンダー未取得。系列の欠落は検証できない")]
+
+    iso = today.isoformat()
+    business = [d for d, is_biz in cal if is_biz and d <= iso]
+    if not business:
+        return [_result("DQ8", NA, "市場カレンダーに営業日がない")]
+    window = business[-lookback:]
+
+    gaps: dict[str, list[str]] = {}
+    checked = 0
+    for sym, dates in dates_by_symbol.items():
+        have = {str(d)[:10] for d in (dates or [])}
+        if not have:
+            continue
+        # 系列が始まる前・終わったあとは欠落ではない。重なる範囲だけを見る。
+        first, last = min(have), max(have)
+        target = [d for d in window if first <= d <= last]
+        if not target:
+            continue
+        checked += 1
+        missing = [d for d in target if d not in have]
+        if missing:
+            gaps[sym] = missing
+
+    if not checked:
+        return [_result("DQ8", NA, "検査窓に重なる系列がない")]
+
+    if not gaps:
+        return [_result("DQ8", PASS,
+                        f"{checked}銘柄すべて直近{len(window)}営業日に欠落なし")]
+
+    worst = max(len(v) for v in gaps.values())
+    status = FAIL if worst >= GAP_FAIL_BARS else WARN
+    detail = " / ".join(
+        f"{s} {len(v)}本欠落 ({', '.join(v[:3])}{'...' if len(v) > 3 else ''})"
+        for s, v in sorted(gaps.items())[:6]
+    )
+    return [_result(
+        "DQ8", status,
+        f"系列の途中に欠落: {detail}"
+        "  ← 前日比・RSI・SMA・σ が静かにずれる。DQ4 は最新バーしか見ないので通る",
+    )]
