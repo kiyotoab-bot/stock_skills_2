@@ -133,6 +133,38 @@ class TestLatestPlanNote:
         a["id"] = "newer"
         assert MC.latest_plan_note([PLAN_NOTE, a])["id"] == "newer"
 
+    def test_symbol_scoped_note_is_not_a_plan(self):
+        """銘柄付きノートの日付表を計画表と誤認しない (KIK-774).
+
+        2026-09-02 の月次で、7453.T のノートに書いた SMA200 の推移表が
+        「異なる年月の行が2行以上」に合致し、最新なので本物の投入計画
+        （2026-08-07）を押しのけた。9〜12月の枠が全部「記載なし」になり、
+        月次チェックが枠を1つも表示しなかった。
+        """
+        sma = {"id": "note_sma", "type": "target", "symbol": "7453.T",
+               "timestamp": "2026-08-31",
+               "content": chr(10).join([
+                   "【7453.T exit条件を相対値に直す】",
+                   "  2026-07-22  SMA200 ¥3,342",
+                   "  2026-08-03  SMA200 ¥3,397",
+                   "  2026-08-31  SMA200 ¥3,526",
+               ])}
+        # 単独では計画表とみなさない
+        assert MC.latest_plan_note([sma]) is None
+        # 本物の計画を押しのけない
+        assert MC.latest_plan_note([sma, PLAN_NOTE])["id"] == "note_plan"
+
+    def test_portfolio_wide_note_has_empty_symbol(self):
+        """symbol が空なら従来どおり候補になる（後方互換）."""
+        n = copy.deepcopy(PLAN_NOTE)
+        n["symbol"] = ""
+        assert MC.latest_plan_note([n])["id"] == "note_plan"
+
+    def test_missing_symbol_key_is_treated_as_portfolio_wide(self):
+        n = copy.deepcopy(PLAN_NOTE)
+        n.pop("symbol", None)
+        assert MC.latest_plan_note([n])["id"] == "note_plan"
+
     def test_no_candidates(self):
         assert MC.latest_plan_note([]) is None
 
