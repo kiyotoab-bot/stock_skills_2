@@ -427,7 +427,10 @@ class TestCooldown:
             {"date": "2026-07-13", "action": "buy", "symbol": "6268.T"},
             {"date": "2026-08-04", "action": "sell", "symbol": "2768.T"},
         ])
-        got = _by_id(check_cooldown(d, today=datetime.date(2026, 8, 10)))
+        # cooldown_weeks は明示する。既定値はティア運用（2026-09-03 に medium=2週へ）
+        # に追従して変わるが、このテストの主題は「売却は起点にならない」こと。
+        got = _by_id(check_cooldown(d, cooldown_weeks=4,
+                                    today=datetime.date(2026, 8, 10)))
         assert "2026-07-13" in got["PO1"]["detail"]
         assert "2026-08-10" in got["PO1"]["detail"]
 
@@ -485,7 +488,8 @@ class TestCooldown:
             {"date": "2026-07-13", "action": "buy", "symbol": "A.T"},
             {"date": "2026-08-10", "trade_type": "buy", "symbol": "7751.T"},
         ])
-        got = _by_id(check_cooldown(d, today=datetime.date(2026, 9, 5)))
+        got = _by_id(check_cooldown(d, cooldown_weeks=4,
+                                    today=datetime.date(2026, 9, 5)))
         assert "2026-08-10" in got["PO1"]["detail"]   # 起点は直近の買付
         assert "2026-09-07" in got["PO1"]["detail"]   # +4週
         assert got["PO1"]["status"] == FAIL           # 冷却期間中

@@ -414,7 +414,7 @@ def check_followthrough(
 
 def check_cooldown(
     trade_dir: str = "data/history/trade",
-    cooldown_weeks: int = 4,
+    cooldown_weeks: int = 2,   # 2026-09-03 ユーザー判断で medium（2週）へ。monthly_check._OPERATIVE_TIER と揃える
     excluded_dates: Optional[set[str]] = None,
     today: Optional[datetime.date] = None,
 ) -> list[dict]:

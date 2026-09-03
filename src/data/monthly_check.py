@@ -135,7 +135,12 @@ _TIER_FALLBACK = {
     "large":  {"cooldown_weeks": 1, "monthly_limit": 4},   # $200K〜
 }
 # 運用ティア。規模が上がっても自動では緩めない（下記の理由）
-_OPERATIVE_TIER = "small"
+# 2026-09-03 ユーザー判断で small → medium（冷却 4週→2週。月次上限は 1 のまま）。
+# 総資産 $50,402 で medium 境界を上回ったのを受けた緩和。tier_rules() の docstring
+# にある「自動で緩めない」原則は維持している——これは人が決めた変更である。
+# ⚠️ 総資産が $50K を割ると tier_by_size=small ≠ operative=medium となり
+#   tier_mismatch が「運用の方が緩い」向きで警告する。そのときは締め直しを判断する。
+_OPERATIVE_TIER = "medium"
 _COOLDOWN_RE = re.compile(r"(\d+)\s*週")
 
 
@@ -186,8 +191,9 @@ def tier_rules(total_assets_usd: float) -> dict:
     （`checklist_review.check_pf_tier` の docstring）。境界の 1% で規律が
     自動的に緩むのは、その事故と同じ構造を作ることになる。
 
-    そこで運用値は保守側（small）に固定し、ティアが違う場合は
-    ``tier_mismatch`` で見せる。緩めるかどうかは人が決める。
+    そこで運用値は固定し、ティアが違う場合は ``tier_mismatch`` で見せる。
+    緩めるかどうかは人が決める。2026-08-06 から small（4週）に固定していたが、
+    **2026-09-03 にユーザー判断で medium（2週）へ緩和した**（総資産 $50,402）。
     """
     loaded = load_tier_rules()
     table = loaded["rules"]

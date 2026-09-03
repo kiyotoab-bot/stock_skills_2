@@ -418,19 +418,31 @@ class TestGoalDeadlineBoundaries:
 
 
 class TestTierRules:
-    """規模ティアで冷却期間を自動的に緩めない (KIK-739)."""
+    """規模ティアで冷却期間を自動的に緩めない (KIK-739).
 
-    def test_operative_stays_conservative_at_the_boundary(self):
+    運用値は 2026-08-06 から small に固定していたが、2026-09-03 に
+    ユーザー判断で medium（冷却2週）へ緩和した。原則（自動で緩めない・
+    ティアの差は tier_mismatch で見せる）は変わらない。
+    """
+
+    def test_operative_is_medium_since_2026_09_03(self):
         r = MC.tier_rules(50_592)
         assert r["tier_by_size"] == "medium"
-        assert r["operative_tier"] == "small"
-        assert r["cooldown_weeks"] == 4          # 2週に縮めない
+        assert r["operative_tier"] == "medium"
+        assert r["cooldown_weeks"] == 2
         assert r["near_boundary"] is True
-        assert "medium" in r["tier_mismatch"]
+        assert r["tier_mismatch"] is None        # 規模と運用が一致
 
-    def test_no_mismatch_below_the_boundary(self):
+    def test_mismatch_warns_when_assets_fall_below_boundary(self):
+        """総資産が $50K を割ると『運用の方が緩い』向きの警告が出る。
+
+        自動では締め直さない。small 固定時代の逆向きと同じで、人が判断する。
+        """
         r = MC.tier_rules(40_000)
-        assert r["tier_by_size"] == "small" and r["tier_mismatch"] is None
+        assert r["tier_by_size"] == "small"
+        assert r["operative_tier"] == "medium"
+        assert r["cooldown_weeks"] == 2          # 自動では締めない
+        assert "small" in r["tier_mismatch"]
 
     def test_source_states_the_yaml_is_unreadable(self):
         """sector_matrix.yaml は YAML として壊れているので SSoT にできない."""
@@ -513,7 +525,8 @@ class TestBuildMonthlyContext:
         assert set(ctx) >= {"month", "tier_rules", "budget", "slots", "conviction",
                             "goal", "realized", "last_month_realized", "holdings"}
         assert ctx["month"] == "2026-08"
-        assert ctx["budget"]["cooldown_end"] == "2026-08-10"
+        # 2026-09-03 の medium 緩和（4週→2週）で cooldown_end は買付+2週になる
+        assert ctx["budget"]["cooldown_end"] == "2026-07-27"
 
     def test_slots_feed_conviction(self, tmp_path):
         """組み立ての正しさこそこの関数の存在理由。キーの有無だけでは足りない."""
@@ -575,7 +588,11 @@ class TestLoadTierRules:
     def test_tier_rules_reports_the_yaml_as_source(self):
         assert MC.tier_rules(40_000)["source"] == "sector_matrix.yaml"
 
-    def test_yaml_values_still_do_not_relax_the_cooldown(self):
-        """yaml から読めても、規模で自動的に緩めない判断は変えない."""
+    def test_yaml_values_do_not_override_the_operative_tier(self):
+        """yaml から読めても、運用値は _OPERATIVE_TIER が決める（自動で変えない）.
+
+        2026-09-03 のユーザー判断で運用は medium（2週）。yaml の値が
+        変わっても、規模ティアで勝手に緩めたり締めたりしない原則は同じ。
+        """
         r = MC.tier_rules(50_592)
-        assert r["tier_by_size"] == "medium" and r["cooldown_weeks"] == 4
+        assert r["tier_by_size"] == "medium" and r["cooldown_weeks"] == 2
