@@ -628,6 +628,63 @@ class TestReviewCoverage:
         assert latest_review_date(str(tmp_path / "nope")) is None
 
 
+class TestSaveReviewLabel:
+    """同じ日に複数回レビューしても上書きしない (KIK-775).
+
+    2026-09-02 に日次と月次を同じ日に回したところ、月次が
+    checklist_20260902.json を上書きし、日次のレビュー記録が消えた。
+    DQ8 の結果や WTI の閾値超えを記録していたファイルだった。
+    """
+
+    def test_label_makes_distinct_files(self, tmp_path):
+        from src.data.checklist_review import save_review
+
+        a = save_review({"verdict": "PASS"}, str(tmp_path), label="daily")
+        b = save_review({"verdict": "FAIL"}, str(tmp_path), label="monthly")
+        assert a != b
+        assert len(list(tmp_path.glob("*.json"))) == 2
+        assert "daily" in a and "monthly" in b
+
+    def test_same_label_overwrites(self, tmp_path):
+        """同じ label の再実行は上書きでよい（その日のそのレビューの最新）."""
+        from src.data.checklist_review import save_review
+
+        a = save_review({"verdict": "PASS"}, str(tmp_path), label="daily")
+        b = save_review({"verdict": "FAIL"}, str(tmp_path), label="daily")
+        assert a == b
+        assert len(list(tmp_path.glob("*.json"))) == 1
+
+    def test_no_label_keeps_legacy_name(self, tmp_path):
+        """後方互換: label 省略時は従来のファイル名."""
+        from src.data.checklist_review import save_review
+
+        p = save_review({"verdict": "PASS"}, str(tmp_path))
+        assert "checklist_" in p
+        name = p.replace("\\", "/").rsplit("/", 1)[-1]
+        assert name.count("_") == 1
+
+    def test_label_is_sanitised(self, tmp_path):
+        """ファイル名に使えない文字を落とす."""
+        from src.data.checklist_review import save_review
+
+        p = save_review({"verdict": "PASS"}, str(tmp_path), label="routine/daily 月次")
+        assert "/" not in p.replace("\\", "/").rsplit("/", 1)[-1]
+
+    def test_latest_review_date_still_reads_labelled_files(self, tmp_path):
+        """label 付きでも latest_review_date が日付を拾えること."""
+        from src.data.checklist_review import latest_review_date, save_review
+
+        save_review({"verdict": "PASS"}, str(tmp_path), label="monthly")
+        assert latest_review_date(str(tmp_path)) is not None
+
+    def test_run_review_passes_label_through(self, tmp_path):
+        from src.data.checklist_review import run_review
+
+        r = run_review([{"id": "X", "status": "PASS", "detail": "ok"}],
+                       reviews_dir=str(tmp_path), label="weekly")
+        assert "weekly" in r["saved_to"]
+
+
 class TestRunReview:
     """単一の入口としての段階的縮退（1 → 2 → 3 を必ず通す）。"""
 

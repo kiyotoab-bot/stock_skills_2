@@ -284,11 +284,19 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_holding_age(positions, notes)   # ← 週次/月次で必須（KIK-770）
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
-summary = CR.run_review(checks, llm_context=review_prompt)
+summary = CR.run_review(checks, llm_context=review_prompt,
+                        label="daily")   # ← ルーティンでは必ず渡す（KIK-775）
 # → level: "mechanical_plus_independent"（外部LLMが実際に使えた場合）
 #           "mechanical_only"（使えなかった場合）
 # → data/reviews/ への保存は run_review が必ず行う
 ```
+
+⚠️ **`label` を省略すると同じ日の別レビューを上書きする**（KIK-775）。
+ファイル名は `checklist_{label}_{YYYYMMDD}.json`。省略時は `checklist_{YYYYMMDD}.json`
+のままなので、**日次と月次を同じ日に回すと後から実行した方が前を消す**。
+2026-09-02 に実際に起き、日次のレビュー記録（DQ8 の結果・WTI の閾値超え）が消えた。
+`routine-daily` → `label="daily"` / `routine-weekly` → `"weekly"` /
+`routine-monthly` → `"monthly"` を渡すこと。
 
 ⚠️ **`check_stop_breach()`（RL6）は日次チェックで必ず入れる。**
 
