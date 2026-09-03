@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 from typing import Any, Optional
 
 # 判定結果
@@ -737,6 +738,18 @@ def check_data_freshness(latest_by_symbol, today=None, nan_tail_by_symbol=None):
                  nan_tail_by_symbol=nan_tail_by_symbol)
 
 
+def check_series_gaps(dates_by_symbol, today=None, lookback=30):
+    """DQ8: 価格系列の途中に欠落した営業日が無いか。詳細は src.data.data_freshness 参照。
+
+    ⚠️ DQ4 とは別物。DQ4 は**最新バーの日付**しか見ないので、系列の途中が
+    抜けていても最新日が正しければ PASS を返す。2026-08-31 に ^N225 の
+    2026-08-28 が丸ごと欠落し、前日比を +0.27%（正 -0.14%）と誤報告した。
+    """
+    from src.data.data_freshness import check_series_gaps as _impl
+
+    return _impl(dates_by_symbol, today=today, lookback=lookback)
+
+
 ORDER_CHECK_NOTE_TYPE = "order-check"
 
 
@@ -899,18 +912,43 @@ def independent_review(context: str, timeout: int = 180) -> dict:
     return {"independent": True, "availability": avail, "reviews": reviews, "note": ""}
 
 
-def save_review(summary: dict, reviews_dir: str = "data/reviews") -> str:
+_LABEL_SAFE = re.compile(r"[^0-9A-Za-z_-]+")
+
+
+def save_review(summary: dict, reviews_dir: str = "data/reviews",
+                label: Optional[str] = None) -> str:
     """レビュー結果を ``data/reviews/`` に保存する。
 
     ``check_review_coverage()`` はこのファイルの日付を見るので、
     **保存して初めてレビューを実施したことになる**。
+
+    Parameters
+    ----------
+    label
+        同じ日に複数回レビューするときの区別（``"daily"`` / ``"weekly"`` /
+        ``"monthly"`` など）。ファイル名は ``checklist_{label}_{YYYYMMDD}.json``。
+
+        ⚠️ **省略すると同日の別レビューを上書きする**（KIK-775）。
+        2026-09-02 に日次と月次を同じ日に回したところ、月次が
+        ``checklist_20260902.json`` を上書きし、**日次のレビュー記録が消えた**。
+        DQ8 の結果や WTI の閾値超えを記録していたファイルだった。
+        識別子が日付だけで、別物が衝突する構造だった
+        （FT1 が参考日付を期限と誤認したのと同じ形）。
+
+        後方互換のため ``label=None`` は従来のファイル名のままにしてある。
+        ルーティンから呼ぶときは必ず渡すこと。
     """
     import datetime as _dt
     from pathlib import Path
 
     Path(reviews_dir).mkdir(parents=True, exist_ok=True)
     stamp = _dt.date.today().strftime("%Y%m%d")
-    path = Path(reviews_dir) / f"checklist_{stamp}.json"
+    if label:
+        safe = _LABEL_SAFE.sub("-", str(label)).strip("-")
+        name = f"checklist_{safe}_{stamp}.json" if safe else f"checklist_{stamp}.json"
+    else:
+        name = f"checklist_{stamp}.json"
+    path = Path(reviews_dir) / name
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str),
                     encoding="utf-8")
     return str(path)
@@ -929,6 +967,7 @@ def run_review(
     llm_context: Optional[str] = None,
     reviews_dir: str = "data/reviews",
     save: bool = True,
+    label: Optional[str] = None,
 ) -> dict:
     """レビューの唯一の入口。段階的に縮退しつつ、**発火だけは必ず保証する**。
 
@@ -936,6 +975,10 @@ def run_review(
       1. 機械的チェック — 常に実行する（``checks`` を呼び出し側が集めて渡す）
       2. 外部LLMによる独立レビュー — 実際に叩いて使えたときだけ付く
       3. 記録 — 上のどちらであっても ``data/reviews/`` に必ず保存する
+
+    ⚠️ ``label`` を渡すとファイル名が ``checklist_{label}_{YYYYMMDD}.json`` になる。
+    **同じ日に日次と月次を回すときは必ず渡すこと。** 省略すると後から実行した
+    方が前を上書きする（KIK-775。2026-09-02 に実際に日次の記録が消えた）。
 
     設計の意図: 最初は 1/2/3 を別々の関数として公開したが、**呼び出し側が
     組み立てる限り組み立て忘れが起きる**。実際 ``orchestration.yaml`` の
@@ -968,5 +1011,6 @@ def run_review(
             "自分の判断を自分で見ているだけであることに留意。"
         )
 
-    summary["saved_to"] = save_review(summary, reviews_dir) if save else None
+    summary["saved_to"] = (save_review(summary, reviews_dir, label=label)
+                           if save else None)
     return summary

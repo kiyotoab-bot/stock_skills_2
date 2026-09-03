@@ -113,6 +113,8 @@ Data (src/data/)
                     ラチェットが積み上がり、ストップが株価に収束するのを防ぐ）
   reit_metrics.py — J-REIT の NAV倍率・LTV・分配金利回り（株式の指標は当てない）
   data_freshness.py — 価格データの基準日検証（DQ4のゲート。計算前に通す）
+                    系列の途中の欠落は DQ8 check_series_gaps が見る（KIK-773。
+                    DQ4 は最新バーしか見ず、^N225 の 8/28 欠落を素通りさせた）
 
 Orchestrator (src/orchestrator/) — KIK-746
   dry_run.py     — routing.yaml + agent定義の整合性検証（API呼ばない）

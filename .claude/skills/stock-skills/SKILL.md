@@ -284,11 +284,19 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_holding_age(positions, notes)   # ← 週次/月次で必須（KIK-770）
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
-summary = CR.run_review(checks, llm_context=review_prompt)
+summary = CR.run_review(checks, llm_context=review_prompt,
+                        label="daily")   # ← ルーティンでは必ず渡す（KIK-775）
 # → level: "mechanical_plus_independent"（外部LLMが実際に使えた場合）
 #           "mechanical_only"（使えなかった場合）
 # → data/reviews/ への保存は run_review が必ず行う
 ```
+
+⚠️ **`label` を省略すると同じ日の別レビューを上書きする**（KIK-775）。
+ファイル名は `checklist_{label}_{YYYYMMDD}.json`。省略時は `checklist_{YYYYMMDD}.json`
+のままなので、**日次と月次を同じ日に回すと後から実行した方が前を消す**。
+2026-09-02 に実際に起き、日次のレビュー記録（DQ8 の結果・WTI の閾値超え）が消えた。
+`routine-daily` → `label="daily"` / `routine-weekly` → `"weekly"` /
+`routine-monthly` → `"monthly"` を渡すこと。
 
 ⚠️ **`check_stop_breach()`（RL6）は日次チェックで必ず入れる。**
 
@@ -658,9 +666,12 @@ from src.data.morning_summary import check_routine_health
 check_routine_health()     # 鮮度 + GraphRAG のスキーマ をまとめて見る
 
 # DQ4: 価格データの基準日（KIK-761）。**計算を始める前に通す**
-from src.data.checklist_review import check_data_freshness
-latest = {s: str(df["Close"].dropna().index[-1])[:10] for s, df in histories.items()}
-for r in check_data_freshness(latest):
+# DQ8: 系列の途中の欠落（KIK-773）。**DQ4 とセットで通す**
+from src.data.checklist_review import check_data_freshness, check_series_gaps
+dates = {s: [str(d)[:10] for d in df["Close"].dropna().index] for s, df in histories.items()}
+for r in check_data_freshness({s: v[-1] for s, v in dates.items()}):
+    print(f"[{r['status']}] {r['detail']}")
+for r in check_series_gaps(dates):          # ← DQ8
     print(f"[{r['status']}] {r['detail']}")
 ```
 
@@ -668,6 +679,13 @@ for r in check_data_freshness(latest):
 取り直し、それでも古ければ理由を報告する。1日古いデータで出した RSI・SMA・
 バンドウォーク・半年期日・ストップ距離は、**そう見えるだけで全部間違っている**。
 2026-08-15 に6銘柄すべてで発生し、誰も気づかなかった。
+
+⚠️ **DQ4 だけでは足りない。DQ8 を必ず併せて通す**（KIK-773）。
+DQ4 は**最新バーの日付しか見ない**ので、系列の途中が抜けていても最新日が
+正しければ PASS を返す。2026-08-31 に yfinance の `^N225` が **2026-08-28 の
+バーを丸ごと欠落**させ、DQ4 は PASS のまま「前日比」が 08-27 との比較になり
+**+0.27% と報告した（正しくは -0.14%）**。外部ソースの報道値と食い違って
+初めて気づいた。欠落は前日比だけでなく RSI・SMA・σ にも静かに入り込む。
 
 **スキーマも見る理由**: `init_schema()` はベクトル索引の失敗を
 `try/except: pass` で握り潰すため、**1つも作られなくても True を返す**。
