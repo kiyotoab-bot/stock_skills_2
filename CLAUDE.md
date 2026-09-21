@@ -101,6 +101,8 @@ Data (src/data/)
   portfolio_io.py — PF CSV 読み書き
   scoring.py     — 3軸品質スコアリング（還元性・成長性・持続性）
   market_regime.py — 市場レジーム指標（ドル建て日経・NT倍率・日経PER・理論株価バンド）
+                    + 暴落全力買いサイン detect_crash_buy_signal（父娘NB・2026-09-21。
+                    ストップ安>=100 と 売買代金>時価総額1% を機械判定。③報道と発注は人が判断）
   band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
   margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
                     pressure のみ買いを止める。flying は需給整理が先行して

@@ -256,6 +256,7 @@ Output &amp; Visibility v1 の Layer 2 仕様に統合された。
 | 売買可否・ストップ・配分の判定 | `rules` |
 | WLチェック・日次/週次チェック・候補提示 | `reporting` `data_quality` |
 | **WL登録・エントリー条件を書くとき** | **`entry_conditions` の EC1-EC5**（KIK-772） |
+| **シクリカル銘柄（不況期赤字で買う型）のWL登録** | **`entry_conditions_cyclical` の CY1-CY5**（EC1 は営業益YoY+を要求するため不適用。EC2/EC4/EC5 は併用・父娘NB 2026-09-21） |
 | **発注指示書を出す直前** | **`pre_order` の PO1-PO8** |
 | **発注した直後** | **`pre_order` の PO9（注文一覧との突合）** |
 | すべての場面 | `followthrough` |
@@ -660,6 +661,15 @@ weekly は「相場と PF の現状」、monthly は「**今月の売買1回を�
 #### 日次フロー（routine-daily）
 
 **Step 0（必須）: ルーティンの鮮度チェック**
+
+```python
+# 暴落全力買いサイン（父娘NB・2026-09-21）— 日次で1回見る
+from src.data.market_regime import detect_crash_buy_signal
+cs = detect_crash_buy_signal()
+if cs and cs["mechanical_signals"] >= 1:
+    print(cs["label"])   # 2/2 なら③（報道）を確認して人が判断。発注は自動化しない
+```
+
 
 ```python
 from src.data.morning_summary import check_routine_health
