@@ -8,7 +8,7 @@
 主観を挟まず判定できる項目だけでも自動化すれば、自己レビューより信頼できる。
 
 ⚠️ ここで検証できるのは「機械的に判定できる項目」だけ。
-   `config/checklists.yaml` の 31項目中、ここで自動判定するのは 12項目。
+   `config/checklists.yaml` の 32項目中、ここで自動判定するのは 13項目。
    残りは人間／エージェントが目で通す必要がある。**PASS は「全部確認した」ではなく
    「自動判定できる範囲で問題なし」を意味する。**
 """
@@ -684,7 +684,7 @@ def check_supply_demand(
 def summarize(results: list[dict]) -> dict:
     """個別判定を PASS / WARN / FAIL に集約する。
 
-    ⚠️ 総合 PASS は「チェックリスト31項目を全部通した」ではなく
+    ⚠️ 総合 PASS は「チェックリスト32項目を全部通した」ではなく
     「**自動判定できた項目に問題がなかった**」という意味しか持たない。
     """
     counts = {k: 0 for k in (PASS, WARN, FAIL, NA)}
@@ -748,6 +748,18 @@ def check_series_gaps(dates_by_symbol, today=None, lookback=30):
     from src.data.data_freshness import check_series_gaps as _impl
 
     return _impl(dates_by_symbol, today=today, lookback=lookback)
+
+
+def check_dilution(share_series, today=None, lookback_years=3):
+    """EC6: 買い候補の増資（希薄化）履歴。詳細は src.data.dilution 参照。
+
+    父娘本「苦しい時に増資で乗り切る会社は買わない」に対応する
+    （2026-09-21 の監査で工程がどこにも無いと判明）。
+    ``share_series`` は ``{symbol: dilution.get_share_count_history(sym)}``。
+    """
+    from src.data.dilution import check_dilution as _impl
+
+    return _impl(share_series, today=today, lookback_years=lookback_years)
 
 
 ORDER_CHECK_NOTE_TYPE = "order-check"

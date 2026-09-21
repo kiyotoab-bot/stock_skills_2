@@ -112,6 +112,11 @@ Data (src/data/)
   checklist_review.py — 機械的チェックリスト（DQ/RL/FT/PO/HD/SD/REVIEW）
                     SD1/SD2 は買い候補の需給を候補段階で見る（KIK-772。PO7 は
                     発注直前にしか火が点かず、候補表の順位付けに効かなかった）
+  dilution.py    — 増資（希薄化）履歴の判定（EC6・父娘本 2026-09-21）
+                    J-Quants 短信の期末発行済株数を3年遡り、隣接+5%か
+                    累計+10%（MSCB等の段階的希薄化）で WARN。+80%以上=分割、
+                    -30%以下=併合の可能性として目視確認に回す。
+                    WARN は「買うな」ではなく「増資の理由を確認せよ」
   stop_formula.py — ストップ統一式とトレーリング判定（切り下げはしない）
                     ボラ基準の現値は直近3日平均（KIK-768。毎日の終値ノイズで
                     ラチェットが積み上がり、ストップが株価に収束するのを防ぐ）
@@ -133,7 +138,7 @@ Config: config/allocation.yaml (PFターゲットアロケーション・集中�
 Config: config/etf_universe.yaml (ETF定番リスト — セクター/債券/コモディティ/地域)
 Config: config/llm_routing.yaml (LLM選択・モデルルーティング・コスト定義)
 Config: config/tools.yaml (全ツールの関数・役割・NotebookLMライブラリと参照可否)
-Config: config/checklists.yaml (機械チェックの定義。entry_conditions EC1-EC5 = WL登録時、
+Config: config/checklists.yaml (機械チェックの定義。entry_conditions EC1-EC6 = WL登録時、
         reporting RP6 = 候補提示時の需給、pre_order PO1-PO9 = 発注前後)
 Rules:  .claude/rules/ (development, workflow, testing)
 Docs:   docs/ (architecture, neo4j-schema, data-models)
