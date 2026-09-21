@@ -664,10 +664,10 @@ weekly は「相場と PF の現状」、monthly は「**今月の売買1回を�
 
 ```python
 # 暴落全力買いサイン（父娘NB・2026-09-21）— 日次で1回見る
-from src.data.market_regime import detect_crash_buy_signal
-cs = detect_crash_buy_signal()
-if cs and cs["mechanical_signals"] >= 1:
-    print(cs["label"])   # 2/2 なら③（報道）を確認して人が判断。発注は自動化しない
+from src.data.crash_signal import detect_crash_buy_signal
+cs = detect_crash_buy_signal()          # 常に dict。当日バー未確定なら前営業日で判定
+if not cs["available"] or cs["mechanical_signals"] >= 1:
+    print(cs["label"])   # n/a も表示する（障害と平常を混同しない）。発注は自動化しない
 ```
 
 
