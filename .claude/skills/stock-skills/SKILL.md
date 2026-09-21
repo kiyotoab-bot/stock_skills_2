@@ -255,7 +255,7 @@ Output &amp; Visibility v1 の Layer 2 仕様に統合された。
 | 改訂率・前年比・進捗率・リターンの計算 | `comparison` |
 | 売買可否・ストップ・配分の判定 | `rules` |
 | WLチェック・日次/週次チェック・候補提示 | `reporting` `data_quality` |
-| **WL登録・エントリー条件を書くとき** | **`entry_conditions` の EC1-EC5**（KIK-772） |
+| **WL登録・エントリー条件を書くとき** | **`entry_conditions` の EC1-EC6**（KIK-772、EC6=増資履歴 2026-09-21） |
 | **シクリカル銘柄（不況期赤字で買う型）のWL登録** | **`entry_conditions_cyclical` の CY1-CY5**（EC1 は営業益YoY+を要求するため不適用。EC2/EC4/EC5 は併用・父娘NB 2026-09-21） |
 | **発注指示書を出す直前** | **`pre_order` の PO1-PO8** |
 | **発注した直後** | **`pre_order` の PO9（注文一覧との突合）** |
@@ -268,7 +268,7 @@ Output &amp; Visibility v1 の Layer 2 仕様に統合された。
 
 ### 機械的レビュー（必須・KIK-734）
 
-チェックリストのうち**コードで判定できる12項目**は `src/data/checklist_review.py` で実行する。
+チェックリストのうち**コードで判定できる13項目**は `src/data/checklist_review.py` で実行する。
 
 **入口は `run_review()` ひとつ。**段階的に縮退しつつ、記録だけは必ず残る。
 
@@ -425,7 +425,7 @@ CR.check_holding_age(positions, notes)   # 既定 HOLDING_REVIEW_YEARS = 3
 - 外部LLMが使えないときは `independent=False` を明示する。
   **Claude が Claude の判断を見るのは独立レビューではない**
 
-⚠️ 総合 PASS は「31項目すべて確認した」ではなく「**自動判定できた範囲で問題なし**」の意味しか持たない。
+⚠️ 総合 PASS は「32項目すべて確認した」ではなく「**自動判定できた範囲で問題なし**」の意味しか持たない。
 
 **`code` 欄があるチェックは必ず実行する**（目視確認で代替しない）。主なもの:
 
