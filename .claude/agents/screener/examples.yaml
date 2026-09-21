@@ -119,6 +119,8 @@ presets:
   momentum:          { description: "モメンタム（急騰・ブレイクアウト検出）", mode: "momentum" }
   long-term:         "長期投資適性（高ROE・配当・安定成長）"
   market-darling:    "市場期待銘柄（高PER許容・EPS急成長）"
+  shueki-value:      { description: "収益バリュー株（父娘NB 5条件: 営業利益率10%↑・PER10倍↓・PBR1.5↓・ROA7%↑・時価総額300億↓。緩和順=利益率8-9%→PER15。グレアム指数22.5超は不可。⚠️時価総額条件は小型株制約[1銘柄3%]と衝突するため株数上限に注意）", mode: "value" }
+  cyclical-value:    { description: "シクリカルバリュー株（父娘NB: 不況期赤字・PSR0.5倍↓・数量増加+赤字下設備投資の予兆。EC1不適用→checklists.yaml の CY1-CY5 を使う。対象=造船/鉄鋼/非鉄/鉱業/ガラス/石油石炭/化学/紙パルプ）", mode: "contrarian" }
 
 # ---------------------------------------------------------------------------
 # 3軸品質スコア閾値（KIK-710）
