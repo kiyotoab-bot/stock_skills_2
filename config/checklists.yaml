@@ -294,8 +294,10 @@ entry_conditions:
 # 出典: NotebookLM「投資家の父から娘への教え」（father-daughter-value-investin）
 # ⚠️ 通常の entry_conditions（EC1-EC5）の EC1 は「営業益YoYプラス」を要求するため、
 #    不況期の赤字で買うシクリカルバリューには構造的に適用できない。
-#    シクリカル枠でエントリーする場合は EC1 の代わりに本リスト CY1-CY4 を使う。
-#    EC2（テーゼ・sell_triggers）/ EC4（枠）/ EC5（需給）はそのまま併用する。
+#    シクリカル枠でエントリーする場合は EC1 の代わりに本リスト CY1-CY5 を使う
+#    （CY5=逆算PER目標は購入時に必須。売り遅れ防止の損失管理ルールなので飛ばさない）。
+#    EC2（テーゼ・sell_triggers）/ EC3（一次情報検証 — PSRの出所・数量データの根拠明記）/
+#    EC4（枠）/ EC5（需給）はそのまま併用する。
 entry_conditions_cyclical:
   apply_to:
     - "シクリカルバリュー銘柄（造船・鉄鋼・非鉄・鉱業・ガラス・石油石炭・化学・紙パルプ等）のWL登録・エントリー"
