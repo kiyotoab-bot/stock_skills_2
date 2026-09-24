@@ -108,7 +108,9 @@ Data (src/data/)
   band_walk.py   — バンドウォーク終了の4工程判定（ボリンジャーバンド+SAR+MACD）
   jquants_client/margin_interest.py — 個別銘柄の信用残（J-Quants）。2026-09-28 から日次化（KIK-776）。
                     前週比 wow_change_pct は隣接行ではなく「7日以上前の最も近い行」と比較する
-                    （日次化後に前日比が前週比として PO7/SD1 に流れるのを防ぐ）。前日比は dod_change_pct
+                    （日次化後に前日比が前週比として PO7/SD1 に流れるのを防ぐ）。前日比は dod_change_pct。
+                    切替日（隣接行が5日未満）は日次扱い。基準行が13日より古ければ前週比は None。
+                    失敗は error（available=False）、成功時の診断（落とした行）は warning に分ける
   margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
                     pressure のみ買いを止める。flying は需給整理が先行して
                     底打ちしやすいので止めない（KIK-772 の SD2）

@@ -78,17 +78,25 @@ def get_client():
     return _client_cache
 
 
-def is_available() -> bool:
-    """J-Quants APIキーが設定されているか確認。"""
+def unavailable_reason() -> Optional[str]:
+    """使えない理由を文字列で返す。使えるなら None。
+
+    「SDK 未導入」と「認証情報なし」を区別する（is_available() は両方 False に潰すので、
+    error 文言に使うと SDK が無いのに「トークンを設定しろ」と出る。コードレビュー 2026-09-25）。
+    """
     _ensure_env()
     try:
         import jquantsapi  # noqa: F401
     except ImportError:
-        return False
-    return bool(
-        os.environ.get("JQUANTS_API_KEY")
-        or os.environ.get("JQUANTS_API_REFRESH_TOKEN")
-    )
+        return "jquants-api-client not installed"
+    if os.environ.get("JQUANTS_API_KEY") or os.environ.get("JQUANTS_API_REFRESH_TOKEN"):
+        return None
+    return "JQUANTS_API_KEY / JQUANTS_API_REFRESH_TOKEN not set"
+
+
+def is_available() -> bool:
+    """J-Quants が使えるか（SDK 導入済み かつ APIキー設定済み）。"""
+    return unavailable_reason() is None
 
 
 def reset_client() -> None:

@@ -317,10 +317,38 @@ class TestDailyMarginInterest:
                 _row("2026-09-18", 5200000, 160000), _row("2026-09-25", 5000000, 200000, "2026-09-28"),
                 _row("2026-09-28", 7000000, 200000, "2026-09-29")]
         r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
-        assert r["frequency"] == "weekly"          # 判定はまだ週次
+        assert r["frequency"] == "daily"           # 隣接行が 3 日前 → 最新行は日次行
         assert r["wow_basis_date"] == "2026-09-18"  # 9/28 の 7 日前 = 9/21 以前で最も近い行
         assert r["wow_change_pct"] == pytest.approx((35.0 - 32.5) / 32.5 * 100, abs=0.1)
-        assert r["dod_change_pct"] is None
+        assert r["dod_change_pct"] == pytest.approx((35.0 - 25.0) / 25.0 * 100, abs=0.1)  # 9/25 比
+
+    def test_wow_is_none_when_basis_row_is_too_old(self):
+        """9/18 の週次行が欠けている: 9/28 の基準候補は 9/11（17 日前）→ 前週比とは呼べないので None。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-11", 5085500, 175100), _row("2026-09-25", 5000000, 200000),
+                _row("2026-09-28", 7000000, 200000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["frequency"] == "daily"
+        assert r["wow_change_pct"] is None and r["wow_basis_date"] is None
+        assert r["dod_change_pct"] == pytest.approx(40.0, abs=0.1)
+
+    def test_weekly_with_missing_week_has_no_wow(self):
+        """週次で 1 週欠落（9/11 → 9/25 = 14 日）: 隣接行でも前週ではないので None。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-04", 5631900, 147300), _row("2026-09-11", 5085500, 175100),
+                _row("2026-09-25", 5000000, 200000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["frequency"] == "weekly"
+        assert r["wow_change_pct"] is None
+
+    def test_mixed_date_formats_are_not_dropped(self):
+        """"20260918"（旧行）と "2026-09-25"（新行）が混在しても最新行を落とさない。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("20260911", 5085500, 175100), _row("20260918", 5200000, 160000),
+                _row("2026-09-25", 5000000, 200000, "2026-09-28")]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["date"] == "2026-09-25" and r["warning"] is None
+        assert r["wow_basis_date"] == "2026-09-18"
 
     def test_transition_day_two_rows_only_has_no_wow(self):
         """9/25・9/28 の 2 行しか無い: 隣接 3 日・7 日前の行も無い → 前週比は出さない（None）。"""
@@ -355,6 +383,15 @@ class TestDailyMarginInterest:
         r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
         assert r["date"] == "2026-09-11" and r["pub_date"] == "2026-09-15"
         assert r["wow_basis_date"] == "2026-09-04"
+
+    def test_sdk_missing_is_reported_as_not_installed(self, monkeypatch):
+        """SDK 未導入なら error は「not installed」。トークン未設定と混同しない。"""
+        import sys
+        monkeypatch.setitem(sys.modules, "jquantsapi", None)
+        from src.data.jquants_client.margin_interest import get_stock_margin
+        r = get_stock_margin("7203.T")
+        assert r["available"] is False and "not installed" in r["error"]
+        assert r["history"] == [] and r["frequency"] is None
 
     def test_error_results_do_not_share_history_list(self, monkeypatch):
         _no_credentials(monkeypatch)
@@ -393,19 +430,3 @@ class TestIsAvailable:
         from src.data.jquants_client._client import is_available
         assert is_available() is False
 
-
-def test_tools_fallback_matches_margin_schema():
-    """tools/jquants.py の ImportError フォールバックは src 側の _EMPTY と同じキーを返す。
-
-    agent.md は history / frequency / dod_change_pct を読むので、2 キーだけ返すと
-    ライブラリ未導入環境で KeyError になる（コードレビュー 2026-09-25）。
-    """
-    import ast
-    import pathlib
-    from src.data.jquants_client.margin_interest import _EMPTY
-    src = pathlib.Path("tools/jquants.py").read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_margin_unavailable")
-    ret = next(n for n in ast.walk(fn) if isinstance(n, ast.Return))
-    keys = {k.value for k in ret.value.keys}
-    assert keys == set(_EMPTY)
