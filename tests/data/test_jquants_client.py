@@ -303,7 +303,79 @@ class TestDailyMarginInterest:
         rows = self.WEEKLY + [{"Date": "not-a-date", "Code": "80310", "LongVol": 1.0, "ShrtVol": 1.0}]
         r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
         assert r["available"] is True and r["date"] == "2026-09-11"
-        assert "1 rows dropped" in r["error"]
+        assert "1 rows dropped" in r["warning"]
+        assert r["error"] is None                   # 診断は warning。error は失敗専用
+
+    def test_transition_day_does_not_use_three_day_old_row_as_previous_week(self):
+        """週次→日次の切替日（9/28）: 中央値は 7 日でまだ weekly だが、隣接行 9/25 は 3 日前。
+
+        コードレビュー 2026-09-25 の指摘。ここで隣接行を取ると 3 日差が「前週比」として
+        PO7 / SD1 / margin_surge の +50% 閾値に流れる（KIK-776 が防ぐはずだった欠陥そのもの）。
+        """
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-04", 5631900, 147300), _row("2026-09-11", 5085500, 175100),
+                _row("2026-09-18", 5200000, 160000), _row("2026-09-25", 5000000, 200000, "2026-09-28"),
+                _row("2026-09-28", 7000000, 200000, "2026-09-29")]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["frequency"] == "daily"           # 隣接行が 3 日前 → 最新行は日次行
+        assert r["wow_basis_date"] == "2026-09-18"  # 9/28 の 7 日前 = 9/21 以前で最も近い行
+        assert r["wow_change_pct"] == pytest.approx((35.0 - 32.5) / 32.5 * 100, abs=0.1)
+        assert r["dod_change_pct"] == pytest.approx((35.0 - 25.0) / 25.0 * 100, abs=0.1)  # 9/25 比
+
+    def test_wow_is_none_when_basis_row_is_too_old(self):
+        """9/18 の週次行が欠けている: 9/28 の基準候補は 9/11（17 日前）→ 前週比とは呼べないので None。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-11", 5085500, 175100), _row("2026-09-25", 5000000, 200000),
+                _row("2026-09-28", 7000000, 200000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["frequency"] == "daily"
+        assert r["wow_change_pct"] is None and r["wow_basis_date"] is None
+        assert r["dod_change_pct"] == pytest.approx(40.0, abs=0.1)
+
+    def test_weekly_with_missing_week_has_no_wow(self):
+        """週次で 1 週欠落（9/11 → 9/25 = 14 日）: 隣接行でも前週ではないので None。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-04", 5631900, 147300), _row("2026-09-11", 5085500, 175100),
+                _row("2026-09-25", 5000000, 200000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["frequency"] == "weekly"
+        assert r["wow_change_pct"] is None
+
+    def test_mixed_date_formats_are_not_dropped(self):
+        """"20260918"（旧行）と "2026-09-25"（新行）が混在しても最新行を落とさない。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("20260911", 5085500, 175100), _row("20260918", 5200000, 160000),
+                _row("2026-09-25", 5000000, 200000, "2026-09-28")]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["date"] == "2026-09-25" and r["warning"] is None
+        assert r["wow_basis_date"] == "2026-09-18"
+
+    def test_transition_day_two_rows_only_has_no_wow(self):
+        """9/25・9/28 の 2 行しか無い: 隣接 3 日・7 日前の行も無い → 前週比は出さない（None）。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-25", 5000000, 200000), _row("2026-09-28", 7000000, 200000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["wow_change_pct"] is None and r["wow_basis_date"] is None
+
+    @pytest.mark.parametrize("missing", ["LongVol", "ShrtVol"])
+    def test_missing_volume_column_is_unavailable_not_silent_none(self, missing):
+        """列名変更・部分応答で LongVol/ShrtVol が無い → available=False（黙って None を並べない）。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [{k: v for k, v in _row("2026-09-11", 5085500, 175100).items() if k != missing}]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["available"] is False and missing in r["error"]
+        assert r["history"] == [] and r["margin_ratio"] is None
+
+    def test_infinite_volume_is_treated_as_missing(self):
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = self.WEEKLY + [_row("2026-09-18", float("inf"), 160000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["available"] is True and r["margin_ratio"] is None and r["long_vol"] is None
+
+    def test_success_result_has_every_schema_key(self):
+        from src.data.jquants_client.margin_interest import summarize_margin_frame, _EMPTY
+        r = summarize_margin_frame(pd.DataFrame(self.DAILY), code="80310")
+        assert set(r) == set(_EMPTY)
 
     def test_compact_date_strings_are_normalized(self):
         from src.data.jquants_client.margin_interest import summarize_margin_frame
@@ -311,6 +383,15 @@ class TestDailyMarginInterest:
         r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
         assert r["date"] == "2026-09-11" and r["pub_date"] == "2026-09-15"
         assert r["wow_basis_date"] == "2026-09-04"
+
+    def test_sdk_missing_is_reported_as_not_installed(self, monkeypatch):
+        """SDK 未導入なら error は「not installed」。トークン未設定と混同しない。"""
+        import sys
+        monkeypatch.setitem(sys.modules, "jquantsapi", None)
+        from src.data.jquants_client.margin_interest import get_stock_margin
+        r = get_stock_margin("7203.T")
+        assert r["available"] is False and "not installed" in r["error"]
+        assert r["history"] == [] and r["frequency"] is None
 
     def test_error_results_do_not_share_history_list(self, monkeypatch):
         _no_credentials(monkeypatch)
@@ -348,3 +429,4 @@ class TestIsAvailable:
         _no_credentials(monkeypatch)
         from src.data.jquants_client._client import is_available
         assert is_available() is False
+
