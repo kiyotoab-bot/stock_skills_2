@@ -227,7 +227,7 @@ pre_order:
         2026-08-06 まで需給を一度も見ておらず、保有の 8031.T 三井物産が
         信用倍率 38.5倍（買い残が売り残の38倍）だったことに気づいていなかった。
         週次ルーティンの Step 3c に定義はあったが、週次レビュー自体を走らせていなかった。
-      code: "tools.jquants.get_stock_margin(symbol) の margin_ratio / wow_change_pct"
+      code: "tools.jquants.get_stock_margin(symbol) の margin_ratio / wow_change_pct（日次化後も前週比。前日比は dod_change_pct・KIK-776）"
       threshold: "15倍以上=注意 / 30倍以上=上値の重石として明確。前週比+50%超の急増も要注意"
       note: |
         ⚠️ **発注日が初見にならないようにする**（KIK-772）。同じ閾値を
