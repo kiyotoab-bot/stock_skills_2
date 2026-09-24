@@ -58,12 +58,28 @@ try:
 except ImportError:
     HAS_JQUANTS = False
 
+    _NOT_INSTALLED = "jquants-api-client not installed"
+
     def _unavailable(*_args, **_kwargs) -> dict:
-        return {"available": False, "error": "jquants-api-client not installed"}
+        return {"available": False, "error": _NOT_INSTALLED}
+
+    def _margin_unavailable(*_args, **_kwargs) -> dict:
+        """``margin_interest._EMPTY`` と同じキー集合を返す（agent は history / frequency を読む）。
+
+        src 側の import に失敗した経路なので schema を import できない。キーの同期は
+        tests/data/test_jquants_client.py::test_tools_fallback_matches_margin_schema で検証する。
+        """
+        return {
+            "code": None, "long_vol": None, "shrt_vol": None, "margin_ratio": None,
+            "wow_change_pct": None, "wow_basis_date": None, "dod_change_pct": None,
+            "long_val": None, "shrt_val": None, "date": None, "pub_date": None,
+            "frequency": None, "history": [], "available": False,
+            "error": _NOT_INSTALLED, "warning": None,
+        }
 
     get_company_forecast = _unavailable
     get_daily_bars = _unavailable
-    get_stock_margin = _unavailable
+    get_stock_margin = _margin_unavailable
 
     def get_forecast_history(*_args, **_kwargs) -> list:
         return []

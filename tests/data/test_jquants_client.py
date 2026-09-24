@@ -303,7 +303,51 @@ class TestDailyMarginInterest:
         rows = self.WEEKLY + [{"Date": "not-a-date", "Code": "80310", "LongVol": 1.0, "ShrtVol": 1.0}]
         r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
         assert r["available"] is True and r["date"] == "2026-09-11"
-        assert "1 rows dropped" in r["error"]
+        assert "1 rows dropped" in r["warning"]
+        assert r["error"] is None                   # 診断は warning。error は失敗専用
+
+    def test_transition_day_does_not_use_three_day_old_row_as_previous_week(self):
+        """週次→日次の切替日（9/28）: 中央値は 7 日でまだ weekly だが、隣接行 9/25 は 3 日前。
+
+        コードレビュー 2026-09-25 の指摘。ここで隣接行を取ると 3 日差が「前週比」として
+        PO7 / SD1 / margin_surge の +50% 閾値に流れる（KIK-776 が防ぐはずだった欠陥そのもの）。
+        """
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-04", 5631900, 147300), _row("2026-09-11", 5085500, 175100),
+                _row("2026-09-18", 5200000, 160000), _row("2026-09-25", 5000000, 200000, "2026-09-28"),
+                _row("2026-09-28", 7000000, 200000, "2026-09-29")]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["frequency"] == "weekly"          # 判定はまだ週次
+        assert r["wow_basis_date"] == "2026-09-18"  # 9/28 の 7 日前 = 9/21 以前で最も近い行
+        assert r["wow_change_pct"] == pytest.approx((35.0 - 32.5) / 32.5 * 100, abs=0.1)
+        assert r["dod_change_pct"] is None
+
+    def test_transition_day_two_rows_only_has_no_wow(self):
+        """9/25・9/28 の 2 行しか無い: 隣接 3 日・7 日前の行も無い → 前週比は出さない（None）。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-25", 5000000, 200000), _row("2026-09-28", 7000000, 200000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["wow_change_pct"] is None and r["wow_basis_date"] is None
+
+    @pytest.mark.parametrize("missing", ["LongVol", "ShrtVol"])
+    def test_missing_volume_column_is_unavailable_not_silent_none(self, missing):
+        """列名変更・部分応答で LongVol/ShrtVol が無い → available=False（黙って None を並べない）。"""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [{k: v for k, v in _row("2026-09-11", 5085500, 175100).items() if k != missing}]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["available"] is False and missing in r["error"]
+        assert r["history"] == [] and r["margin_ratio"] is None
+
+    def test_infinite_volume_is_treated_as_missing(self):
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = self.WEEKLY + [_row("2026-09-18", float("inf"), 160000)]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="80310")
+        assert r["available"] is True and r["margin_ratio"] is None and r["long_vol"] is None
+
+    def test_success_result_has_every_schema_key(self):
+        from src.data.jquants_client.margin_interest import summarize_margin_frame, _EMPTY
+        r = summarize_margin_frame(pd.DataFrame(self.DAILY), code="80310")
+        assert set(r) == set(_EMPTY)
 
     def test_compact_date_strings_are_normalized(self):
         from src.data.jquants_client.margin_interest import summarize_margin_frame
@@ -348,3 +392,20 @@ class TestIsAvailable:
         _no_credentials(monkeypatch)
         from src.data.jquants_client._client import is_available
         assert is_available() is False
+
+
+def test_tools_fallback_matches_margin_schema():
+    """tools/jquants.py の ImportError フォールバックは src 側の _EMPTY と同じキーを返す。
+
+    agent.md は history / frequency / dod_change_pct を読むので、2 キーだけ返すと
+    ライブラリ未導入環境で KeyError になる（コードレビュー 2026-09-25）。
+    """
+    import ast
+    import pathlib
+    from src.data.jquants_client.margin_interest import _EMPTY
+    src = pathlib.Path("tools/jquants.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_margin_unavailable")
+    ret = next(n for n in ast.walk(fn) if isinstance(n, ast.Return))
+    keys = {k.value for k in ret.value.keys}
+    assert keys == set(_EMPTY)
