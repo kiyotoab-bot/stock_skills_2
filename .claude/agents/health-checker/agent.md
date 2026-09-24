@@ -227,6 +227,9 @@ result = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
 | 空売り出来高 | short_selling.short_volume | 株 | 前日比で判断 |
 
 **個別銘柄の信用倍率**: `jquants.get_stock_margin(symbol)` で個別銘柄の信用倍率を取得できる（Standard プラン）。
+2026-09-28 から J-Quants の同エンドポイントが日次配信になった（KIK-776）。`wow_change_pct` は日次化後も**前週比**
+（7日以上前の最も近い行との比較）で、`dod_change_pct` が前日比。`frequency` が daily か weekly かを併記し、
+`history`（直近5行）で買残の推移を見る。閾値（15倍/30倍/前週比+50%）は変えない。
 
 **available=False の場合**: 需給セクションを省略し `（需給: データ取得失敗）` を1行付記する。
 **判断はしない**: 数値と `signal` フィールドをそのまま出力する。「過熱」「割安」等のコメントは付けない。

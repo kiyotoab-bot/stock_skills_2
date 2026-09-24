@@ -10,7 +10,7 @@ src/data/jquants_client/ の純粋なデータ取得関数を re-export する�
   get_daily_bars       : 日足 OHLCV（JPX公式。yfinance の Close=null 問題を回避）
   get_next_earnings    : 公表済みの決算発表予定日
   get_earnings_calendar: 翌営業日に決算発表する全銘柄
-  get_stock_margin     : 週次信用取引残高
+  get_stock_margin     : 信用取引残高（2026-09-28 から日次。前週比は7日以上前の行と比較・KIK-776）
 
 ■ なぜ yfinance より優先するか（2026-08-05 の実測）
   yfinance の予想値は第三者推定で、検証5銘柄のうち2件（40%）が誤りだった。

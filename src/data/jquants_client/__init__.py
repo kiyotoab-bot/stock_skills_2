@@ -2,7 +2,7 @@
 
 - 決算短信の会社予想（予想EPS・予想配当・予想利益）: fin_summary
 - 日足 OHLCV / 決算発表予定日: prices
-- 個別銘柄の週次信用取引残高: margin_interest（Standard プラン以上）
+- 個別銘柄の信用取引残高: margin_interest（Standard プラン以上。2026-09-28 から日次・KIK-776）
 
 認証: JQUANTS_API_KEY（V2）または JQUANTS_API_REFRESH_TOKEN（V1）。
 `.env` は _client._ensure_env() が自前で読むため、エントリポイントに依存しない。
