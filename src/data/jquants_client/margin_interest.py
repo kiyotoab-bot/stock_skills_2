@@ -47,7 +47,8 @@ _WOW_MIN_GAP_DAYS = 7
 _WEEKLY_MIN_GAP_DAYS = 5
 #: 前週比の基準行がこの日数より古ければ前週比を出さない（None）。週次行の欠落で
 #: 2〜3 週前との比較が「前週比」として +50% 閾値に流れるのを防ぐ。13 日なのは、
-#: 日次化直後の 2 週間は 9/18（最後の週次行）が基準になり最大 13 日（10/1 → 9/18）空くため。
+#: 日次化直後の 9/28〜10/1 は 9/18（9/25 の前の週次行）が基準になり、10/1 → 9/18 で
+#: 13 日空くため（10/2 以降は 9/25 以降の行が基準になり 7〜8 日に収まる）。
 _WOW_MAX_GAP_DAYS = 13
 #: 集約に最低限必要な列。無ければ available=False で返す（黙って None を並べない）。
 _REQUIRED_COLUMNS = ("Date", "LongVol", "ShrtVol")
@@ -139,7 +140,9 @@ def _prepare(df: pd.DataFrame) -> pd.DataFrame:
     必須列（``_REQUIRED_COLUMNS``）が無いフレームは呼び出し側で弾く（``summarize_margin_frame``）。
     """
     out = df.copy()
-    # format="mixed": "20260918" と "2026-09-25" が混在しても先頭行の書式で後続を落とさない
+    # format="mixed": "20260918" と "2026-09-25" が混在しても先頭行の書式で後続を落とさない。
+    # ただし本番経路では SDK（MktMarginInterestApiV2）が書式指定なしで先に to_datetime するため、
+    # 混在していればここへ届く前に NaT になる。その場合は下の dropna で落ち、warning に件数が出る。
     out["_dt"] = pd.to_datetime(out["Date"], errors="coerce", format="mixed")
     out = out.dropna(subset=["_dt"]).sort_values("_dt", kind="stable")
     out = out.drop_duplicates(subset=["_dt"], keep="last").reset_index(drop=True)
