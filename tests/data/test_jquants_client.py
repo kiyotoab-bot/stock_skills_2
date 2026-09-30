@@ -342,7 +342,11 @@ class TestDailyMarginInterest:
         assert r["wow_change_pct"] is None
 
     def test_mixed_date_formats_are_not_dropped(self):
-        """"20260918"（旧行）と "2026-09-25"（新行）が混在しても最新行を落とさない。"""
+        """"20260918"（旧行）と "2026-09-25"（新行）が混在しても最新行を落とさない。
+
+        文字列の Date を直接渡す経路（テスト・SDK を通さない呼び出し）の保証。本番は SDK が
+        先に datetime 化するので、この書式混在はここまで届かない。
+        """
         from src.data.jquants_client.margin_interest import summarize_margin_frame
         rows = [_row("20260911", 5085500, 175100), _row("20260918", 5200000, 160000),
                 _row("2026-09-25", 5000000, 200000, "2026-09-28")]
