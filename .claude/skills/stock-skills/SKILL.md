@@ -281,7 +281,7 @@ checks = (CR.check_data_quality(infos) + CR.check_pf_tier(total, usdjpy)
           + CR.check_order(sym, info, rev, margin, cap)
           + CR.check_stop_breach(prices, get_stop_levels(), sigmas,
                                  histories=hist,   # {sym: [(date, close, low), ...]} ← 安値を入れる
-                                 since=CR.latest_review_date())  # ← 日次で必須
+                                 since=CR.next_stop_breach_since())  # ← 日次で必須（KIK-777）
           + CR.check_holding_age(positions, notes)   # ← 週次/月次で必須（KIK-770）
           + CR.check_review_coverage(notes, CR.latest_review_date()))
 
@@ -298,6 +298,11 @@ summary = CR.run_review(checks, llm_context=review_prompt,
 2026-09-02 に実際に起き、日次のレビュー記録（DQ8 の結果・WTI の閾値超え）が消えた。
 `routine-daily` → `label="daily"` / `routine-weekly` → `"weekly"` /
 `routine-monthly` → `"monthly"` を渡すこと。
+
+同じ label を同じ日に2回回した場合は、2回目が `checklist_{label}_{YYYYMMDD}_{HHMM}.json`
+に書かれ、1回目は残る（KIK-777。`save_routine_report()` の md / json も同じ）。
+2026-09-30 に日次を 01:05（9/29 バー）と 23:50（9/30 バー）で回し、2回目が1回目を
+消しかけた。判定したバーが違う記録なので「その日の最新」で置き換えてはいけない。
 
 ⚠️ **`check_stop_breach()`（RL6）は日次チェックで必ず入れる。**
 
@@ -318,13 +323,26 @@ summary = CR.run_review(checks, llm_context=review_prompt,
 | 🔴 FAIL | 終値 <= ストップ | 注文が無ければ翌営業日の寄成で成行売り |
 | 🔴 FAIL | **前回チェック以降に一度でも抵触**（KIK-766） | 現値が戻っていても**規則上は抵触済み**。扱いを判断する |
 | ⚠ WARN | 距離が 1.0日σ以内 | 1日のノイズで届く。翌日の寄りに注意を促す |
+| ⚠ WARN | **前回判定したバーが、前回のストップと切り上げ後のストップの間に入った**（KIK-777） | 切り上げた後にその値まで下げていれば約定している。約定一覧を確認する |
 | 🟢 PASS | それ以外 | — |
 
 ⚠️ **`since` を渡さないと、飛ばした日の抵触を取りこぼす**（KIK-766）。
 最新終値しか見ないので「火曜に割って水曜に戻す」を水曜だけ見ると PASS になる。
-実際にその挙動を確認して塞いだ。`since=CR.latest_review_date()` を渡し、
+実際にその挙動を確認して塞いだ。`since=CR.next_stop_breach_since()` を渡し、
 `histories` に前回チェック以降を含む終値系列を入れること。
 **日次を毎日回せるとは限らない以上、ここを塞がないと規則が空振りする。**
+
+⚠️ **`since` に `latest_review_date()` を渡さない**（KIK-777）。あれはレビューを
+**保存した日**なので、深夜に前日バーで判定した日の夜に再実行すると since が当日になり、
+**当日バーが RL6 から外れる**（2026-09-30 に実際に起き、手で since を固定した）。
+`next_stop_breach_since()` は前回 RL6 が**銘柄ごとに判定した最新バーとその時のストップ**
+（カーソル）を返す。前回の最新バー（場中・米国取引中なら未確定だった可能性がある）は
+**その時のストップで**もう一度見て、それより後のバーを今のストップで見る。
+見直しに今のストップを使わないのは、トレーリングで上がったストップを前日のバーに当てると
+偽の抵触が出るため。前回の最新バーが確定済みで抵触していれば、同じ抵触がもう一度出る。
+`latest_review_date()` は REVIEW（`check_review_coverage`）専用。
+前回の判定から14日を超えて空いた銘柄（売って買い直した等）は新規保有と同じ扱いにし、
+detail に「起点を新規保有扱いに戻した」と出す。新規保有は購入日のバーを見ない。
 
 ⚠️ **全green でも保有全銘柄の表を出す**（`detail` に全件入る）。
 異常時だけ出す形にすると「今日は表が無い＝見ていない」と区別がつかない。
@@ -934,7 +952,7 @@ Phase 完了ごとに中間結果を出力し、体感の待ち時間を短縮�
 #### データ保存
 
 結果は `data/session_logs/routine/` に自動保存する:
-- `daily_YYYYMMDD.json` / `weekly_YYYYMMDD.json` / `monthly_YYYYMMDD.json`
+- `daily_YYYYMMDD.json` / `weekly_YYYYMMDD.json` / `monthly_YYYYMMDD.json`（同日2回目以降は `_HHMM` 付き・KIK-777）
 
 ### Conviction 違反検知（KIK-729）
 
@@ -1270,6 +1288,8 @@ TEI（`src/data/embedding_client.py`）が未起動なら埋め込みなしで�
 | routine-daily | `data/reports/daily_YYYYMMDD.md` |
 | routine-weekly | `data/reports/weekly_YYYYMMDD.md` |
 
+同じ日の2回目以降は `_HHMM` が付く（上書きしない・KIK-777）。
+
 **Markdown フォーマット**:
 
 ```markdown
@@ -1338,6 +1358,9 @@ save_routine_report("daily", markdown_text, data_dict)   # または "weekly"
 Markdown と JSON を別々に書く手順だったため、2026-08-06 に日次を3回実行しながら
 **保存を1度もしなかった**。`check_routine_freshness()` は保存されたレポートの日付を
 見るので、この抜けは最大3日間検知されない。1呼び出しにまとめて書き忘れの余地を減らす。
+
+同じ日の2回目以降は上書きせず `daily_YYYYMMDD_HHMM.md` / `.json` に保存される（KIK-777）。
+戻り値のパスをそのまま 💾 行に出すこと（固定の名前を書かない）。
 
 **保存タイミング**: 全ステップ完了後、チャット出力と同一内容を保存する。
 **内容の一致を保証**: チャットに表示した内容と Markdown の内容を一致させる。要約・省略不可。

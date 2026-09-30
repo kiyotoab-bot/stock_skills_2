@@ -649,14 +649,14 @@ class TestSaveReviewLabel:
         assert len(list(tmp_path.glob("*.json"))) == 2
         assert "daily" in a and "monthly" in b
 
-    def test_same_label_overwrites(self, tmp_path):
-        """同じ label の再実行は上書きでよい（その日のそのレビューの最新）."""
+    def test_same_label_does_not_overwrite(self, tmp_path):
+        """同じ label の再実行も上書きしない（KIK-777。詳細は test_same_day_rerun.py）."""
         from src.data.checklist_review import save_review
 
         a = save_review({"verdict": "PASS"}, str(tmp_path), label="daily")
         b = save_review({"verdict": "FAIL"}, str(tmp_path), label="daily")
-        assert a == b
-        assert len(list(tmp_path.glob("*.json"))) == 1
+        assert a != b
+        assert len(list(tmp_path.glob("*.json"))) == 2
 
     def test_no_label_keeps_legacy_name(self, tmp_path):
         """後方互換: label 省略時は従来のファイル名."""

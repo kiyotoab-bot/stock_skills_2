@@ -130,6 +130,19 @@ def check_stop_sigma(stop_distances: dict[str, float]) -> list[dict]:
     )]
 
 
+#: RL6 のカーソルがカーソルの最新日よりこの暦日数を超えて古ければ、売って買い直した
+#: 銘柄とみなし新規保有と同じ起点にする（KIK-777）。売買停止で止まった銘柄も該当するが、
+#: 停止中は売れないので再開後のバーを見れば足りる。
+_CURSOR_STALE_DAYS = 14
+
+
+def _days_between(a: str, b: str) -> int:
+    try:
+        return (datetime.date.fromisoformat(b) - datetime.date.fromisoformat(a)).days
+    except ValueError:
+        return 0
+
+
 def check_stop_breach(prices: dict[str, float],
                       stop_levels: dict[str, dict],
                       sigmas: Optional[dict[str, float]] = None,
@@ -170,8 +183,22 @@ def check_stop_breach(prices: dict[str, float],
         ``{symbol: [(date, close), ...]}`` または ``[(date, close, low), ...]``
         （古い順）。3要素で渡すと**安値でも判定する**。``since`` と併用する。
     since
-        この日付より**後**のバーを見る。``latest_review_date()`` を渡すと
-        「前回チェック以降」になる。省略すると最新バーだけを見る（従来動作）。
+        どこから見るか。2通り受け付ける。
+
+        - ``next_stop_breach_since()`` の戻り値（**推奨**）。銘柄ごとのカーソル
+          ``{sym: {"date", "stop"}}`` で、前回 RL6 が判定した最新バーを**その時のストップで**
+          もう一度見て、それより後のバーを今のストップで見る（KIK-777）。
+          前回の最新バーは場中・米国取引中なら未確定だった可能性があるため見直す。
+          ストップはトレーリングで上がるので、見直しに今のストップを使うと偽の抵触が出る。
+          カーソルに無い銘柄（新規保有・前回履歴なし）はカーソルの最新日より後を見る。
+        - 日付文字列。この日付より**後**のバーを今のストップで見る（従来動作）。
+
+        省略すると最新バーだけを見る（従来動作）。このときは判定範囲を記録しない
+        （次回のカーソルを進めない）。
+
+        ⚠️ ``latest_review_date()`` を渡さない（KIK-777）。あれはレビューを**保存した日**で、
+        深夜 01:05 に前日バーで判定した日の夜に再実行すると since が当日になり、
+        当日バーが判定から外れる（2026-09-30 に実際に起き、手で since を固定した）。
     lows
         ``{symbol: 当日の安値}``。``histories`` を使わないときの簡易指定。
 
@@ -185,7 +212,15 @@ def check_stop_breach(prices: dict[str, float],
     if not prices:
         return [_result("RL6", NA, "保有なし")]
 
+    cursor = since if isinstance(since, dict) and since else None
+    since_str = None if isinstance(since, dict) else since
+    # カーソルに無い銘柄の起点: カーソルの最新日（前回の実行が見た地点）。
+    # 新規保有は購入日のバーを見ない（買う前の値動きを含むため）
+    cursor_last = max((c["date"] for c in (cursor or {}).values()), default=None)
+
     breached, near, ok, exempt, past, fired = [], [], [], [], [], []
+    raised, restarted = [], []
+    new_cursor: dict[str, dict] = {}   # 次回のカーソル（KIK-777）
     for sym, px in sorted(prices.items()):
         info = stop_levels.get(sym) or {}
         if info.get("closed"):
@@ -201,26 +236,61 @@ def check_stop_breach(prices: dict[str, float],
         if mult is not None:
             label += f"({mult:.2f}σ)"
 
-        bars = [b for b in (histories or {}).get(sym) or []
-                if since and b and b[0] and b[0] > since]
+        # (日付, 終値, 安値, そのバーに当てるストップ)。日付は "YYYY-MM-DD" に揃えて比べる
+        hist = [(str(b[0])[:10], b[1], b[2] if len(b) > 2 else None)
+                for b in (histories or {}).get(sym) or [] if b and b[0]]
+        prev = (cursor or {}).get(sym)
+        if prev and cursor_last and _days_between(prev["date"], cursor_last) > _CURSOR_STALE_DAYS:
+            # 売って買い直した銘柄の古いカーソル。保有していない期間を今のストップで
+            # 判定すると偽の抵触になるので、新規保有と同じ扱いにする
+            restarted.append(f"{sym}（前回 {prev['date']}）")
+            prev = None
+        if prev:
+            bars = [(d, c, lo, prev["stop"] if d == prev["date"] else stop)
+                    for d, c, lo in hist if d >= prev["date"]]
+        elif cursor is not None:
+            bars = [(d, c, lo, stop) for d, c, lo in hist
+                    if cursor_last is None or d > cursor_last]
+        elif since_str:
+            bars = [(d, c, lo, stop) for d, c, lo in hist if d > since_str]
+        else:
+            bars = []
+
+        if hist and (cursor is not None or since_str):
+            last = max(d for d, _, _ in hist)
+            # 新しいバーが無ければ前回のストップを持ち越す（そのバーを判定した時のストップ）
+            keep = prev and prev["date"] == last
+            new_cursor[sym] = {"date": last, "stop": prev["stop"] if keep else float(stop)}
+
+        # 見直したバーが「前回のストップ < 値 <= 今のストップ」なら、切り上げ後に触れた
+        # 可能性がある（米国の取引中に判定→切り上げ→その後に安値）。前回のストップより
+        # 上なので抵触とは言えないが、約定していれば黙ると見落とす。WARN で出す
+        if prev and float(stop) > prev["stop"]:
+            for d, c, lo, _ in bars:
+                if d != prev["date"]:
+                    continue
+                vals = [x for x in (c, lo) if x is not None]
+                v = min(vals) if vals else None
+                if v is not None and prev["stop"] < v <= stop:
+                    raised.append(f"{sym} {d} 安値/終値{v:,.0f}（判定時stop{prev['stop']:,.0f}"
+                                  f"→現stop{stop:,.0f}）")
 
         # ザラ場でトリガーに触れたか = 逆指値なら**発動している**（KIK-767）
-        touches = [(b[0], b[2]) for b in bars if len(b) > 2
-                   and b[2] is not None and b[2] <= stop]
+        touches = [(d, lo, st) for d, _, lo, st in bars if lo is not None and lo <= st]
         today_low = (lows or {}).get(sym)
         if today_low is not None and today_low <= stop:
-            touches.append(("(当日)", today_low))
+            touches.append(("(当日)", today_low, stop))
         if touches:
             worst = min(touches, key=lambda x: x[1])
-            fired.append(f"{sym} {worst[0]} 安値{worst[1]:,.0f}<=trigger{stop:,.0f}"
+            fired.append(f"{sym} {worst[0]} 安値{worst[1]:,.0f}<=trigger{worst[2]:,.0f}"
                          f"（{len(touches)}日）")
 
         # 終値ベースの抵触。飛ばした日も見る（KIK-766）
         if bars:
-            hits = [(b[0], b[1]) for b in bars if b[1] is not None and b[1] <= stop]
+            hits = [(d, c, st) for d, c, _, st in bars if c is not None and c <= st]
             if hits and (dist is None or dist > 0):
                 worst = min(hits, key=lambda x: x[1])
-                past.append(f"{sym} {worst[0]} 終値{worst[1]:,.0f}<=stop{stop:,.0f}"
+                past.append(f"{sym} {worst[0]} 終値{worst[1]:,.0f}<=stop{worst[2]:,.0f}"
                             f"（{len(hits)}日）")
 
         if dist is not None and dist <= 0:
@@ -239,15 +309,25 @@ def check_stop_breach(prices: dict[str, float],
     if past:
         parts.append("🔴見逃し抵触(前回チェック以降・終値) " + " / ".join(past)
                      + " → 現値は戻っているが**規則上は抵触済み**。執行するか判断する")
+    if raised:
+        parts.append("⚠切り上げ後に触れた可能性 " + " / ".join(raised)
+                     + " → 切り上げた後にこの値まで下げていれば約定している。約定一覧を確認する")
     if near:
         parts.append("⚠1σ以内 " + " / ".join(near))
     if ok:
         parts.append("🟢 " + " / ".join(ok))
     if exempt:
         parts.append("免除 " + ", ".join(exempt))
+    if restarted:
+        parts.append("起点を新規保有扱いに戻した " + ", ".join(restarted)
+                     + f"（前回判定から{_CURSOR_STALE_DAYS}日超。買い直しとみなす）")
 
-    status = FAIL if (fired or breached or past) else (WARN if near else PASS)
-    return [_result("RL6", status, " | ".join(parts) or "監視対象なし")]
+    status = FAIL if (fired or breached or past) else (WARN if (near or raised) else PASS)
+    res = _result("RL6", status, " | ".join(parts) or "監視対象なし")
+    if new_cursor:
+        # run_review が記録し、次回は next_stop_breach_since() がここから since を作る（KIK-777）
+        res["stop_cursor"] = new_cursor
+    return [res]
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +792,11 @@ _DECISION_NOTE_TYPES = frozenset({"target", "exit-rule"})
 
 
 def latest_review_date(reviews_dir: str = "data/reviews") -> Optional[str]:
-    """``data/reviews/`` から最終レビュー日を拾う（``*_YYYYMMDD.json``）。"""
+    """``data/reviews/`` から最終レビュー日を拾う（``*_YYYYMMDD.json``）。
+
+    REVIEW（``check_review_coverage``）用。RL6 の ``since`` には使わない
+    （``next_stop_breach_since()`` を使う・KIK-777）。
+    """
     import re
     from pathlib import Path
 
@@ -726,6 +810,53 @@ def latest_review_date(reviews_dir: str = "data/reviews") -> Optional[str]:
             s = m.group(1)
             dates.append(f"{s[:4]}-{s[4:6]}-{s[6:]}")
     return max(dates) if dates else None
+
+
+def next_stop_breach_since(reviews_dir: str = "data/reviews"):
+    """RL6（``check_stop_breach``）に渡す ``since`` を返す（KIK-777）。
+
+    保存済みレビューの ``rl6_cursor``（前回 RL6 が銘柄ごとに判定した最新バーの日付と、
+    その時のストップ）を銘柄ごとに最新のものへ畳み、``{sym: {"date", "stop"}}`` で返す。
+    ``check_stop_breach`` はカーソルの日付のバーを**その時のストップで**もう一度見て
+    （場中・米国取引中に回すと最新バーは未確定だった可能性がある）、それより後のバーを
+    今のストップで見る。見直しに今のストップを使わないのは、トレーリングで上がった
+    ストップを前日のバーに当てると偽の抵触が出るから。
+
+    銘柄ごとに持つので、1銘柄の履歴が止まっても（売買停止・取得不全）他の銘柄の
+    起点は進む。日付として読めない値は捨てる。
+
+    ``rl6_cursor`` を持つレビューが1件も無ければ（KIK-777 以前の記録だけ）
+    ``latest_review_date()``（日付文字列）に縮退する（従来動作）。
+
+    ⚠️ ``latest_review_date()`` をそのまま使わない理由: あれは**保存した日**。
+    2026-09-30 01:05 に 9/29 バーで判定し、同日 23:50 に再実行すると since=9/30 になり、
+    9/30 バーが RL6 から外れた。起点はバーで持つ。
+    """
+    import json as _json
+    from pathlib import Path
+
+    d = Path(reviews_dir)
+    if not d.is_dir():
+        return None
+    merged: dict[str, dict] = {}
+    for p in d.glob("*.json"):
+        try:
+            cur = _json.loads(p.read_text(encoding="utf-8")).get("rl6_cursor") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(cur, dict):
+            continue
+        for sym, v in cur.items():
+            try:
+                day = datetime.date.fromisoformat(str(v["date"])[:10]).isoformat()
+                stop = float(v["stop"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            old = merged.get(sym)
+            # 同じ日付なら低い方（ストップは切り上げしかしないので、そのバーの時点のもの）
+            if old is None or day > old["date"] or (day == old["date"] and stop < old["stop"]):
+                merged[sym] = {"date": day, "stop": stop}
+    return merged or latest_review_date(reviews_dir)
 
 
 # DQ4 のコード化は循環 import を避けるため別モジュール（KIK-761）。
@@ -949,21 +1080,53 @@ def save_review(summary: dict, reviews_dir: str = "data/reviews",
 
         後方互換のため ``label=None`` は従来のファイル名のままにしてある。
         ルーティンから呼ぶときは必ず渡すこと。
+
+        ⚠️ **同じ label でも上書きしない**（KIK-777）。その日のファイルが既にあれば
+        ``checklist_{label}_{YYYYMMDD}_{HHMM}.json`` に書く。2026-09-30 に日次を
+        01:05（9/29 バー）と 23:50（9/30 バー）の2回回し、2回目が1回目を消しかけた。
+        判定したバーが違うので「その日の最新」で置き換えてよい記録ではない。
     """
-    import datetime as _dt
     from pathlib import Path
 
     Path(reviews_dir).mkdir(parents=True, exist_ok=True)
-    stamp = _dt.date.today().strftime("%Y%m%d")
+    stamp = datetime.date.today().strftime("%Y%m%d")
     if label:
         safe = _LABEL_SAFE.sub("-", str(label)).strip("-")
-        name = f"checklist_{safe}_{stamp}.json" if safe else f"checklist_{stamp}.json"
+        stem = f"checklist_{safe}_{stamp}" if safe else f"checklist_{stamp}"
     else:
-        name = f"checklist_{stamp}.json"
-    path = Path(reviews_dir) / name
+        stem = f"checklist_{stamp}"
+    suffix = free_suffix([Path(reviews_dir) / f"{stem}{{}}.json"])
+    path = Path(reviews_dir) / f"{stem}{suffix}.json"
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str),
                     encoding="utf-8")
     return str(path)
+
+
+def free_suffix(patterns: list, now: Optional[datetime.datetime] = None) -> str:
+    """同じ日の2回目以降の保存で既存ファイルを消さないための接尾辞を返す（KIK-777）。
+
+    ``patterns`` は ``"{}"`` を1つ含むパス（``Path`` 可）。``{}`` に接尾辞が入る。
+    どれも存在しなければ ``""``（従来のファイル名）、あれば ``"_HHMM"``、
+    それも埋まっていれば ``"_HHMMSS"``、さらに ``"_HHMMSS-2"`` … と空きを探す。
+    複数パターンを渡すと**すべてが空いている**接尾辞を返す（md と json を揃える）。
+    """
+    from pathlib import Path
+
+    now = now or datetime.datetime.now()
+    # 最後の "{}" だけを差し込み位置にする（ディレクトリ名の波括弧で壊れないように）
+    pats = [str(p).rpartition("{}") for p in patterns]
+
+    def _free(sfx: str) -> bool:
+        return not any(Path(f"{head}{sfx}{tail}").exists() for head, _, tail in pats)
+
+    base = [""] + [now.strftime("_%H%M"), now.strftime("_%H%M%S")]
+    for sfx in base:
+        if _free(sfx):
+            return sfx
+    n = 2
+    while not _free(f"{base[-1]}-{n}"):
+        n += 1
+    return f"{base[-1]}-{n}"
 
 
 # ---------------------------------------------------------------------------
@@ -1006,6 +1169,11 @@ def run_review(
         を加えたもの。``level`` で縮退段階が分かる。
     """
     summary = summarize(checks)
+    # RL6 が判定した銘柄ごとの最新バーとストップ。次回の since は
+    # next_stop_breach_since() がここから作る（KIK-777）
+    for c in checks:
+        if c.get("id") == "RL6" and c.get("stop_cursor"):
+            summary.setdefault("rl6_cursor", {}).update(c["stop_cursor"])
 
     ind = independent_review(llm_context) if llm_context else {
         "independent": False,

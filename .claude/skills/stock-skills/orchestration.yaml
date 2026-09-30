@@ -168,12 +168,12 @@ routine:
   daily:
     auto_review: false       # 日次は判断を含まないためレビュー不要
     output_mode: adaptive    # 異常あり→全テーブル / 異常なし→軽量3行
-    save_to: "data/session_logs/routine/daily_{date}.json"
+    save_to: "data/session_logs/routine/daily_{date}.json"  # 同日2回目以降は _HHMM 付き（KIK-777）
   weekly:
     auto_review: true        # 週次は strategist を含むため自動レビュー
     skip_review_when: "strategist がスキップされた場合"
     progressive_output: true # Phase完了ごとに中間結果を出力
-    save_to: "data/session_logs/routine/weekly_{date}.json"
+    save_to: "data/session_logs/routine/weekly_{date}.json"  # 同日2回目以降は _HHMM 付き（KIK-777）
     screener_condition: |
       ターゲット乖離red/exit-rule到達/バリュートラップ疑いがある場合に起動。
       ⚠️ screenerは情報収集。「やらないチェック」はscreener起動を阻害しない。
