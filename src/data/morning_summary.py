@@ -469,8 +469,9 @@ def latest_routine_dates(reports_dir: str = "data/reports") -> dict[str, str | N
     """``data/reports/`` から日次・週次・月次の最終実行日を拾う。
 
     ファイル名は ``daily_YYYYMMDD.md`` / ``weekly_YYYYMMDD.md`` /
-    ``monthly_YYYYMMDD.md``。
+    ``monthly_YYYYMMDD.md``。同日2回目以降の ``daily_YYYYMMDD_HHMM.md`` 等も数える（KIK-777）。
     """
+    import re
     from pathlib import Path
 
     out: dict[str, str | None] = {"daily": None, "weekly": None, "monthly": None}
@@ -480,9 +481,11 @@ def latest_routine_dates(reports_dir: str = "data/reports") -> dict[str, str | N
     for kind in out:
         dates = []
         for p in d.glob(f"{kind}_*.md"):
-            stem = p.stem.split("_", 1)[-1]
-            if len(stem) == 8 and stem.isdigit():
-                dates.append(f"{stem[:4]}-{stem[4:6]}-{stem[6:]}")
+            # daily_YYYYMMDD / daily_YYYYMMDD_HHMM / _HHMMSS / _HHMMSS-2 だけ数える
+            m = re.fullmatch(rf"{kind}_(\d{{8}})(?:_\d{{4}}(?:\d{{2}})?(?:-\d+)?)?", p.stem)
+            if m:
+                s = m.group(1)
+                dates.append(f"{s[:4]}-{s[4:6]}-{s[6:]}")
         if dates:
             out[kind] = max(dates)
     return out
@@ -592,9 +595,15 @@ def save_routine_report(
     「実行したが記録していない」が起きた。``check_routine_freshness()`` は
     保存されたレポートの日付を見るので、この抜けは最大3日間検知されない。
     ここで1呼び出しにまとめ、書き忘れの余地を減らす。
+
+    ⚠️ 同じ日の2回目以降は上書きせず ``{kind}_{YYYYMMDD}_{HHMM}.md/.json`` に書く
+    （KIK-777。2026-09-30 に 01:05 と 23:50 の日次で、2回目が1回目を消しかけた）。
+    md と json は同じ接尾辞に揃える。
     """
     import json as _json
     from pathlib import Path
+
+    from src.data.checklist_review import free_suffix
 
     if kind not in ("daily", "weekly", "monthly"):
         raise ValueError(
@@ -602,14 +611,19 @@ def save_routine_report(
     day = day or date.today()
     stamp = day.strftime("%Y%m%d")
 
+    patterns = [Path(reports_dir) / f"{kind}_{stamp}{{}}.md"]
+    if data is not None:
+        patterns.append(Path(logs_dir) / f"{kind}_{stamp}{{}}.json")
+    suffix = free_suffix(patterns)
+
     Path(reports_dir).mkdir(parents=True, exist_ok=True)
-    md_path = Path(reports_dir) / f"{kind}_{stamp}.md"
+    md_path = Path(reports_dir) / f"{kind}_{stamp}{suffix}.md"
     md_path.write_text(markdown, encoding="utf-8")
 
     out = {"markdown": str(md_path)}
     if data is not None:
         Path(logs_dir).mkdir(parents=True, exist_ok=True)
-        js_path = Path(logs_dir) / f"{kind}_{stamp}.json"
+        js_path = Path(logs_dir) / f"{kind}_{stamp}{suffix}.json"
         payload = {"date": day.isoformat(), "mode": f"routine-{kind}", **data}
         js_path.write_text(
             _json.dumps(payload, ensure_ascii=False, indent=2, default=str),

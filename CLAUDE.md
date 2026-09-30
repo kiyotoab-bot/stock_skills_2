@@ -117,6 +117,9 @@ Data (src/data/)
   checklist_review.py — 機械的チェックリスト（DQ/RL/FT/PO/HD/SD/REVIEW）
                     SD1/SD2 は買い候補の需給を候補段階で見る（KIK-772。PO7 は
                     発注直前にしか火が点かず、候補表の順位付けに効かなかった）
+                    RL6 の since は next_stop_breach_since()（銘柄ごとの前回判定バーとその時のストップ）。
+                    latest_review_date() は保存日なので REVIEW 専用（KIK-777）。
+                    同日2回目のレビュー・日次レポートは _HHMM 付きで保存し上書きしない
   dilution.py    — 増資（希薄化）履歴の判定（EC6・父娘本 2026-09-21）
                     J-Quants 短信の期末発行済株数を3年遡り、隣接+5%か
                     累計+10%（MSCB等の段階的希薄化）で WARN。+80%以上=分割、
