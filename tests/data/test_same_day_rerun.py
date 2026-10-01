@@ -142,7 +142,9 @@ class TestStopBreachSince:
                             "B": {"date": "2026-06-30", "stop": 100.0}}}), encoding="utf-8")
         r = check_stop_breach({"A": 150.0, "B": 150.0}, stops, histories=h,
                               since=next_stop_breach_since(str(tmp_path)))[0]
-        assert r["status"] == "PASS", r["detail"]
+        # A の 9/1 は見ない。B は購入日が分からないので起点を戻すが、黙らず WARN（KIK-778）
+        assert r["status"] == "WARN", r["detail"]
+        assert "購入日不明" in r["detail"] and "B（前回 2026-06-30）" in r["detail"]
 
     def test_new_holding_starts_after_latest_cursor(self):
         stops = {"8031.T": {"stop": 4721.0}, "NEW": {"stop": 100.0}}
@@ -208,7 +210,8 @@ class TestCursorEdgeCases:
              "B": [("2026-10-01", 20.0, 20.0)]}
         cur = {"A": {"date": "2026-07-01", "stop": 90.0}, "B": {"date": "2026-09-30", "stop": 10.0}}
         r = check_stop_breach({"A": 120.0, "B": 20.0}, stops, histories=h, since=cur)[0]
-        assert r["status"] == "PASS", r["detail"]
+        # 購入日が無いので買い直しと断定できず WARN。FAIL にはしない（KIK-778）
+        assert r["status"] == "WARN", r["detail"]
         assert "新規保有扱い" in r["detail"] and r["stop_cursor"]["A"]["date"] == "2026-10-01"
 
     def test_empty_cursor_behaves_like_no_since(self):
