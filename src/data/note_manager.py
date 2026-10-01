@@ -431,12 +431,73 @@ def _closed_positions(trade_dir: str) -> dict[str, str]:
     return {s: d for s, d in last_sell.items() if net.get(s, 0.0) <= 0}
 
 
+def _position_starts(trade_dir: str) -> dict[str, dict]:
+    """保有中の銘柄と、今の保有を始めた日を返す（KIK-778）.
+
+    ``{sym: {"date": 売り切った後の最初の買いの日, "reopened": bool}}``。
+    RL6 はこの日より後のバーだけを今のストップで判定する（購入日のバーは買う前の
+    値動きを含む）。
+
+    ⚠️ 取引履歴は**完全ではない**（記録を始める前から持っている銘柄には買いの記録が無い。
+    5401.T は hold_days 233 の売りだけが残っている）。そのため「株数 0 以下で買った」だけでは
+    新規保有と言えない（記録前からの保有への買い増しかもしれない）。``reopened`` は
+    **記録上で売り切った後の買い**のときだけ True。RL6 はこれが True のときだけ前の保有の
+    カーソルを捨てる。False のときに捨てると、持ち続けている銘柄の買い増し日のバーを
+    判定から外す。
+
+    同じ日の売りと買いは買いを先に数える（持ち続けた扱い）。逆にすると同日の買い増しと
+    一部売却で新規保有と誤読し、まだ判定していないバーを飛ばす。持ち続けた扱いの誤りは
+    「見すぎ」で済み、見落としにはならない。
+    取引履歴が読めなければ空を返す（呼び出し側は従来の判定に縮退する）。
+    """
+    try:
+        from src.data.monthly_check import load_trades
+        trades = load_trades(trade_dir)
+    except Exception:
+        return {}
+
+    def _key(t):
+        return (str(t.get("date") or "")[:10], 0 if t.get("action") == "buy" else 1)
+
+    net: dict[str, float] = {}
+    sold_out: dict[str, bool] = {}     # 記録上で保有 > 0 から 0 以下に売り切ったか
+    # 記録上の株数が負になった = 記録前からの保有がある。実際の株数が分からないので
+    # 「売り切った」も判定できない。その銘柄は reopened にしない（見落とし側に倒さない）
+    pre_log: set[str] = set()
+    start: dict[str, dict] = {}
+    for t in sorted(trades, key=_key):
+        sym, date = t.get("symbol"), str(t.get("date") or "")[:10]
+        if not sym or not date:
+            continue
+        try:
+            shares = float(t.get("shares") or 0)
+        except (TypeError, ValueError):
+            shares = 0.0
+        before = net.get(sym, 0.0)
+        if t.get("action") == "buy":
+            if before <= 0:
+                start[sym] = {"date": date, "reopened": sold_out.get(sym, False)}
+            net[sym] = before + shares
+        else:
+            net[sym] = before - shares
+            if net[sym] < 0:
+                pre_log.add(sym)
+            elif before > 0 >= net[sym] and sym not in pre_log:
+                sold_out[sym] = True
+    return {s: v for s, v in start.items() if net.get(s, 0.0) > 0}
+
+
 def get_stop_levels(base_dir: str = _NOTES_DIR,
                     trade_dir: str = "data/history/trade") -> dict[str, dict]:
     """Extract the current stop-loss level per symbol from exit-rule notes.
 
     Returns ``{symbol: {"stop": float|None, "date": str, "raw": str,
-    "conviction": bool, "closed": bool, "closed_on": str|None}}``.
+    "conviction": bool, "closed": bool, "closed_on": str|None,
+    "opened_on": str|None, "reopened": bool}}``.
+
+    - ``opened_on`` は今の保有を始めた日（取引履歴から。不明なら None・KIK-778）。
+      RL6 はこれより後のバーだけを判定する。``reopened`` は記録上で売り切った後の
+      買い直しか（True のときだけ RL6 は前の保有のカーソルを捨てる）。
 
     - Only the **latest** exit-rule note per symbol is used.
     - ``stop`` is ``None`` when ``stop_loss`` is free text that cannot be parsed
@@ -480,6 +541,7 @@ def get_stop_levels(base_dir: str = _NOTES_DIR,
             conviction[sym] = note
 
     closed_on = _closed_positions(trade_dir)
+    opened_on = _position_starts(trade_dir)
 
     result: dict[str, dict] = {}
     for sym, note in latest_exit.items():
@@ -489,6 +551,8 @@ def get_stop_levels(base_dir: str = _NOTES_DIR,
                 "stop": None, "date": conv.get("date", ""),
                 "raw": "", "conviction": True,
                 "closed": False, "closed_on": None,
+                "opened_on": (opened_on.get(sym) or {}).get("date"),
+                "reopened": bool((opened_on.get(sym) or {}).get("reopened")),
             }
             continue
         raw = str(note.get("stop_loss", "")).strip()
@@ -505,6 +569,8 @@ def get_stop_levels(base_dir: str = _NOTES_DIR,
             "stop": None if is_closed else stop,
             "date": note_date, "raw": raw, "conviction": False,
             "closed": is_closed, "closed_on": sold_on if is_closed else None,
+            "opened_on": None if is_closed else (opened_on.get(sym) or {}).get("date"),
+            "reopened": (not is_closed) and bool((opened_on.get(sym) or {}).get("reopened")),
         }
 
     # A conviction symbol with no exit-rule note at all is not "monitored",

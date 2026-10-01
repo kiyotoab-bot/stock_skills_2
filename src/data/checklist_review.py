@@ -130,9 +130,10 @@ def check_stop_sigma(stop_distances: dict[str, float]) -> list[dict]:
     )]
 
 
-#: RL6 のカーソルがカーソルの最新日よりこの暦日数を超えて古ければ、売って買い直した
-#: 銘柄とみなし新規保有と同じ起点にする（KIK-777）。売買停止で止まった銘柄も該当するが、
-#: 停止中は売れないので再開後のバーを見れば足りる。
+#: RL6 のカーソルがカーソルの最新日よりこの暦日数を超えて古いときの扱い（KIK-777/778）。
+#: 記録上の買い直し（``reopened``）は日数に関係なく購入日で起点を切る。それ以外で古い
+#: カーソルは、購入日が分かれば「途切れていた」として間のバーを WARN で知らせ（履歴の停止と
+#: 記録していない売りを区別できないので FAIL にしない）、分からなければ起点を戻して WARN を出す。
 _CURSOR_STALE_DAYS = 14
 
 
@@ -141,6 +142,31 @@ def _days_between(a: str, b: str) -> int:
         return (datetime.date.fromisoformat(b) - datetime.date.fromisoformat(a)).days
     except ValueError:
         return 0
+
+
+def _gap_note(sym: str, prev: dict, gap: list, stop: float, days: int) -> str:
+    """RL6 の判定が途切れていた銘柄の、間のバーの要約（KIK-778）.
+
+    間のバーは前回判定時のストップで見る（切り上げしかしないので低い方）。
+    「前回ストップ〜今のストップ」に入ったバーは、切り上げ後なら触れている。
+    どちらも FAIL にはしない: 間が保有していない期間（記録していない売り）かもしれない。
+    """
+    def _low(c, lo):
+        vals = [x for x in (c, lo) if x is not None]
+        return min(vals) if vals else None
+
+    lows = [(d, _low(c, lo)) for d, c, lo in gap]
+    hits = [(d, v) for d, v in lows if v is not None and v <= prev["stop"]]
+    near = [d for d, v in lows if v is not None and prev["stop"] < v <= stop]
+    msg = f"{sym}（前回判定 {prev['date']}・{days}日空いた"
+    if hits:
+        worst = min(hits, key=lambda x: x[1])
+        msg += (f"。間に {worst[0]} 安値/終値{worst[1]:,.0f}<=stop{prev['stop']:,.0f}"
+                f"（{len(hits)}日）")
+    if near:
+        msg += (f"。間に stop{prev['stop']:,.0f}〜{stop:,.0f} の値"
+                f"（{near[0]} 他{len(near) - 1}日）。切り上げ後なら触れている")
+    return msg + "）"
 
 
 def check_stop_breach(prices: dict[str, float],
@@ -177,6 +203,9 @@ def check_stop_breach(prices: dict[str, float],
     stop_levels
         ``note_manager.get_stop_levels()`` の結果。``closed`` は監視対象外、
         ``stop is None``（conviction_override 等）は免除として数える。
+        ``opened_on``（今の保有を始めた日）があれば、新規保有はその日以前のバーを見ない。
+        ``reopened``（記録上で売り切った後の買い直し）なら購入日以前のカーソルを捨てる。
+        取引履歴は不完全なので、``reopened`` でない買いは買い増しとしてカーソルを引き継ぐ（KIK-778）。
     sigmas
         ``{symbol: 日次σ%}``。あれば「1日のノイズで届く距離か」を WARN で出す。
     histories
@@ -214,12 +243,12 @@ def check_stop_breach(prices: dict[str, float],
 
     cursor = since if isinstance(since, dict) and since else None
     since_str = None if isinstance(since, dict) else since
-    # カーソルに無い銘柄の起点: カーソルの最新日（前回の実行が見た地点）。
-    # 新規保有は購入日のバーを見ない（買う前の値動きを含むため）
+    # カーソルに無い銘柄の起点: カーソルの最新日（前回の実行が見た地点）と購入日の
+    # 遅い方。新規保有は購入日のバーを見ない（買う前の値動きを含むため・KIK-778）
     cursor_last = max((c["date"] for c in (cursor or {}).values()), default=None)
 
     breached, near, ok, exempt, past, fired = [], [], [], [], [], []
-    raised, restarted = [], []
+    raised, restarted, stalled, nohist, unknown = [], [], [], [], []
     new_cursor: dict[str, dict] = {}   # 次回のカーソル（KIK-777）
     for sym, px in sorted(prices.items()):
         info = stop_levels.get(sym) or {}
@@ -239,35 +268,69 @@ def check_stop_breach(prices: dict[str, float],
         # (日付, 終値, 安値, そのバーに当てるストップ)。日付は "YYYY-MM-DD" に揃えて比べる
         hist = [(str(b[0])[:10], b[1], b[2] if len(b) > 2 else None)
                 for b in (histories or {}).get(sym) or [] if b and b[0]]
+        # 今の保有を始めた日（取引履歴から・KIK-778）。この日以前のバーは見ない:
+        # 購入日のバーは買う前の値動きを含み、それより前は保有していない
+        opened = str(info.get("opened_on") or "")[:10] or None
         prev = (cursor or {}).get(sym)
-        if prev and cursor_last and _days_between(prev["date"], cursor_last) > _CURSOR_STALE_DAYS:
-            # 売って買い直した銘柄の古いカーソル。保有していない期間を今のストップで
-            # 判定すると偽の抵触になるので、新規保有と同じ扱いにする
-            restarted.append(f"{sym}（前回 {prev['date']}）")
+        last = max((d for d, _, _ in hist), default=None)
+        stale = bool(prev and cursor_last
+                     and _days_between(prev["date"], cursor_last) > _CURSOR_STALE_DAYS)
+        if prev and opened and info.get("reopened") and prev["date"] <= opened:
+            # 記録上で売り切ってから買い直した。購入日以前のカーソルは前の保有のもの。
+            # 保有していない期間や購入日の買う前の値動きを今のストップで判定すると
+            # 偽の抵触になる。日数に関係なく捨てる
+            restarted.append(f"{sym}（前回 {prev['date']}・購入 {opened}）")
             prev = None
-        if prev:
-            bars = [(d, c, lo, prev["stop"] if d == prev["date"] else stop)
+        elif stale:
+            if opened:
+                # 取引記録上は持ち続けている。ただし「履歴が止まっていた」か「売りが記録に
+                # 無い（証券会社で逆指値が約定した等）」かは区別できない。後者だと間のバーは
+                # 保有していない期間で、FAIL にすると売った銘柄に「執行せよ」と出す。
+                # 間のバーは前回のストップで見て、触れていれば WARN で確認を促す。
+                # FAIL の判定は最新バーだけ（KIK-778）
+                gap = [(d, c, lo) for d, c, lo in hist if prev["date"] <= d < (last or "")]
+                stalled.append(_gap_note(sym, prev, gap, stop,
+                                         _days_between(prev["date"], cursor_last)))
+                if last and last > prev["date"]:
+                    prev = {"date": last, "stop": prev["stop"], "gap": True}
+            else:
+                # 購入日が分からない: 買い直しか履歴の停止か区別できない。
+                # 偽の抵触を避けて起点を戻すが、間を見ていないことは知らせる
+                unknown.append(f"{sym}（前回 {prev['date']}）")
+                prev = None
+        if prev and prev.get("gap"):
+            # 途切れていた銘柄: 最新バーだけを今のストップで見る（間は上で WARN にした）
+            bars = [(d, c, lo, stop) for d, c, lo in hist if d == last]
+        elif prev:
+            # 最新バー以外（前回のバーの見直しと、飛ばした日・途切れていた間）は前回判定時の
+            # ストップ（切り上げしかしないので低い方）で見る。その間にいつ切り上げたかは
+            # 分からず、今のストップを当てると偽の抵触になる。前回ストップ〜今のストップの
+            # 間に入ったバーは下の「切り上げ後」WARN で拾う（KIK-778）
+            bars = [(d, c, lo, stop if (d == last and d != prev["date"]) else prev["stop"])
                     for d, c, lo in hist if d >= prev["date"]]
-        elif cursor is not None:
-            bars = [(d, c, lo, stop) for d, c, lo in hist
-                    if cursor_last is None or d > cursor_last]
-        elif since_str:
-            bars = [(d, c, lo, stop) for d, c, lo in hist if d > since_str]
+        elif cursor is not None or since_str:
+            start = max((x for x in (cursor_last if cursor is not None else since_str, opened)
+                         if x), default=None)
+            bars = [(d, c, lo, stop) for d, c, lo in hist if start is None or d > start]
         else:
             bars = []
+        if not hist and histories is not None and (cursor is not None or since_str):
+            nohist.append(sym)
 
-        if hist and (cursor is not None or since_str):
-            last = max(d for d, _, _ in hist)
+        # 新規保有で購入日以前のバーしか無ければカーソルを書かない。書くと次回そのカーソルから
+        # 購入日のバーを見直したり、新規保有を「買い直し」と表示したりする（KIK-778）
+        if (last and (cursor is not None or since_str)
+                and not (prev is None and opened and last <= opened)):
             # 新しいバーが無ければ前回のストップを持ち越す（そのバーを判定した時のストップ）
-            keep = prev and prev["date"] == last
+            keep = prev and not prev.get("gap") and prev["date"] == last
             new_cursor[sym] = {"date": last, "stop": prev["stop"] if keep else float(stop)}
 
         # 見直したバーが「前回のストップ < 値 <= 今のストップ」なら、切り上げ後に触れた
         # 可能性がある（米国の取引中に判定→切り上げ→その後に安値）。前回のストップより
         # 上なので抵触とは言えないが、約定していれば黙ると見落とす。WARN で出す
         if prev and float(stop) > prev["stop"]:
-            for d, c, lo, _ in bars:
-                if d != prev["date"]:
+            for d, c, lo, st in bars:
+                if st != prev["stop"]:      # 前回ストップで見たバー（見直し・途切れていた間）
                     continue
                 vals = [x for x in (c, lo) if x is not None]
                 v = min(vals) if vals else None
@@ -318,11 +381,23 @@ def check_stop_breach(prices: dict[str, float],
         parts.append("🟢 " + " / ".join(ok))
     if exempt:
         parts.append("免除 " + ", ".join(exempt))
+    if stalled:
+        parts.append("⚠判定が途切れていた " + " / ".join(stalled)
+                     + " → 履歴の停止か、記録していない売り（逆指値の約定等）。"
+                     "間に触れていれば約定一覧と取引記録を確認する")
+    if nohist:
+        parts.append("⚠価格履歴なし " + ", ".join(nohist)
+                     + " → 前回以降のバーを判定できていない（取得失敗・売買停止）。次回も続くなら確認する")
+    if unknown:
+        parts.append("⚠起点を新規保有扱いに戻した（購入日不明） " + " / ".join(unknown)
+                     + f" → 前回判定から{_CURSOR_STALE_DAYS}日超。買い直しでなく履歴の停止なら、"
+                     "間の値動きは判定していない。取引履歴を記録すれば区別できる")
     if restarted:
-        parts.append("起点を新規保有扱いに戻した " + ", ".join(restarted)
-                     + f"（前回判定から{_CURSOR_STALE_DAYS}日超。買い直しとみなす）")
+        parts.append("起点を今の保有の購入日に合わせた " + " / ".join(restarted)
+                     + " → 購入日以前のカーソルは前の保有か買う前のもの")
 
-    status = FAIL if (fired or breached or past) else (WARN if (near or raised) else PASS)
+    warn = near or raised or stalled or nohist or unknown
+    status = FAIL if (fired or breached or past) else (WARN if warn else PASS)
     res = _result("RL6", status, " | ".join(parts) or "監視対象なし")
     if new_cursor:
         # run_review が記録し、次回は next_stop_breach_since() がここから since を作る（KIK-777）
