@@ -300,6 +300,12 @@ tools:
         description: "NAV倍率・LTV・分配金利回り（年換算）を一次情報（J-Quants 決算短信）から算出"
         when: "J-REIT の評価時。**get_stock_info の PBR/PER を使わない**"
 
+  rates:
+    source: tools/rates.py
+    functions:
+      get_treasury_curve:
+        description: "米国債 2年・10年利回りと長短金利差（10Y-2Y）。一次ソースは米財務省 CMT の CSV、取れなければ FRED（DGS2/DGS10）。先物 2YY=F では代用しない（KIK-779）"
+        when: "risk-assessor の長短金利差、10/8 型の発注ゲートで 10Y-2Y を見るとき"
   jpx:
     source: tools/jpx.py
     functions:

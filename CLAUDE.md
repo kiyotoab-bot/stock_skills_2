@@ -85,6 +85,7 @@ Tools (tools/)
   notes.py         — 投資メモ読み書き（src/data/note_manager のファサード）
   watchlist.py     — ウォッチリスト読み書き（JSON直接I/O）
   scoring.py       — 3軸品質スコアリング（src/data/scoring.py のファサード）
+  rates.py         — 米国債 10Y-2Y（src/data/treasury_yields.py のファサード。財務省 CMT → FRED。先物 2YY=F は使わない・KIK-779）
 
 Data (src/data/)
   yahoo_client/  — yfinance ラッパー（24h JSONキャッシュ）
@@ -133,6 +134,8 @@ Data (src/data/)
                     ボラ基準の現値は直近3日平均（KIK-768。毎日の終値ノイズで
                     ラチェットが積み上がり、ストップが株価に収束するのを防ぐ）
   reit_metrics.py — J-REIT の NAV倍率・LTV・分配金利回り（株式の指標は当てない）
+  treasury_yields.py — 米国債 2年・10年と 10Y-2Y を財務省 CMT の CSV から取る（KIK-779）。
+                    取れなければ FRED、どちらも駄目なら available=False（先物で埋めない）
   data_freshness.py — 価格データの基準日検証（DQ4のゲート。計算前に通す）
                     系列の途中の欠落は DQ8 check_series_gaps が見る（KIK-773。
                     DQ4 は最新バーしか見ず、^N225 の 8/28 欠落を素通りさせた）
