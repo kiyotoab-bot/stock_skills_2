@@ -25,10 +25,15 @@
 | VIX | `tools/yahoo_finance.py` get_stock_info("^VIX") |
 | 米10年債利回り | `tools/yahoo_finance.py` get_stock_info("^TNX") |
 | WTI原油 | `tools/yahoo_finance.py` get_stock_info("CL=F") |
-| 長短金利差(10Y-2Y) | `tools/yahoo_finance.py` get_stock_info("^TNX") - get_stock_info("2YY=F") |
+| 長短金利差(10Y-2Y) | `tools/rates.py` get_treasury_curve() の `spread`（米財務省 CMT の 10Y−2Y。取れなければ FRED。`date` と `source` を併記） |
 | ISM製造業PMI | WebSearch（月次発表。直近の値を使用） |
 | Fear & Greed指数 | WebSearch（CNN Fear and Greed Index） |
 | 日経225 PER | WebSearch（"日経平均 PER 倍率 最新"）|
+
+⚠️ **2 年債に yfinance の `2YY=F`（先物）を使わない**（KIK-779）。限月の乗り換えで財務省の値から
+約 20bp ずれる。2026-10-01〜02 に 10Y-2Y を 0.45 → +0.63 と誤り、スコアを +1 にし、
+10/8 の発注ゲート「10Y-2Y < 0.5%」を「あと 13bp」と誤報告した（9/25 も 0.36 → +0.71）。
+`get_treasury_curve()` が `available=False` のときは 10Y-2Y を「取得不可」とし、先物で埋めない。
 
 ### 2. スコアリング
 
