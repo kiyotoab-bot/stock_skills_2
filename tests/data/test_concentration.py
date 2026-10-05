@@ -175,10 +175,31 @@ class TestClassifyConviction:
         assert got["tier"] == "conviction_override"
         assert got["override"] is True
 
-    def test_override_detected_from_note_text(self):
-        notes = [{"symbol": "8267.T", "note_type": "thesis",
-                  "content": "conviction_override: True ホールド確定"}]
+    def test_override_detected_from_thesis_field(self):
+        notes = [{"symbol": "8267.T", "note_type": "thesis", "conviction_override": True,
+                  "content": "ホールド確定"}]
         assert classify_conviction("8267.T", notes, {})["tier"] == "conviction_override"
+
+    def test_flag_name_in_text_does_not_make_override(self):
+        """本文にフラグ名を書いただけでは override にしない（KIK-780・2026-10-05 の 7751.T）."""
+        notes = self._notes() + [
+            {"symbol": "7751.T", "note_type": "thesis",
+             "content": "100株は無条件保有。ただし conviction_override フラグは付けない"},
+            {"symbol": "7751.T", "note_type": "observation", "content": "無条件convictionの議論"}]
+        got = classify_conviction("7751.T", notes, {"7751.T": {"stop": 4344.0, "conviction": False}})
+        assert got["tier"] == "conviction" and got["override"] is False
+
+    def test_newer_thesis_can_revoke_override(self):
+        notes = [{"symbol": "X", "note_type": "thesis", "date": "2026-08-01", "conviction_override": True},
+                 {"symbol": "X", "note_type": "thesis", "date": "2026-09-01", "conviction_override": False}]
+        assert classify_conviction("X", notes, {})["override"] is False
+
+    def test_stop_ledger_wins_over_older_thesis_field(self):
+        """exit-rule が override の thesis より新しければ（ledger の conviction=False）override にしない."""
+        notes = self._notes() + [{"symbol": "7751.T", "note_type": "thesis",
+                                  "conviction_override": True, "content": "旧決定"}]
+        got = classify_conviction("7751.T", notes, {"7751.T": {"stop": 4344.0, "conviction": False}})
+        assert got["override"] is False
 
     def test_exit_rule_note_satisfies_cv3(self):
         notes = self._notes() + [{"symbol": "7751.T", "note_type": "exit-rule",
