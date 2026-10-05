@@ -73,8 +73,8 @@ class TestTierAssignment:
     def test_override_wins_over_provisional(self):
         """無条件保有は仮ストップの有無に関係なく override のまま。"""
         notes = [
-            {"symbol": "7453.T", "type": "thesis",
-             "content": "conviction_override。無条件保有"},
+            {"symbol": "7453.T", "type": "thesis", "conviction_override": True,
+             "content": "無条件保有"},
             {"symbol": "7453.T", "type": "exit-rule", "content": "仮設定"},
         ]
         r = classify_conviction("7453.T", notes, {})

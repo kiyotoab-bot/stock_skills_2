@@ -89,17 +89,24 @@ def classify_conviction(
     mine = [n for n in notes if str(n.get("symbol") or "").upper() == sym]
     stop = (stop_levels or {}).get(symbol) or (stop_levels or {}).get(sym) or {}
 
-    # conviction_override: ユーザーが「テーゼ関係なく保持」と明言したもの
-    override = bool(stop.get("conviction"))
-    if not override:
-        for n in mine:
-            content = str(n.get("content") or "")
-            if "conviction_override" in content or "無条件conviction" in content:
-                override = True
-                break
-
     theses = [n for n in mine
               if (n.get("note_type") or n.get("type")) == "thesis"]
+
+    # conviction_override: ユーザーが「テーゼ関係なく保持」と明言したもの。
+    # **構造化フィールドだけで判定する**（KIK-780）。本文の文字列では判定しない。
+    # 以前は全ノートの本文に "conviction_override" / "無条件conviction" があれば override に
+    # していたため、説明文にフラグ名を書いただけで銘柄全体が集中度の判定から外れた
+    # （2026-10-05、7751.T の thesis に「フラグは付けない」と書いて 300 株全体が対象外になった）。
+    # stop_levels に銘柄があれば get_stop_levels() の判定（override の thesis が exit-rule より
+    # 新しいか）に従う。無ければ（exit-rule が無い銘柄）thesis の conviction_override フィールドを見る。
+    if stop:
+        override = bool(stop.get("conviction"))
+    else:
+        # フィールドを持つ thesis のうち最新のものに従う（False で取り消せるように）
+        flagged = [n for n in theses if n.get("conviction_override") is not None]
+        latest = max(flagged, key=lambda n: (str(n.get("date") or ""), str(n.get("timestamp") or "")),
+                     default=None)
+        override = bool(latest and latest.get("conviction_override") is True)
     cv2 = bool(theses)
 
     # CV1: 一次情報での検証を明示した thesis があるか
