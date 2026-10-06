@@ -34,7 +34,7 @@ ALERT_THRESHOLDS = {
     "stop_near_sigma": 2.0,         # INFO: ストップ接近とみなす日次σ倍
     "margin_ratio_heavy": 15.0,     # INFO: 信用倍率がこれ以上なら買い残が厚い
     "margin_ratio_extreme": 30.0,   # WARN: 上値の重石として明確な水準
-    "margin_surge_pct": 50.0,       # INFO: 信用買い残の前週比 急増ライン
+    "margin_surge_pct": 50.0,       # INFO: 信用買い残（株数）の前週比 急増ライン（倍率の前週比ではない）
 }
 
 # 前日と同じ内容でも毎回報告するアラート種別（KIK-727）。
@@ -248,7 +248,8 @@ def detect_alerts(
         mg = (margins or {}).get(sym)
         if mg and mg.get("available"):
             ratio = safe_float(mg.get("margin_ratio"))
-            wow = safe_float(mg.get("wow_change_pct"))
+            # 買い残（株数）の前週比。信用倍率の前週比（wow_change_pct）は売残でも動くので使わない（KIK-781）
+            long_wow = mg.get("long_wow_change_pct")
             if ratio > 0:
                 if ratio >= thr["margin_ratio_extreme"]:
                     alerts.append({
@@ -267,11 +268,13 @@ def detect_alerts(
                         "message": f"信用倍率 {ratio:.1f}倍 → やや買い残が厚い（{mg.get('date', '')}）",
                         "value": ratio,
                     })
-            if wow >= thr["margin_surge_pct"]:
+            if long_wow is not None and safe_float(long_wow) >= thr["margin_surge_pct"]:
+                wow = safe_float(long_wow)
                 alerts.append({
                     "symbol": sym, "type": "margin_surge",
                     "severity": "INFO",
-                    "message": f"信用買い残が前週比 {wow:+.1f}% と急増",
+                    "message": (f"信用買い残（株数）が前週比 {wow:+.1f}% と急増"
+                                f"（{mg.get('wow_basis_date', '')} → {mg.get('date', '')}）"),
                     "value": wow,
                 })
 

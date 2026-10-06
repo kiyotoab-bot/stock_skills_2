@@ -1082,16 +1082,31 @@ def llm_availability() -> dict[str, str]:
         if not is_provider_available(provider):
             out[provider] = "鍵が未設定"
             continue
-        model = (cfg.get("models") or [{}])[0].get("model")
-        if not model:
+        candidates = _same_tier_models(cfg.get("models") or [])
+        if not candidates:
             out[provider] = "モデル未定義"
             continue
-        try:
-            r = call_llm(provider, model, "OK とだけ返してください", timeout=20)
-            out[provider] = "利用可能" if r else "空応答"
-        except Exception as exc:  # noqa: BLE001
-            out[provider] = f"{type(exc).__name__}: {str(exc)[:60]}"
+        # 先頭が 503 等で落ちていても、同じ料金帯の次のモデルが使えれば「利用可能」（KIK-781）。
+        # 先頭だけで判定すると provider ごと外れ、independent_review の予備が一度も呼ばれない
+        status = "空応答"
+        for model in candidates:
+            try:
+                if call_llm(provider, model, "OK とだけ返してください", timeout=20):
+                    status = "利用可能"
+                    break
+            except Exception as exc:  # noqa: BLE001
+                status = f"{type(exc).__name__}: {str(exc)[:60]}"
+        out[provider] = status
     return out
+
+
+def _same_tier_models(models: list) -> list[str]:
+    """先頭のモデルと同じ料金帯（input 単価が同じ）のモデル名を順に返す。有料へは広げない."""
+    if not models:
+        return []
+    first_cost = (models[0].get("cost") or {}).get("input_per_m")
+    return [m["model"] for m in models
+            if m.get("model") and (m.get("cost") or {}).get("input_per_m") == first_cost]
 
 
 def independent_review(context: str, timeout: int = 180) -> dict:
@@ -1120,14 +1135,29 @@ def independent_review(context: str, timeout: int = 180) -> dict:
     from tools.llm import call_llm
 
     sysmsg = "投資判断の独立レビュアー。同意より問題点の指摘に価値がある。日本語で具体的に、簡潔に。"
-    reviews = {}
+    reviews: dict = {}
+    failed: list[str] = []
     for p in usable:
-        model = routing["available_models"][p]["models"][0]["model"]
-        try:
-            reviews[p] = call_llm(p, model, context, system_prompt=sysmsg, timeout=timeout)
-        except Exception as exc:  # noqa: BLE001
-            reviews[p] = f"(失敗: {type(exc).__name__})"
-    return {"independent": True, "availability": avail, "reviews": reviews, "note": ""}
+        # 先頭のモデルが落ちたら（過負荷の 503・提供終了の 404 など）同じ料金帯の次のモデルを試す。
+        # 有料モデルへは勝手に切り替えない（KIK-781。2026-10-05〜06 に gemini-3.6-flash が 503 を
+        # 返し続け、予備の gemini-2.5-flash は提供終了で、Gemini のレビューが2日続けて None だった）
+        tried = []
+        for model in _same_tier_models(routing["available_models"][p]["models"]):
+            tried.append(model)
+            try:
+                text = call_llm(p, model, context, system_prompt=sysmsg, timeout=timeout)
+            except Exception:  # noqa: BLE001
+                text = None
+            if text:
+                reviews[p] = text
+                break
+        else:
+            reviews[p] = None
+            failed.append(f"{p}（{' → '.join(tried)} すべて失敗）")
+    # 1つも返ってこなければ独立レビューは無かったのと同じ。「実施した」と記録しない
+    got = [p for p, v in reviews.items() if v]
+    note = ("応答なし: " + " / ".join(failed)) if failed else ""
+    return {"independent": bool(got), "availability": avail, "reviews": reviews, "note": note}
 
 
 _LABEL_SAFE = re.compile(r"[^0-9A-Za-z_-]+")

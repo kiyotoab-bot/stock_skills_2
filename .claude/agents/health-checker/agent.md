@@ -230,6 +230,9 @@ result = calc_jp_us_relative(nikkei_closes, usdjpy_closes, spx_closes)
 2026-09-28 から J-Quants の同エンドポイントが日次配信になった（KIK-776）。`wow_change_pct` は日次化後も**前週比**
 （7日以上前の最も近い行との比較）で、`dod_change_pct` が前日比。`frequency` が daily か weekly かを併記し、
 `history`（直近5行）で買残の推移を見る。閾値（15倍/30倍/前週比+50%）は変えない。
+⚠️ **`wow_change_pct` は信用倍率の前週比で、買い残の前週比ではない**。「買い残が急増」は
+`long_wow_change_pct`（買い残の株数の前週比・同じ基準行）で書く（KIK-781。基準日の売残急増で
+倍率の前週比が +102.5% と出たのに、買残は +4.1% だった）。
 `wow_change_pct` が None なら「前週比なし（基準行が古い）」と書く。`warning` が入っていれば
 （日付が読めず落とした行がある）その文言を付記する。
 

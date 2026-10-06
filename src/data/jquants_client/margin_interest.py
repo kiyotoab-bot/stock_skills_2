@@ -62,6 +62,7 @@ _EMPTY = {
     "margin_ratio": None,
     "wow_change_pct": None,
     "wow_basis_date": None,
+    "long_wow_change_pct": None,
     "dod_change_pct": None,
     "long_val": None,
     "shrt_val": None,
@@ -242,6 +243,11 @@ def summarize_margin_frame(df: pd.DataFrame, code: Optional[str] = None,
         "margin_ratio": head["margin_ratio"],
         "wow_change_pct": _pct_change(latest_ratio, wow_ratio),
         "wow_basis_date": wow_row["_dt"].strftime("%Y-%m-%d") if wow_row is not None else None,
+        # 信用買い残（株数）そのものの前週比。基準行は wow_change_pct と同じ（KIK-781）。
+        # 信用倍率の前週比は売残の増減でも動くので、「買い残が急増」の判定にはこちらを使う
+        "long_wow_change_pct": (_pct_change(finite_or_none(latest.get("LongVol")),
+                                            finite_or_none(wow_row.get("LongVol")))
+                                if wow_row is not None else None),
         "dod_change_pct": _pct_change(latest_ratio, dod_ratio),
         "long_val": head["long_val"],
         "shrt_val": head["shrt_val"],
@@ -270,6 +276,7 @@ def get_stock_margin(symbol: str) -> dict:
             margin_ratio: float | None,   # 信用倍率 (long/shrt)
             wow_change_pct: float | None, # 前週比（%）。基準は 7 日以上前の最も近い行
             wow_basis_date: str | None,   # 前週比の基準行の Date
+            long_wow_change_pct: float | None,  # 信用買い残（株数）の前週比（%）。基準行は同じ（KIK-781）
             dod_change_pct: float | None, # 前日比（%）。日次データのときだけ入る
             long_val: float | None,       # 信用買い残（金額・円）。2026-09-25 以降のみ
             shrt_val: float | None,       # 信用売り残（金額・円）。同上
@@ -282,8 +289,10 @@ def get_stock_margin(symbol: str) -> dict:
             warning: str | None,          # 成功時の診断（日付が読めず落とした行など）
         }
 
-    ⚠️ ``wow_change_pct`` の意味は日次化の前後で変えない。PO7 / SD1 の
-    「前週比 +50% 超」と detect_alerts の margin_surge はこの値を見る。
+    ⚠️ ``wow_change_pct`` は**信用倍率**の前週比で、買い残の前週比ではない。日次化の前後で意味は変えない。
+    detect_alerts の margin_surge（買い残の急増）は ``long_wow_change_pct`` を見る（KIK-781）。
+    2026-10-06 に基準日の売残急増で倍率の前週比が +56.9% / +102.5% と出て、実際の買残
+    +4.1% を「買い残が急増」と誤警報していた。
     """
     reason = unavailable_reason()
     if reason is not None:

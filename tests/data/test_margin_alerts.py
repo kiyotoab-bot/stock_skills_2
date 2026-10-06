@@ -25,7 +25,7 @@ class TestMarginAlerts:
         closes[-1] = 1000.0
         margins = {"A.T": {
             "available": available, "margin_ratio": ratio,
-            "wow_change_pct": wow, "date": "2026-07-31",
+            "long_wow_change_pct": wow, "date": "2026-07-31",
         }}
         return detect_alerts(
             self.positions, {"A.T": {"price": 1000.0}}, {"A.T": closes},
@@ -98,3 +98,31 @@ class TestMarginAlerts:
             margins={"A.T": {"available": True, "margin_ratio": 38.5, "date": "2026-07-31"}},
         )}
         assert "margin_extreme" not in got
+
+
+class TestSurgeUsesLongVolume:
+    """KIK-781: 信用倍率の前週比を「買い残の急増」と読まない（2026-10-06 の誤警報）."""
+
+    positions = [{"symbol": "A.T", "cost_price": 1000.0}]
+
+    def _run(self, mg):
+        closes = _series(1000.0, 0.015)
+        closes[-1] = 1000.0
+        base = {"available": True, "margin_ratio": 7.14, "date": "2026-10-05",
+                "wow_basis_date": "2026-09-28"}
+        base.update(mg)
+        return {a["type"]: a for a in detect_alerts(
+            self.positions, {"A.T": {"price": 1000.0}}, {"A.T": closes}, margins={"A.T": base})}
+
+    def test_ratio_jump_with_flat_long_volume_is_silent(self):
+        """7259.T 10/5: 倍率の前週比 +102.5% だが買残は +4.1%."""
+        got = self._run({"wow_change_pct": 102.5, "long_wow_change_pct": 4.1})
+        assert "margin_surge" not in got
+
+    def test_long_volume_surge_fires_with_dates(self):
+        got = self._run({"wow_change_pct": 5.0, "long_wow_change_pct": 55.0})
+        assert "margin_surge" in got
+        assert "株数" in got["margin_surge"]["message"] and "2026-09-28" in got["margin_surge"]["message"]
+
+    def test_missing_long_wow_is_silent(self):
+        assert "margin_surge" not in self._run({"wow_change_pct": 80.0})

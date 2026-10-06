@@ -747,6 +747,63 @@ class TestRunReview:
         assert got["saved_to"] is None
         assert not list(tmp_path.glob("*.json"))
 
+    def _routing(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "config"
+        cfg.mkdir()
+        yaml_text = "\n".join([
+            "available_models:",
+            "  gemini:",
+            "    models:",
+            "      - {model: g-a, cost: {input_per_m: 0.0}}",
+            "      - {model: g-b, cost: {input_per_m: 0.0}}",
+            "      - {model: g-pro, cost: {input_per_m: 2.0}}",
+        ]) + "\n"
+        (cfg / "llm_routing.yaml").write_text(yaml_text, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+    def test_falls_back_to_next_free_model_not_paid(self, tmp_path, monkeypatch):
+        """KIK-781: 先頭が 503 なら同じ料金帯の次を試す。有料には切り替えない."""
+        from src.data import checklist_review as CR
+        import tools.llm as L
+        self._routing(tmp_path, monkeypatch)
+        monkeypatch.setattr(CR, "llm_availability", lambda: {"gemini": "利用可能"})
+        calls = []
+        monkeypatch.setattr(L, "call_llm", lambda p, m, *a, **k: calls.append(m) or (None if m == "g-a" else "指摘"))
+        r = CR.independent_review("x")
+        assert calls == ["g-a", "g-b"] and r["reviews"]["gemini"] == "指摘" and r["independent"]
+
+    def test_all_models_failing_is_not_independent(self, tmp_path, monkeypatch):
+        from src.data import checklist_review as CR
+        import tools.llm as L
+        self._routing(tmp_path, monkeypatch)
+        monkeypatch.setattr(CR, "llm_availability", lambda: {"gemini": "利用可能"})
+        calls = []
+        monkeypatch.setattr(L, "call_llm", lambda p, m, *a, **k: calls.append(m) or None)
+        r = CR.independent_review("x")
+        assert calls == ["g-a", "g-b"]                 # g-pro（有料）は試さない
+        assert r["independent"] is False and "g-a → g-b" in r["note"]
+
+    def test_availability_probes_next_free_model(self, tmp_path, monkeypatch):
+        """先頭が落ちていても次の無料モデルが応答すれば provider を外さない（KIK-781 レビュー指摘）."""
+        from src.data import checklist_review as CR
+        import tools.llm as L
+        self._routing(tmp_path, monkeypatch)
+        monkeypatch.setattr(L, "is_provider_available", lambda p: True)
+        calls = []
+        monkeypatch.setattr(L, "call_llm", lambda p, m, *a, **k: calls.append(m) or (None if m == "g-a" else "OK"))
+        assert CR.llm_availability()["gemini"] == "利用可能"
+        assert calls == ["g-a", "g-b"]
+
+    def test_availability_never_probes_paid_models(self, tmp_path, monkeypatch):
+        from src.data import checklist_review as CR
+        import tools.llm as L
+        self._routing(tmp_path, monkeypatch)
+        monkeypatch.setattr(L, "is_provider_available", lambda p: True)
+        calls = []
+        monkeypatch.setattr(L, "call_llm", lambda p, m, *a, **k: calls.append(m) or None)
+        assert CR.llm_availability()["gemini"] == "空応答"
+        assert "g-pro" not in calls
+
     def test_claude_is_excluded_from_independence(self):
         """自分自身は独立レビュアーになれない。"""
         import inspect

@@ -268,6 +268,7 @@ tools:
           Standard プラン以上必要。JQUANTS_API_KEY / JQUANTS_API_REFRESH_TOKEN で認証
           ⚠️ 2026-09-28 に同じエンドポイントが週次→日次に変わった（9/25 申込分以降、翌営業日公表）。
           wow_change_pct（前週比）は「7日以上前の最も近い行」との比較なので日次化後も意味は同じ。
+          ⚠️ wow_change_pct は**信用倍率**の前週比。買い残（株数）の前週比は long_wow_change_pct（KIK-781）
           前日比は dod_change_pct、公表日は pub_date、金額は long_val / shrt_val、
           直近5行は history に入る。frequency で daily / weekly を判別できる。
           基準行が13日より古い（行の欠落）と wow_change_pct は None になる。「前週比なし」と報告する

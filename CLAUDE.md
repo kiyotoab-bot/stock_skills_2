@@ -111,7 +111,9 @@ Data (src/data/)
                     前週比 wow_change_pct は隣接行ではなく「7日以上前の最も近い行」と比較する
                     （日次化後に前日比が前週比として PO7/SD1 に流れるのを防ぐ）。前日比は dod_change_pct。
                     切替日（隣接行が5日未満）は日次扱い。基準行が13日より古ければ前週比は None。
-                    失敗は error（available=False）、成功時の診断（落とした行）は warning に分ける
+                    失敗は error（available=False）、成功時の診断（落とした行）は warning に分ける。
+                    wow_change_pct は信用倍率の前週比。買い残（株数）の前週比は long_wow_change_pct で、
+                    detect_alerts の margin_surge はこちらを見る（KIK-781）
   margin_deadline.py — 半年期日（制度信用6ヶ月ルール）の局面判定
                     pressure のみ買いを止める。flying は需給整理が先行して
                     底打ちしやすいので止めない（KIK-772 の SD2）
