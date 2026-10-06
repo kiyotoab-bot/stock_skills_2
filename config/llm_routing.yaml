@@ -44,8 +44,9 @@ available_models:
     models:
       - model: gemini-3.6-flash
         cost: { input_per_m: 0.00, output_per_m: 0.00 }   # 無料枠
-      - model: gemini-2.5-flash
-        cost: { input_per_m: 0.00, output_per_m: 0.00 }   # 無料枠・安定版
+      - model: gemini-3.8-flash
+        cost: { input_per_m: 0.00, output_per_m: 0.00 }   # 無料枠。3.6-flash が落ちたときの予備（KIK-781）
+      # gemini-2.5-flash は 2026-10 に提供終了（404 "no longer available to new users"）
       - model: gemini-3.1-pro-preview
         cost: { input_per_m: 2.00, output_per_m: 12.00 }  # 有料専用
       - model: gemini-2.5-pro

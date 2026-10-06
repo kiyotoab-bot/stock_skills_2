@@ -210,6 +210,22 @@ class TestDailyMarginInterest:
         assert r["wow_change_pct"] == pytest.approx(20.0, abs=0.1)   # 30倍 vs 25倍
         assert r["dod_change_pct"] == pytest.approx(11.1, abs=0.1)   # 30倍 vs 27倍
 
+    def test_long_wow_is_share_count_change_on_same_basis(self):
+        """KIK-781: 買い残（株数）の前週比は倍率の前週比と別に、同じ基準行で出す."""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        r = summarize_margin_frame(pd.DataFrame(self.DAILY), code="80310")
+        assert r["long_wow_change_pct"] == pytest.approx(20.0, abs=0.1)   # 600万 vs 500万
+
+    def test_short_spike_on_basis_does_not_inflate_long_wow(self):
+        """7259.T 10/5 型: 基準日の売残急増で倍率の前週比は +100% 超、買残は +4%."""
+        from src.data.jquants_client.margin_interest import summarize_margin_frame
+        rows = [_row("2026-09-28", 932600, 264700, "2026-09-29"),
+                _row("2026-09-29", 979100, 132600, "2026-09-30"),
+                _row("2026-10-05", 970400, 136000, "2026-10-06")]
+        r = summarize_margin_frame(pd.DataFrame(rows), code="72590")
+        assert r["wow_change_pct"] > 90
+        assert r["long_wow_change_pct"] == pytest.approx(4.05, abs=0.1)
+
     def test_daily_returns_money_fields_and_history(self):
         from src.data.jquants_client.margin_interest import summarize_margin_frame
         r = summarize_margin_frame(pd.DataFrame(self.DAILY), code="80310")
