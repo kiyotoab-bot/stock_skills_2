@@ -181,7 +181,9 @@ cap_size:
   small_cap:
     warn: 5               # % — PF全体に占める小型株比率
     limit: 10
-  single_stock_small: 3    # % — 小型株1銘柄あたりの上限
+  single_stock_small: 3    # % — 小型株1銘柄あたりの上限（分母は総資産）
+  # 分母は総資産（現金を含む）。planned_equity 比では判定しない（2026-10-18 ユーザー決定）。
+  # 例: 1518.T 1単元 ¥228,400 は総資産比 2.87% で上限内（planned 比なら 3.63% で超過扱いになっていた）
   definition:
     small_cap_threshold_jpy: 100000000000   # 1000億円以下 = 小型
     small_cap_threshold_usd: 1000000000     # $1B以下 = 小型
