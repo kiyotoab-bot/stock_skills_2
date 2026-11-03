@@ -25,6 +25,7 @@
 | VIX | `tools/yahoo_finance.py` get_stock_info("^VIX") |
 | 米10年債利回り | `tools/yahoo_finance.py` get_stock_info("^TNX") |
 | WTI原油 | `tools/yahoo_finance.py` get_stock_info("CL=F") |
+| Brent原油（強制ルール専用・スコアには入れない） | `tools/yahoo_finance.py` get_stock_info("BZ=F") + 報道値で終値を照合 |
 | 長短金利差(10Y-2Y) | `tools/rates.py` get_treasury_curve() の `spread`（米財務省 CMT の 10Y−2Y。取れなければ FRED。`date` と `source` を併記） |
 | ISM製造業PMI | WebSearch（月次発表。直近の値を使用） |
 | Fear & Greed指数 | WebSearch（CNN Fear and Greed Index） |
@@ -68,6 +69,11 @@
 | VIX > 40 | パニック水準 |
 | F&G < 10 | 極端な恐怖 |
 | WTI > $110 | エネルギーショック |
+| Brent 終値 ≥ $120（2ソースで確認） | エネルギーショック（日本の輸入原油は Brent・ドバイ連動。WTI だけだと過小評価する） |
+
+Brent は WTI と OR で見る（2026-11-03 ユーザー決定）。2026-10 に WTI-Brent 差が最大 $13.5 開き、
+WTI $110 では日本の原油コストを捉えきれなかった。BZ=F は限月の乗り換えで値がぶれるため
+（11/2 に yfinance -7.7% / 報道 -4.3%）、**終値を2ソースで確認してから**発動とする。
 
 強制 risk-off 中の逆張りは、VIX がピークから 20% 以上低下してから検討する。
 
