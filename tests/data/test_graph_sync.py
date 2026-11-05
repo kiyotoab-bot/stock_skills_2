@@ -772,6 +772,35 @@ class TestSyncAllEntryPoint:
             result = graph_sync.sync_all(str(root))
         assert any("trade(1/1件)" in s for s in result["synced"])
 
+    def test_failure_does_not_advance_last_sync(self, root):
+        """失敗があるのに last_sync を進めると infra_health の sync_stale が騙される (KIK-784)."""
+        import yaml
+        (root / "data").mkdir(parents=True, exist_ok=True)
+        (root / "data/sync_status.yaml").write_text(
+            yaml.dump({"last_sync": "2026-08-09T00:02:44"}), encoding="utf-8")
+        _write(root / "data/history/trade/t.json",
+               [{"symbol": "7203.T", "action": "buy", "date": "2026-08-08",
+                 "shares": 1, "price": 1, "currency": "JPY"}])
+        with _graph_up(), \
+             patch("src.data.portfolio_io.load_portfolio", return_value=[]), \
+             patch("src.data.graph_store.merge_trade", return_value=False):
+            result = graph_sync.sync_all(str(root))
+        assert result["failed"]
+        assert any("last_sync を進めない" in s for s in result["skipped"])
+        loaded = yaml.safe_load((root / "data/sync_status.yaml").read_text(encoding="utf-8"))
+        assert loaded["last_sync"] == "2026-08-09T00:02:44"
+
+    def test_success_advances_last_sync(self, root):
+        _write(root / "data/history/trade/t.json",
+               [{"symbol": "7203.T", "action": "buy", "date": "2026-08-08",
+                 "shares": 1, "price": 1, "currency": "JPY"}])
+        with _graph_up(), \
+             patch("src.data.portfolio_io.load_portfolio", return_value=[]), \
+             patch("src.data.graph_store.merge_trade", return_value=True):
+            result = graph_sync.sync_all(str(root))
+        assert not result["failed"]
+        assert "sync_status更新" in result["synced"]
+
     def test_tools_facade_delegates(self, root):
         """tools/graphrag.py は薄いファサードで、_project_root を引き継ぐ."""
         import tools.graphrag as tg

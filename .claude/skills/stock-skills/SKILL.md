@@ -703,7 +703,7 @@ if not cs["available"] or cs["mechanical_signals"] >= 1:
 
 ```python
 from src.data.morning_summary import check_routine_health
-check_routine_health()     # 鮮度 + GraphRAG のスキーマ をまとめて見る
+check_routine_health()     # 鮮度 + Neo4j/TEI の死活・sync の鮮度（KIK-784）+ GraphRAG のスキーマ をまとめて見る
 
 # DQ4: 価格データの基準日（KIK-761）。**計算を始める前に通す**
 # DQ8: 系列の途中の欠落（KIK-773）。**DQ4 とセットで通す**
@@ -741,8 +741,26 @@ DQ4 は**最新バーの日付しか見ない**ので、系列の途中が抜け
 | `constraint_missing` WARN | ノードの重複を防げない | `init_schema()` を実行 |
 | `index_missing` INFO | クエリが遅い | 同上 |
 
-Neo4j 未接続なら黙って飛ばす。`init_schema()` の戻り値は当てにせず、
-**`check_schema()` で実在を確認する**こと。
+`init_schema()` の戻り値は当てにせず、**`check_schema()` で実在を確認する**こと。
+
+**基盤（Neo4j / TEI）の死活と sync の鮮度も同じ呼び出しで見る**（KIK-784）。
+
+| 出るアラート | 意味 | 対処 |
+|:---|:---|:---|
+| `neo4j_unavailable` WARN | 文脈補完・ベクトル検索・dual-write が止まっている | `docker compose up -d` → 「syncして」 |
+| `tei_unavailable` WARN | 保存したノードに埋め込みが付かない | 同上 |
+| `sync_stale` WARN（7日超）/ CRITICAL（30日超） | Neo4j 停止中の保存がグラフに入っていない | 「syncして」 |
+| `sync_never_run` WARN | sync の記録が無い | 同上 |
+| `sync_status_unreadable` WARN | `sync_status.yaml` が壊れている | 同上（書き直される） |
+| `infra_check_failed` WARN | 確認そのものが落ちた | 原因を調べる |
+
+⚠️ **以前は「Neo4j 未接続なら黙って飛ばす」設計だった。** そのため 2026-11-06 に
+「syncして」で発覚するまで、コンテナが約2ヶ月止まっていても日次は毎日「異常なし」を
+返していた（接続失敗は既定で無音・KIK-749、`check_schema()` も未接続なら `alerts=[]`）。
+データの正本は `data/` なので損失は無いが、止まっていること自体が見えなかった。
+**黙るのは `NEO4J_MODE=off` を環境変数で明示したときだけ。**
+`sync_all()` は `failed` があると `last_sync` を進めない（壊れたグラフに sync しても鮮度の WARN は消えない）。
+上の WARN が出たら、起動してから日次を続け、最後に sync を提案する。
 
 週次にしか含まれない項目（リスク判定・アクションプラン・レビュー・需給）は、
 **週次を回さないと誰も気づかないまま抜け続ける**。実際 2026-07-27 から 08-06 まで

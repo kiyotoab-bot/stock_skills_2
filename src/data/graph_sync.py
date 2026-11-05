@@ -298,6 +298,11 @@ def sync_all(project_root: Optional[str] = None) -> dict:
     _sync_cash(root, result)
     _sync_notes(root, result)
     _sync_history(root, result)
-    _write_status(root, result)
+    # 失敗があれば last_sync を進めない（KIK-784）。進めると、壊れたグラフに
+    # 「syncして」を打つだけで infra_health の sync_stale が消え、鮮度の確認が騙される
+    if result["failed"]:
+        result["skipped"].append("sync_status: 失敗があったため last_sync を進めない")
+    else:
+        _write_status(root, result)
 
     return result

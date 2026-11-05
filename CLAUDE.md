@@ -91,6 +91,9 @@ Data (src/data/)
   yahoo_client/  — yfinance ラッパー（24h JSONキャッシュ）
   grok_client/   — Grok API (xAI) ラッパー
   graph_store/   — Neo4j 書き込み（dual-write）+ スキーマ検証 check_schema()
+  infra_health.py — Neo4j / TEI の死活と sync の鮮度（日次 Step 0・KIK-784）。
+                    以前は未接続を黙って飛ばし、コンテナが約2ヶ月止まっても気づかなかった。
+                    NEO4J_MODE=off を明示したときだけ黙る
   graph_query/   — Neo4j 読み取り
   graph_sync.py  — data/ → GraphRAG 一括同期（「syncして」の実体）
   graph_writers.py — レコード→ノード変換（save 経路と sync 経路で共有）
