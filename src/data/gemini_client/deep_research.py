@@ -24,13 +24,12 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import requests
-from dotenv import load_dotenv
+from src.data.env import load_project_env
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+load_project_env()  # KIK-785
 
 from src.data.deepthink_meta import META_LOG_PATH as _META_LOG_PATH
 

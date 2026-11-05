@@ -6,14 +6,13 @@ Extracted from grok_client.py during KIK-508 submodule split.
 import json
 import os
 import sys
-from pathlib import Path
 from typing import Optional
 
 import requests
-from dotenv import load_dotenv
+# Load .env from project root (KIK-785: 入口を src/data/env.py に一本化)
+from src.data.env import load_project_env
 
-# Load .env from project root
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+load_project_env()
 
 
 _API_URL = "https://api.x.ai/v1/responses"

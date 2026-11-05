@@ -100,6 +100,8 @@ Data (src/data/)
   context/       — 自動コンテキスト注入
   history/       — 実行履歴ストア
   note_manager   — 投資メモ管理
+  env.py         — リポジトリ直下の .env を読む唯一の入口 load_project_env()（KIK-785）。
+                    環境変数を読むモジュールは読む前に呼ぶ。テストは STOCK_SKILLS_SKIP_DOTENV で止める
   common.py      — 共通ユーティリティ（is_etf, safe_float 等）
   ticker_utils.py — ティッカー推論（通貨/地域マッピング）
   portfolio_io.py — PF CSV 読み書き

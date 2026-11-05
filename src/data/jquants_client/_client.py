@@ -25,7 +25,7 @@ def _ensure_env() -> None:
         return
     # テストは実際の .env の資格情報を拾ってはいけない。tests/conftest.py の
     # autouse フィクスチャがこのフラグを立てて .env 読込を無効化する。
-    if os.environ.get("JQUANTS_SKIP_DOTENV"):
+    if os.environ.get("JQUANTS_SKIP_DOTENV") or os.environ.get("STOCK_SKILLS_SKIP_DOTENV"):
         _env_loaded = True
         return
     _env_loaded = True
