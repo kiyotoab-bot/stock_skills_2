@@ -8,6 +8,8 @@
 - Gemini API 利用時は `GEMINI_API_KEY` 環境変数を設定（未設定でも動作する）
 - OpenAI API 利用時は `OPENAI_API_KEY` 環境変数を設定（未設定でも動作する）
 - Neo4j 書き込み深度は `NEO4J_MODE` 環境変数で制御: `off`/`summary`/`full`（デフォルト: 接続可能なら `full`）
+  - `.env` には既定で書かない（KIK-785）。`full` を書くと Neo4j が止まっていても書き込みを試み続ける。強制したいときだけ明示する
+- `.env` の読み込みは `src/data/env.py` の `load_project_env()` に一本化（KIK-785）。`load_dotenv()` を各モジュールで直接呼ばない（`tests/data/test_env.py` が検知する）。以前は linker.py が `src/.env` を読んでいた
 - Neo4j 接続失敗は既定で無音。診断したい場合は `NEO4J_DEBUG=1`（または `true`/`yes`）で初回 1 回だけ stderr に短い行が出る（KIK-749）
   - ただし日次 Step 0 の `check_routine_health()` は Neo4j / TEI に繋がらなければ WARN を出す（KIK-784）。個々の書き込みは無音、死活は日次で1回見る、の分担
 - TEI ベクトル検索は `TEI_URL` 環境変数で制御（デフォルト: `http://localhost:8081`）。未起動時はベクトル検索スキップ

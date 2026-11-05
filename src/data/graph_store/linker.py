@@ -12,13 +12,14 @@ or any exception occurs.
 import json
 import os
 from datetime import date, timedelta
-from pathlib import Path
 from typing import Optional
 
 import requests
-from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# KIK-785: 以前は parents[2]（= src/.env、存在しない）を読んでいた
+from src.data.env import load_project_env
+
+load_project_env()
 
 
 _API_URL = "https://api.anthropic.com/v1/messages"

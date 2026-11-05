@@ -13,14 +13,13 @@ import json
 import os
 import sys
 import time
-from pathlib import Path
 from typing import Optional
 
 import requests
-from dotenv import load_dotenv
+# Load .env from project root (KIK-785: 入口を src/data/env.py に一本化)
+from src.data.env import load_project_env
 
-# Load .env from project root
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_project_env()
 
 # ---------------------------------------------------------------------------
 # API endpoints

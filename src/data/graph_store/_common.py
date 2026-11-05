@@ -17,6 +17,12 @@ from typing import Optional
 # Connection
 # ---------------------------------------------------------------------------
 
+# 接続情報を読む**前に** .env を読む（KIK-785）。以前は .env を読むモジュールが
+# 先に import されたかどうかで値が変わっていた（import 順依存）
+from src.data.env import load_project_env
+
+load_project_env()
+
 _NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7688")
 _NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
 _NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "password")

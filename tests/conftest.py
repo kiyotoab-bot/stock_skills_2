@@ -1,8 +1,14 @@
 """Shared pytest fixtures for stock-skills test suite."""
 
 import json
+import os
 import sys
 from pathlib import Path
+
+# KIK-785: テストは本物の .env（API 鍵・NEO4J_MODE 等）を拾ってはいけない。
+# src/data/env.py の load_project_env() はモジュール import 時に走るので、
+# どの src/ も import される前のここで止める
+os.environ["STOCK_SKILLS_SKIP_DOTENV"] = "1"
 from unittest.mock import MagicMock
 
 import pandas as pd
