@@ -9,6 +9,7 @@
 - OpenAI API 利用時は `OPENAI_API_KEY` 環境変数を設定（未設定でも動作する）
 - Neo4j 書き込み深度は `NEO4J_MODE` 環境変数で制御: `off`/`summary`/`full`（デフォルト: 接続可能なら `full`）
 - Neo4j 接続失敗は既定で無音。診断したい場合は `NEO4J_DEBUG=1`（または `true`/`yes`）で初回 1 回だけ stderr に短い行が出る（KIK-749）
+  - ただし日次 Step 0 の `check_routine_health()` は Neo4j / TEI に繋がらなければ WARN を出す（KIK-784）。個々の書き込みは無音、死活は日次で1回見る、の分担
 - TEI ベクトル検索は `TEI_URL` 環境変数で制御（デフォルト: `http://localhost:8081`）。未起動時はベクトル検索スキップ
 - Linear 連携は `LINEAR_ENABLED=on` で有効化（デフォルト: off）
 

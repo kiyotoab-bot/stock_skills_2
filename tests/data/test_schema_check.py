@@ -124,6 +124,13 @@ class TestCheckSchema:
 class TestCheckRoutineHealth:
     """Step 0 は鮮度とスキーマをまとめて見る (KIK-742)."""
 
+    @pytest.fixture(autouse=True)
+    def _no_infra(self, monkeypatch):
+        # このクラスはスキーマの合流を見る。Neo4j / TEI / sync の確認（KIK-784）は
+        # tests/data/test_infra_health.py で見るので、ここでは黙らせる
+        monkeypatch.setattr("src.data.infra_health.check_infra_health",
+                            lambda *a, **k: [])
+
     def test_combines_freshness_and_schema(self, tmp_path):
         from src.data.morning_summary import check_routine_health
         import datetime

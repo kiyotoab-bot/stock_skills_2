@@ -561,6 +561,7 @@ def check_routine_freshness(
 def check_routine_health(
     reports_dir: str = "data/reports",
     today: date | None = None,
+    sync_status_path: str | None = None,
 ) -> list[dict]:
     """日次 Step 0 でまとめて見る「仕組みが生きているか」の確認 (KIK-742).
 
@@ -570,9 +571,21 @@ def check_routine_health(
     埋め込みを全ノードに付けても索引が無ければ意味検索は動かないので、
     「埋め込みの欠落」より上流のこちらを先に見る。
 
-    Neo4j 未接続なら黙って飛ばす（graceful degradation）。
+    Neo4j / TEI に繋がらない・sync が古いときは ``infra_health`` が WARN を出す
+    （KIK-784）。以前は「Neo4j 未接続なら黙って飛ばす」設計で、コンテナが約2ヶ月
+    止まっていても毎日「異常なし」を返していた。``NEO4J_MODE=off`` を明示した
+    ときだけ黙る。スキーマ確認は接続できたときだけ意味があるので従来どおり。
     """
     alerts = check_routine_freshness(latest_routine_dates(reports_dir), today)
+    try:
+        from src.data.infra_health import check_infra_health
+        alerts.extend(check_infra_health(sync_status_path, today))
+    except Exception as e:
+        # 基盤の確認そのものが落ちたことも黙らない
+        alerts.append({"symbol": "INFRA", "type": "infra_check_failed",
+                       "severity": "WARN",
+                       "message": f"Neo4j / TEI の確認に失敗: {type(e).__name__}",
+                       "value": None})
     try:
         from src.data.graph_store import check_schema
         alerts.extend(check_schema().get("alerts") or [])
