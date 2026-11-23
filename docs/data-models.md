@@ -131,6 +131,26 @@ yfinance 生キーと正規化済みキーの対応表:
 | `total_debt` | `float \| None` | 有利子負債合計 | `ticker.info` |
 | `ebitda` | `float \| None` | EBITDA | `ticker.info` |
 
+### 追加フィールド: 3類型バリューの決算書項目 (KIK-786)
+
+`src/data/yahoo_client/_balance.py` の `extract_value_items()` が最新期を取り出す。
+計算（NC（父娘式）・清算価値・本のFCF 等）は `src/data/value_formulas.py`。
+取れない項目は None（0 で埋めない）。キーを持たない古いキャッシュは `get_stock_detail` が取り直す。
+
+| キー | 型 | 説明 | ソース |
+|:---|:---|:---|:---|
+| `cash_and_st_investments` | `float \| None` | 現預金 + 短期投資 | `balance_sheet` |
+| `investment_securities` | `float \| None` | 投資有価証券（関連会社株式を含む） | `balance_sheet` |
+| `accounts_receivable` | `float \| None` | 受取手形及び売掛金 | `balance_sheet` |
+| `inventory` | `float \| None` | 棚卸資産 | `balance_sheet` |
+| `net_ppe` | `float \| None` | 有形固定資産（純額） | `balance_sheet` |
+| `intangibles` | `float \| None` | 無形固定資産（のれん含む） | `balance_sheet` |
+| `total_non_current_assets` | `float \| None` | 固定資産合計 | `balance_sheet` |
+| `total_liabilities` | `float \| None` | 負債合計（非支配株主持分を除く） | `balance_sheet` |
+| `interest_bearing_debt` | `float \| None` | 有利子負債（短期+長期の両方が取れたときの和と Total Debt−リース債務の大きい方。`total_debt` とは別） | `balance_sheet` |
+| `investing_cashflow` | `float \| None` | 投資活動によるCF（負値=支出）。本の FCF = 営業CF + これ | `cashflow` |
+| `balance_sheet_date` | `str \| None` | 貸借対照表の期末日（YYYY-MM-DD） | `balance_sheet` |
+
 ### 追加フィールド: アナリスト (KIK-359)
 
 | キー | 型 | 説明 | ソース |

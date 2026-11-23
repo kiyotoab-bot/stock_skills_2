@@ -14,6 +14,8 @@ from src.data.yahoo_client._cache import (
     _read_detail_cache,
     _write_detail_cache,
 )
+from src.data.yahoo_client._balance import VALUE_ITEM_KEYS, extract_value_items
+from src.data.yahoo_client._frames import _try_get_field, _try_get_history  # noqa: F401  (re-export)
 from src.data.yahoo_client._memory_cache import stock_detail_cache
 from src.data.yahoo_client._normalize import (
     _normalize_ratio,
@@ -68,51 +70,6 @@ def _earnings_date(info: dict) -> Optional[str]:
 
     future = [d for d in candidates if d >= today]
     return (min(future) if future else max(candidates)).isoformat()
-
-
-def _try_get_field(df: Any, field_names: list[str]) -> Optional[float]:
-    """Try to extract a numeric value from a DataFrame row using multiple
-    possible field names.  Returns None if the DataFrame is empty or none of
-    the names exist.
-    """
-    try:
-        if df is None or df.empty:
-            return None
-        for name in field_names:
-            if name in df.index:
-                value = df.loc[name].iloc[0]
-                # Convert numpy / pandas types to plain Python float
-                if value is not None and value == value:  # NaN check
-                    return float(value)
-        return None
-    except Exception:
-        return None
-
-
-def _try_get_history(df, field_names: list[str], max_periods: int = 4) -> list[float]:
-    """Try to extract multiple periods of data from a DataFrame row.
-
-    Returns a list of floats in latest-to-oldest order.  Stops at the first
-    NaN / None so that only contiguous data is returned.
-    """
-    try:
-        if df is None or df.empty:
-            return []
-        for name in field_names:
-            if name in df.index:
-                values: list[float] = []
-                row = df.loc[name]
-                for i in range(min(len(row), max_periods)):
-                    val = row.iloc[i]
-                    if val is not None and val == val:  # NaN check
-                        values.append(float(val))
-                    else:
-                        break  # contiguous data required
-                if values:
-                    return values
-        return []
-    except Exception:
-        return []
 
 
 _DIVIDEND_DIVERGENCE_LIMIT = 0.30
@@ -447,6 +404,11 @@ def get_multiple_stocks(symbols: list[str]) -> dict[str, Optional[dict]]:
 # get_stock_detail
 # ---------------------------------------------------------------------------
 
+def _has_value_items(cached: dict) -> bool:
+    """キャッシュが KIK-786 の決算書項目を持つか（値が None でもキーがあればよい）."""
+    return all(k in cached for k in VALUE_ITEM_KEYS)
+
+
 def get_stock_detail(symbol: str) -> Optional[dict]:
     """Fetch detailed stock information including financial statements.
 
@@ -457,8 +419,10 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
     Uses memory → file → API three-tier cache (KIK-531).
     """
     # 0. Check in-memory cache first (KIK-531)
+    # KIK-786 より前のキャッシュには決算書の項目が無い。そのまま返すと 3類型の判定が
+    # 最大24時間「計算不可」の WARN を出し、データ欠落と誤読される → 取り直す
     mem_cached = stock_detail_cache.get(symbol)
-    if mem_cached is not None:
+    if mem_cached is not None and _has_value_items(mem_cached):
         return mem_cached
 
     # 1. Get base data first
@@ -468,7 +432,7 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
 
     # 2. Check file-based detail cache
     cached = _read_detail_cache(symbol)
-    if cached is not None:
+    if cached is not None and _has_value_items(cached):
         stock_detail_cache.set(symbol, cached)
         return cached
 
@@ -490,6 +454,7 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         equity_ratio: Optional[float] = None
         total_assets: Optional[float] = None
         equity_history: list[float] = []
+        bs = cf = None  # KIK-786: 3類型の項目でも同じ DataFrame を使う
         try:
             bs = ticker.balance_sheet
             if bs is not None and not bs.empty:
@@ -712,6 +677,14 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
         except Exception:
             pass
 
+        # --- 3類型バリューの決算書項目（KIK-786）---
+        # ネットキャッシュ・清算価値・本の FCF に要る行。取れなくてもキーは None で揃える
+        value_items: dict = dict.fromkeys(VALUE_ITEM_KEYS)
+        try:
+            value_items.update(extract_value_items(bs, cf))
+        except Exception:
+            pass
+
         # 4. Merge into base dict
         result = dict(base)  # shallow copy to avoid mutating cached base
         result.update({
@@ -755,6 +728,7 @@ def get_stock_detail(symbol: str) -> Optional[dict]:
             "fund_category": fund_category,
             "fund_family": fund_family,
         })
+        result.update(value_items)  # KIK-786
 
         # 5. Cache the result (file + memory)
         _write_detail_cache(symbol, result)

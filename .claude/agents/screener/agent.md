@@ -109,6 +109,25 @@ examples.yaml の `quality_thresholds` を参照。ユーザーが「高い」�
 - 保有銘柄・ウォッチ銘柄・過去スクリーニング常連にはアノテーション付与
 - 結果末尾にプロアクティブ提案（「詳しく見たい銘柄があれば教えてください」等）
 
+## 3類型バリューの後段判定（KIK-786）
+
+preset が `shisan-value` / `shueki-value` / `cyclical-value` のとき、EquityQuery の結果を
+`get_stock_detail` で取り直し、型に応じたチェックを通してから順位を付ける（`config/tools.yaml` の `value_types`）。
+
+| preset | 通すチェック | 必ず出すもの |
+|:---|:---|:---|
+| shisan-value | `check_asset_value`（AV1-AV4）+ `check_peak_trap`（CY0） | 清算価値÷時価総額・NC（父娘式） |
+| shueki-value | `check_earnings_value`（EV1-EV6）+ `check_peak_trap`（CY0） | 本のFCF・DCF弱気/強気÷時価総額 |
+| cyclical-value | `check_cyclical_peak`（CY0/CY2/CY5） | 最高益の位置と**見た年数** |
+
+⚠️ **CY0（直近=最高益）が WARN の銘柄は、PER が低くても上位にしない。** 本の「ピークの安さ」。
+2026-11-23 に 5706.T が収益バリューの式を満たしつつ、非鉄で最高益だった（lesson 9ac8dd74）。
+判定に使えなかった項目（WARN「取得不可」）は「見ていない」として表に残す。
+
+⚠️ AV3 の NC は**父娘式**（現預金+有価証券−有利子負債）。下の清原式ネットキャッシュとは別の式。
+`shisan-value` / `shueki-value` / `cyclical-value` では父娘 NB の式だけを使い、清原 NB は自動参照しない
+（発話に「ネットキャッシュ」「清原」が明示されたときだけ下の手順を足す）。
+
 ## NotebookLM参照（清原達郎 ネットキャッシュ投資法）
 
 以下のいずれかに該当する場合、スクリーニング前に NotebookLM でネットキャッシュ基準を取得する:

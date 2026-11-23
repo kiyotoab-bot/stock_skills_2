@@ -22,7 +22,7 @@
 agents:
   screener:
     role: 銘柄探し・スクリーニング実行
-    triggers: [探す, スクリーニング, いい株, おすすめ, 割安, 高配当, テーマ, トレンド, 成長株, 品質, 質の高い, クオリティ, 持続性, 還元, 堅い, 優良, 小型株, テンバガー, 穴場, 発掘, 無名, ETF, 債券ETF, セクターETF]
+    triggers: [探す, スクリーニング, いい株, おすすめ, 割安, 高配当, テーマ, トレンド, 成長株, 品質, 質の高い, クオリティ, 持続性, 還元, 堅い, 優良, 小型株, テンバガー, 穴場, 発掘, 無名, ETF, 債券ETF, セクターETF, 資産バリュー, 収益バリュー, シクリカル株, シクリカルの谷]
     required_context:
       - key: region
         optional: true
@@ -31,7 +31,7 @@ agents:
         optional: true
   analyst:
     role: 銘柄分析・バリュエーション評価（個別株・ETF）
-    triggers: [レポート, 分析, 割安度, 還元率, バリュートラップ]
+    triggers: [レポート, 分析, 割安度, 還元率, バリュートラップ, 清算価値, 最高益, 型判定]
     required_context:
       - key: symbol
         optional: false
@@ -78,6 +78,31 @@ examples:
     agent: screener
     pattern: B
     header: "🎯 [screener] AI関連割安スクリーニング"
+
+  # --- 3類型バリュー（父娘NB・KIK-786） ---
+  - intent: "資産バリュー株を探して"
+    agent: screener
+    pattern: B
+    header: "🎯 [screener] 資産バリュー（清算価値・NC父娘式）"
+    note: "preset=shisan-value。後段で tools.value_types.check_asset_value（AV1-AV4）。「ネットキャッシュ候補」（清原候補 WL の監視）は health-checker で別物"
+
+  - intent: "シクリカルの谷にある株は？"
+    agent: screener
+    pattern: B
+    header: "🎯 [screener] シクリカル谷待ちリスト"
+    note: "preset=cyclical-value。CY0（直近=最高益）が WARN の銘柄は候補にしない"
+
+  - intent: "1926.Tの清算価値は？"
+    agent: analyst
+    pattern: B
+    header: "🎯 [analyst] 3類型の型判定"
+    note: "tools.value_types.compute_metrics + 型に応じた check_*。CY0（check_peak_trap）は型に関係なく出す"
+
+  - intent: "5706.Tはシクリカル？最高益の罠じゃない？"
+    agent: analyst
+    pattern: B
+    header: "🎯 [analyst] 5706.T 型判定（最高益の罠）"
+    note: "銘柄コード付きの「シクリカル」は探索ではなく個別判定 → analyst。check_cyclical_peak"
 
   # --- グロース枠スクリーニング（リスク判定連動・Pattern C） ---
   # risk-on → トレンドフォロー、risk-off → 割安/逆張り、neutral → 見送り

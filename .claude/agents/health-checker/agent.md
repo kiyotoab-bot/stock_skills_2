@@ -412,6 +412,10 @@ r = check_margin_deadline([float(x) for x in df["Close"].dropna()],
 
 日次チェックの WLアラート実行時、thesis・observation ノートに「ネットキャッシュ」「NCR」「清原」を含む WL 銘柄を対象に毎日テクニカル監視を行う。
 
+ℹ️ 資産バリュー（KIK-786）の WL 銘柄も、ノートに「NC（父娘式）」「ネットキャッシュ」と書けばここに入る。
+**意図した動作**（どちらも現金リッチな小型株で、見るテクニカルは同じ）。ただし出力では
+清原式（ネットキャッシュ比率）と父娘式（現預金+有価証券−有利子負債）を混ぜて書かない。
+
 **対象抽出:**
 ```python
 from tools.notes import load_notes

@@ -968,6 +968,40 @@ def check_dilution(share_series, today=None, lookback_years=3):
     return _impl(share_series, today=today, lookback_years=lookback_years)
 
 
+def check_asset_value(details):
+    """AV1-AV4: 資産バリューの式（KIK-786）。詳細は src.data.value_types 参照。
+
+    ``details`` は ``{symbol: get_stock_detail(symbol)}``。
+    """
+    from src.data.value_types import check_asset_value as _impl
+
+    return _impl(details)
+
+
+def check_earnings_value(details):
+    """EV1-EV6: 収益バリューの式（KIK-786）。詳細は src.data.value_types 参照。"""
+    from src.data.value_types import check_earnings_value as _impl
+
+    return _impl(details)
+
+
+def check_peak_trap(details):
+    """CY0 最高益の罠だけ（KIK-786）。型に関係なく、低PERを割安と言う前に通す。"""
+    from src.data.value_types import check_peak_trap as _impl
+
+    return _impl(details)
+
+
+def check_cyclical_peak(details):
+    """CY0 最高益の罠 / CY2 PSR / CY5 逆算目標株価（KIK-786）。
+
+    CY1（赤字の谷）・CY3（数量・設備投資）・CY4（生存）は目視（決算短信を直読）。
+    """
+    from src.data.value_types import check_cyclical_peak as _impl
+
+    return _impl(details)
+
+
 ORDER_CHECK_NOTE_TYPE = "order-check"
 
 
