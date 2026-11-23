@@ -10,11 +10,15 @@
 WARN にする（SD1/EC6 と同じ方針。異常だけ出すと「表が無い＝見ていない」と区別がつかない）。
 
 ⚠️ 閾値（時価総額 300億/1000億 等）は円建て。日本株以外は WARN「対象外」にする。
+
+株数（KIK-787）: 時価総額は yfinance の値ではなく、yfinance と J-Quants を照合して大きい方の
+株数 × 株価で出す（``reconcile_shares``）。照合できない・食い違う銘柄は、時価総額で合否が
+決まる行（AV2・EV6）の PASS を WARN に下げ、出所を行末に付ける。DQ9 ``check_share_count``。
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from src.data.value_formulas import (  # noqa: F401  (re-export)
     ASSET_EQUITY_RATIO_MIN,
@@ -34,6 +38,8 @@ from src.data.value_formulas import (  # noqa: F401  (re-export)
     LIQUIDATION_WEIGHTS,
     PEAK_YEARS_REQUIRED,
     PEAK_ZONE,
+    SHARE_DIVERGENCE_WARN,
+    SHARE_OVERRIDE_RANGE,
     book_fcf,
     compute_metrics,
     cyclical_target_price,
@@ -45,6 +51,8 @@ from src.data.value_formulas import (  # noqa: F401  (re-export)
     net_cash,
     other_investments,
     peak_profile,
+    reconcile_shares,
+    reconciled_market_cap,
     roa,
     shares_outstanding,
 )
@@ -77,8 +85,44 @@ def _item(item_id: str, header: str, rows: list[tuple[str, str, str]]) -> dict:
     return _result(item_id, overall, header + body)
 
 
-def _rows(details: dict[str, dict], judge) -> list[tuple[str, str, str]]:
-    from src.data.checklist_review import WARN
+def _m(v: Optional[float]) -> str:
+    return "-" if v is None else f"{v / 1e6:.1f}M"
+
+
+#: 株数を照合できていない状態（KIK-787）。時価総額で合否を決める行は PASS を WARN に下げる
+_UNSETTLED = ("diverged", "unverified", "missing", "override_suspect")
+
+
+def _share_text(sh: dict) -> str:
+    """株数の出所（KIK-787）。時価総額・株数を使う行の末尾に付ける."""
+    st = sh["status"]
+    if st == "override":
+        note = f"・{sh['override_note']}" if sh.get("override_note") else ""
+        return f"株数: 確認値 {_m(sh['shares'])}{note}"
+    if st == "override_suspect":
+        ref = max(x for x in (sh["yf_shares"], sh["jq_shares"]) if x)  # suspect は ref がある時だけ
+        return (f"株数: 確認値 {_m(sh['shares'])} が機械の値 {_m(ref)} と"
+                f" {sh['shares'] / ref:.2f}倍ずれる。単位（百万株で入れていないか）を確認")
+    if st == "ok":
+        return f"株数: 照合済 {_m(sh['shares'])}（乖離{sh['divergence_pct']:.1f}%）"
+    if st == "diverged":
+        date = f"・{sh['jq_date']}開示" if sh.get("jq_date") else ""
+        return (f"株数: yf {_m(sh['yf_shares'])} / J-Quants {_m(sh['jq_shares'])}{date}"
+                f" 乖離{sh['divergence_pct']:.1f}%→大きい方。適時開示を確認")
+    if st == "unverified":
+        src = "yfinance" if sh["source"] == "yfinance" else "J-Quants"
+        return f"株数: 未照合（{src}のみ {_m(sh['shares'])}）"
+    return "株数: 取得不可"
+
+
+def _rows(details: dict[str, dict], judge,
+          shares: Optional[Literal["gate", "note"]] = None) -> list[tuple[str, str, str]]:
+    """銘柄ごとに judge を当てる.
+
+    shares（KIK-787）: ``"gate"`` = 時価総額で合否が決まる行。株数が未照合・乖離なら PASS を
+    WARN に下げ、出所を付ける。``"note"`` = 時価総額を参考表示に使うだけの行。出所だけ付ける。
+    """
+    from src.data.checklist_review import PASS, WARN
 
     out = []
     for sym in sorted(details or {}):
@@ -89,6 +133,11 @@ def _rows(details: dict[str, dict], judge) -> list[tuple[str, str, str]]:
             out.append((sym, WARN, f"対象外（日本株のみ・通貨 {cur}）"))
             continue
         status, text = judge(m)
+        if shares:
+            sh = m["shares"]
+            if shares == "gate" and status == PASS and sh["status"] in _UNSETTLED:
+                status = WARN
+            text = f"{text}［{_share_text(sh)}］"
         out.append((sym, status, text))
     return out
 
@@ -134,8 +183,8 @@ def check_asset_value(details: dict[str, dict]) -> list[dict]:
 
     return [
         _item("AV1", f"グレアム指数≤{GRAHAM_MAX} かつ PER≤{ASSET_PER_MAX:.0f}: ", _rows(details, av1)),
-        _item("AV2", "清算価値（修正資産−総負債）＞時価総額: ", _rows(details, av2)),
-        _item("AV3", "NC（父娘式: 現預金+有価証券−有利子負債。清原式とは別）＞0: ", _rows(details, av3)),
+        _item("AV2", "清算価値（修正資産−総負債）＞時価総額: ", _rows(details, av2, "gate")),
+        _item("AV3", "NC（父娘式: 現預金+有価証券−有利子負債。清原式とは別）＞0: ", _rows(details, av3, "note")),
         _item("AV4", f"自己資本比率≥{ASSET_EQUITY_RATIO_MIN * 100:.0f}% かつ PBR≤{ASSET_PBR_MAX}: ",
               _rows(details, av4)),
     ]
@@ -204,8 +253,8 @@ def check_earnings_value(details: dict[str, dict]) -> list[dict]:
         _item("EV2", f"PER≤{EARN_PER_MAX:.0f}（緩和{EARN_PER_RELAXED:.0f}）: ", _rows(details, ev2)),
         _item("EV3", f"PBR≤{EARN_PBR_MAX} かつ グレアム指数≤{GRAHAM_MAX}: ", _rows(details, ev3)),
         _item("EV4", f"ROA（純利益÷総資産）≥{EARN_ROA_MIN * 100:.0f}%: ", _rows(details, ev4)),
-        _item("EV5", "FCF（営業CF−投資CF・直近期）＞0: ", _rows(details, ev5)),
-        _item("EV6", "時価総額≤300億（上限1000億）: ", _rows(details, ev6)),
+        _item("EV5", "FCF（営業CF−投資CF・直近期）＞0: ", _rows(details, ev5, "note")),
+        _item("EV6", "時価総額≤300億（上限1000億）: ", _rows(details, ev6, "gate")),
     ]
 
 
@@ -255,5 +304,27 @@ def check_cyclical_peak(details: dict[str, dict]) -> list[dict]:
 
     return check_peak_trap(details) + [
         _item("CY2", f"PSR≤{CYC_PSR_MAX}: ", _rows(details, cy2)),
-        _item("CY5", f"逆算目標株価（ピークEPS×PER{CYC_TARGET_PER:.0f}）: ", _rows(details, cy5)),
+        _item("CY5", f"逆算目標株価（ピークEPS×PER{CYC_TARGET_PER:.0f}）: ", _rows(details, cy5, "note")),
     ]
+
+
+# ---------------------------------------------------------------------------
+# 株数照合（KIK-787）
+# ---------------------------------------------------------------------------
+def check_share_count(details: dict[str, dict]) -> list[dict]:
+    """DQ9 株数照合: yfinance と J-Quants（最新短信の発行済−自己株）の株数が合っているか.
+
+    先に ``share_count.attach_share_counts(details)`` を呼ぶ（呼ばないと全銘柄が未照合で WARN）。
+    WARN なら適時開示（第三者割当・公募・自己株処分・消却）を見て、確認した株数を
+    detail の ``shares_override`` に入れて判定し直す。
+    ⚠️ 照合済（ok）でも、期末より後の増資は両方の出所に出てこないことがある。
+    """
+    from src.data.checklist_review import PASS, WARN
+
+    def dq9(m):
+        sh = m["shares"]
+        status = WARN if sh["status"] in _UNSETTLED else PASS
+        return status, _share_text(sh)
+
+    return [_item("DQ9", f"株数照合（yfinance と J-Quants の差 ≤{SHARE_DIVERGENCE_WARN * 100:.0f}%（小さい方比）・"
+                         "大きい方で時価総額を計算）: ", _rows(details, dq9))]

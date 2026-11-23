@@ -42,6 +42,11 @@ def _raito(**over):
         "balance_sheet_date": "2026-03-31",
     }
     d.update(over)
+    # ⚠️ 時価総額は (mc/px)*px で作り直される。境界の厳密比較（AV2 の = / EV6 の 300億ちょうど）は
+    # この往復が厳密なことに依存する。境界そのものは test_share_count の株数×株価のテストでも見る
+    # KIK-787: 既定は J-Quants と照合済み（yfinance と同じ株数）。照合の挙動は test_share_count.py
+    if "jq_shares_outstanding" not in over and d.get("market_cap") and d.get("price"):
+        d["jq_shares_outstanding"] = d["market_cap"] / d["price"]
     return d
 
 

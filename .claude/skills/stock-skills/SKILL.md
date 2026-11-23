@@ -257,7 +257,7 @@ Output &amp; Visibility v1 の Layer 2 仕様に統合された。
 | WLチェック・日次/週次チェック・候補提示 | `reporting` `data_quality` |
 | **WL登録・エントリー条件を書くとき** | **`entry_conditions` の EC1-EC6**（KIK-772、EC6=増資履歴 2026-09-21） |
 | **シクリカル銘柄（不況期赤字で買う型）のWL登録** | **`entry_conditions_cyclical` の CY0-CY5**（EC1 は営業益YoY+を要求するため不適用。EC2/EC4/EC5 は併用・父娘NB 2026-09-21。CY0=最高益の罠は KIK-786） |
-| **資産バリュー・収益バリューのWL登録** | **`entry_conditions_asset` の AV1-AV5 / `entry_conditions_earnings` の EV1-EV7**（KIK-786。`tools.value_types` の check_*。型を決めてから通す。低PERの銘柄は型に関係なく `check_peak_trap`（CY0）も見る） |
+| **資産バリュー・収益バリューのWL登録** | **`entry_conditions_asset` の AV1-AV5 / `entry_conditions_earnings` の EV1-EV7**（KIK-786。`tools.value_types` の check_*。型を決めてから通す。低PERの銘柄は型に関係なく `check_peak_trap`（CY0）も見る。check の前に `attach_share_counts` で株数を照合し DQ9 `check_share_count` を出す・KIK-787） |
 | **発注指示書を出す直前** | **`pre_order` の PO1-PO8** |
 | **発注した直後** | **`pre_order` の PO9（注文一覧との突合）** |
 | すべての場面 | `followthrough` |

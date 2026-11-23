@@ -151,6 +151,23 @@ yfinance 生キーと正規化済みキーの対応表:
 | `investing_cashflow` | `float \| None` | 投資活動によるCF（負値=支出）。本の FCF = 営業CF + これ | `cashflow` |
 | `balance_sheet_date` | `str \| None` | 貸借対照表の期末日（YYYY-MM-DD） | `balance_sheet` |
 
+### 追加フィールド: 株数照合 (KIK-787)
+
+`get_stock_detail()` は足さない。`src/data/share_count.attach_share_counts(details)` が日本株の detail に足す。
+`shares_override` / `shares_override_note` は人（エージェント）が適時開示を確認して入れる。
+
+| キー | 型 | 説明 | ソース |
+|:---|:---|:---|:---|
+| `jq_shares_outstanding` | `float` | 最新短信の流通株数（ShOutFY − TrShFY・期末時点）。取れなければキー自体が無い | J-Quants fin_summary |
+| `jq_shares_date` | `str` | その短信の開示日（YYYY-MM-DD） | J-Quants fin_summary |
+| `shares_override` | `float` | 適時開示で確認した流通株数。あれば最優先 | 手入力 |
+| `shares_override_note` | `str` | 上書きの理由（例: 10/02 第三者割当後） | 手入力 |
+
+`value_formulas.compute_metrics()` は `market_cap`（照合した株数×株価）・`market_cap_yf`（yfinance の値）・
+`shares`（`reconcile_shares()` の結果）を返す。
+⚠️ KIK-787 から `compute_metrics()["market_cap"]` は yfinance の `market_cap` ではない（照合した株数×株価）。
+yfinance の値が欲しいときは `market_cap_yf` を使う。stock_detail の `market_cap` 自体は変えていない。
+
 ### 追加フィールド: アナリスト (KIK-359)
 
 | キー | 型 | 説明 | ソース |
