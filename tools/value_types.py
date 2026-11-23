@@ -23,12 +23,18 @@ from src.data.value_formulas import (  # noqa: E402
     liquidation_value,
     net_cash,
     peak_profile,
+    reconcile_shares,
+)
+from src.data.share_count import (  # noqa: E402
+    attach_share_counts,
+    get_latest_share_count,
 )
 from src.data.value_types import (  # noqa: E402
     check_asset_value,
     check_cyclical_peak,
     check_earnings_value,
     check_peak_trap,
+    check_share_count,
 )
 
 __all__ = [
@@ -37,6 +43,11 @@ __all__ = [
     "check_earnings_value",
     "check_peak_trap",
     "check_cyclical_peak",
+    "check_share_count",
+    # 株数照合（KIK-787）: check の前に attach_share_counts を呼ぶ
+    "attach_share_counts",
+    "get_latest_share_count",
+    "reconcile_shares",
     # 式
     "compute_metrics",
     "book_fcf",

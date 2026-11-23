@@ -157,7 +157,7 @@ examples:
   # === 3類型バリュー（父娘NB・KIK-786）===
   - intent: "資産バリュー株を探して"
     params: { region: japan, preset: shisan-value, max_pbr: 0.5, max_per: 12 }
-    note: "後段: get_stock_detail → tools.value_types.check_asset_value（AV1-AV4）+ check_peak_trap。清算価値>時価総額 と ネットキャッシュ>0 を満たす銘柄を上位に"
+    note: "後段: get_stock_detail → tools.value_types.attach_share_counts（株数照合・KIK-787）→ check_share_count（DQ9）+ check_asset_value（AV1-AV4）+ check_peak_trap。DQ9 が WARN の銘柄は適時開示で株数を確かめてから上位に置く。清算価値>時価総額 と ネットキャッシュ>0 を満たす銘柄を上位に"
     reasoning: "待機資金の置き場。小型株が多いので小型株枠（1銘柄3%・合計10%）で株数を決める。AV5（資産売却・特別配当・アクティビスト）は適時開示で目視"
 
   - intent: "収益バリュー株"

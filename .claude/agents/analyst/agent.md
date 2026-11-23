@@ -130,6 +130,10 @@ if is_reit(symbol):
 - 履歴は4年程度しか見られない。CY0 の「見た年数」を省略しない（本は10〜20年）
 - NC（父娘式）・清算価値が「計算不可」なら、そう書く（0 とみなさない）。NC（父娘式）は下の清原式ネットキャッシュ比率とは別の式なので、出力では「NC（父娘式）」と書き分ける
 - 日本株以外は「対象外」（閾値が円建て）
+- **株数を照合する**（KIK-787）: check の前に `attach_share_counts({sym: detail})`、`check_share_count`（DQ9）を出す。
+  DQ9 が WARN なら適時開示（第三者割当・公募・自己株処分・消却）を見て、確認した株数を `detail["shares_override"]`
+  （理由を `shares_override_note`）に入れて判定し直す。例: 5408.T は yf 59.9M / J-Quants 54.3M（9/30）だが、
+  10/02 の割当後は 67.3M（時価総額 324億）。照合済でも期末より後の増資は両方に出ないことがある。PER/PBR/PSR は yfinance のまま
 - 式と決定の出典は lesson `note_2026-11-23_general_9ac8dd74`
 
 ### 6. NotebookLM参照（清原達郎 ネットキャッシュ投資法）

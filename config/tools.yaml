@@ -217,6 +217,15 @@ tools:
       check_cyclical_peak:
         description: "シクリカル CY0 最高益の罠 / CY2 PSR / CY5 逆算目標株価（参考値・ピークEPS×5）"
         when: "シクリカル候補の判定（entry_conditions_cyclical）"
+      attach_share_counts:
+        description: "日本株の detail に J-Quants の最新流通株数（発行済−自己株）と開示日を足す（KIK-787・src/data/share_count.py）"
+        when: "check_asset_value / check_earnings_value / check_cyclical_peak / check_share_count の前に必ず呼ぶ。呼ばないと全銘柄が株数未照合で WARN"
+      check_share_count:
+        description: "DQ9 株数照合（yfinance と J-Quants の差 ≤3%。食い違えば大きい方で時価総額を出す）"
+        when: "3類型の候補表・個別分析で時価総額を使う前。WARN なら適時開示を見て detail['shares_override'] に確認値を入れて再判定"
+      reconcile_shares:
+        description: "株数の照合結果（採った株数・出所・乖離率・status: ok/diverged/unverified/missing/override）"
+        when: "時価総額の根拠を説明するとき"
 
   news_rss:
     source: tools/news_rss.py

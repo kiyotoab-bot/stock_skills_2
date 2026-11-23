@@ -32,7 +32,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 #: 隣接開示間でこの率以上の株数増加を「増資の疑い」として WARN にする。
 #: ストックオプション行使・譲渡制限株式は年 1% 未満が普通で、5% を超える
@@ -98,6 +98,20 @@ def get_share_count_history(symbol: str, limit: int = 16) -> list[tuple[str, flo
         return []
 
     by_date: dict[str, float] = {}
+    for date, row in iter_share_rows(df):
+        by_date[date] = _num(row.get("ShOutFY"))  # 同日重複は後の行（訂正）で上書き
+
+    out = sorted(by_date.items())
+    return out[-limit:]
+
+
+def iter_share_rows(df) -> Iterator[tuple[str, Any]]:
+    """短信の行のうち、開示日が ISO 日付で ShOutFY が正の行を **API の応答順** で返す.
+
+    ``get_share_count_history``（EC6）と ``share_count.get_latest_share_count``
+    （KIK-787）で行の読み方を揃えるために切り出した。日付順には並べない。
+    同日重複を後勝ちにするのは呼び出し側（応答順＝登録順の仮定）。
+    """
     for _, row in df.iterrows():
         date = str(row.get("DiscDate", ""))[:10]
         shares = _num(row.get("ShOutFY"))
@@ -111,10 +125,7 @@ def get_share_count_history(symbol: str, limit: int = 16) -> list[tuple[str, flo
                 continue
         except ValueError:
             continue  # NaT・非ISO は捨てる（fin_summary._fy_key と同じ方針）
-        by_date[date] = shares  # 同日重複は後の行（訂正）で上書き
-
-    out = sorted(by_date.items())
-    return out[-limit:]
+        yield date, row
 
 
 def _cutoff(today: Optional[datetime.date], years: int) -> str:

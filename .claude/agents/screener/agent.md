@@ -120,6 +120,11 @@ preset が `shisan-value` / `shueki-value` / `cyclical-value` のとき、Equity
 | shueki-value | `check_earnings_value`（EV1-EV6）+ `check_peak_trap`（CY0） | 本のFCF・DCF弱気/強気÷時価総額 |
 | cyclical-value | `check_cyclical_peak`（CY0/CY2/CY5） | 最高益の位置と**見た年数** |
 
+⚠️ **check の前に `attach_share_counts(details)` を呼び、`check_share_count`（DQ9）を表に出す**（KIK-787）。
+yfinance の株数は増資の後も古いままのことがあり、時価総額が小さく出ると資産バリューが割安に見える。
+2026-11-23 に 5408.T が資産バリュー1位になったが、10/02 の第三者割当が反映されていなかった（yf 289億・正しくは 324億）。
+DQ9 が WARN（乖離・未照合）の銘柄は、AV2・EV6 の PASS が WARN に下がる。上位に置く前に適時開示で株数を確かめる。
+
 ⚠️ **CY0（直近=最高益）が WARN の銘柄は、PER が低くても上位にしない。** 本の「ピークの安さ」。
 2026-11-23 に 5706.T が収益バリューの式を満たしつつ、非鉄で最高益だった（lesson 9ac8dd74）。
 判定に使えなかった項目（WARN「取得不可」）は「見ていない」として表に残す。

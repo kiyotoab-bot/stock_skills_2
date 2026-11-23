@@ -23,6 +23,11 @@ from __future__ import annotations
 
 from typing import Optional
 
+#: detail のキー（KIK-787）。src/data/share_count.attach_share_counts が足す。
+#: 純粋な式の層に置き、取得の層（share_count）がここを参照する（依存の向きを 取得→式 にする）
+JQ_SHARES_KEY = "jq_shares_outstanding"
+JQ_SHARES_DATE_KEY = "jq_shares_date"
+
 # ---------------------------------------------------------------------------
 # 閾値（原文の数値）
 # ---------------------------------------------------------------------------
@@ -201,20 +206,79 @@ def peak_profile(net_income_history) -> dict:
 
 
 def shares_outstanding(d: dict) -> Optional[float]:
+    """yfinance の時価総額 ÷ 株価（= yfinance の株数）。照合前の値."""
     mc, px = _num(d.get("market_cap")), _num(d.get("price"))
     if not mc or not px:
         return None
     return mc / px
 
 
+#: yfinance と J-Quants の株数がこの割合を超えて食い違ったら「乖離」（KIK-787）。
+#: 分母は小さい方。yfinance の sharesOutstanding も自己株を除いた値で、J-Quants の
+#: 発行済−自己株と揃う（2026-11-23 実測: 7751.T 自己株37.5% / 7203.T 19.3% でも乖離0.0〜0.4%）
+SHARE_DIVERGENCE_WARN = 0.03
+
+#: 手入力の株数（shares_override）が機械の出所（大きい方）からこの倍率を外れたら疑う。
+#: 単位の取り違え（百万株で 67.3 と入れる等）で株数が極端に小さいと、時価総額が小さく出て
+#: 判定が甘くなる。上書きは照合の外にあるので、ここで止める
+SHARE_OVERRIDE_RANGE = (0.5, 2.0)
+
+
+def reconcile_shares(d: dict) -> dict:
+    """株数の照合（KIK-787）。判定を甘くしない側（株数が大きい方）を採る.
+
+    - ``shares_override``（人が適時開示で確認した値）があればそれを採る → ``override``
+    - yfinance（時価総額÷株価）と J-Quants（最新短信の発行済−自己株）の両方がある →
+      大きい方を採る。差が ``SHARE_DIVERGENCE_WARN`` を超えたら ``diverged``、以下なら ``ok``
+    - 片方だけ → ``unverified`` / 両方無い → ``missing``
+
+    株数が大きいほど時価総額が大きく出て、AV2/AV3 の倍率は下がり、EV6 は上限に近づき、
+    CY5 の目標株価は下がる。どれも判定を厳しくする側。
+    ⚠️ 両方とも期末より後の増資を反映していないことがある（5408.T: yf 59.9M /
+    J-Quants 54.3M / 正解 67.3M）。``diverged`` は「どちらも正しくないかもしれない」の意味。
+    """
+    yf = shares_outstanding(d)
+    jq = _num(d.get(JQ_SHARES_KEY))
+    jq = jq if jq and jq > 0 else None
+    raw_ov = d.get("shares_override")
+    ov = None if isinstance(raw_ov, bool) else _num(raw_ov)  # True は 1.0 になる
+    out = {"shares": None, "source": None, "yf_shares": yf, "jq_shares": jq,
+           "jq_date": d.get(JQ_SHARES_DATE_KEY), "divergence_pct": None,
+           "status": "missing", "override_note": None}
+    if yf and jq:
+        out["divergence_pct"] = abs(yf - jq) / min(yf, jq) * 100
+    if ov and ov > 0:
+        out.update(shares=ov, source="override", status="override",
+                   override_note=d.get("shares_override_note"))
+        ref = max((x for x in (yf, jq) if x), default=None)
+        lo, hi = SHARE_OVERRIDE_RANGE
+        if ref and not (lo * ref <= ov <= hi * ref):
+            out["status"] = "override_suspect"   # 採るが、未確定として WARN に回す
+    elif yf and jq:
+        out.update(shares=max(yf, jq), source="yfinance" if yf >= jq else "jquants",
+                   status="diverged" if out["divergence_pct"] > SHARE_DIVERGENCE_WARN * 100 else "ok")
+    elif yf or jq:
+        out.update(shares=yf or jq, source="yfinance" if yf else "jquants", status="unverified")
+    return out
+
+
+def reconciled_market_cap(d: dict, shares: Optional[dict] = None) -> Optional[float]:
+    """照合した株数 × 株価。株価が無ければ yfinance の時価総額のまま."""
+    rec = shares or reconcile_shares(d)
+    px = _num(d.get("price"))
+    if rec["shares"] and px:
+        return rec["shares"] * px
+    return _num(d.get("market_cap"))
+
+
 def cyclical_target_price(d: dict, target_per: float = CYC_TARGET_PER) -> Optional[float]:
     """目標株価 = 想定ピークEPS × 逆算PER（既定 5）.
 
-    想定ピークEPS は、見られる履歴の最高純利益 ÷ 発行済株式数で近似する。
+    想定ピークEPS は、見られる履歴の最高純利益 ÷ 流通株数（``reconcile_shares``）で近似する。
     ⚠️ 本は「ピーク時に出せる利益を数量×価格で試算する」。履歴の最高値は代用にすぎない。
     """
     prof = peak_profile(d.get("net_income_history"))
-    shares = shares_outstanding(d)
+    shares = reconcile_shares(d)["shares"]  # KIK-787: 照合した株数（大きい方＝目標株価は低く出る）
     if not prof["peak"] or prof["peak"] <= 0 or not shares:
         return None
     return prof["peak"] / shares * target_per
@@ -225,9 +289,14 @@ def compute_metrics(d: dict) -> dict:
     nc = net_cash(d)
     liq, liq_missing = liquidation_value(d)
     fcf = book_fcf(d)
+    shares = reconcile_shares(d)
     return {
         "currency": d.get("currency"),
-        "market_cap": _num(d.get("market_cap")),
+        # KIK-787: 照合した株数 × 株価。yfinance の値は market_cap_yf に残す。
+        # ⚠️ PER/PBR/PSR は yfinance の値のまま（株数が古ければ同じ向きにずれる）
+        "market_cap": reconciled_market_cap(d, shares),
+        "market_cap_yf": _num(d.get("market_cap")),
+        "shares": shares,
         "price": _num(d.get("price")),
         "per": _num(d.get("per")),
         "pbr": _num(d.get("pbr")),

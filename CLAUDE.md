@@ -86,7 +86,7 @@ Tools (tools/)
   watchlist.py     — ウォッチリスト読み書き（JSON直接I/O）
   scoring.py       — 3軸品質スコアリング（src/data/scoring.py のファサード）
   rates.py         — 米国債 10Y-2Y（src/data/treasury_yields.py のファサード。財務省 CMT → FRED。先物 2YY=F は使わない・KIK-779）
-  value_types.py   — 3類型バリューの式と AV/EV/CY0 チェック（src/data/value_formulas.py + value_types.py のファサード・KIK-786）
+  value_types.py   — 3類型バリューの式と AV/EV/CY0 チェック・DQ9 株数照合（src/data/value_formulas.py + value_types.py + share_count.py のファサード・KIK-786/787）
 
 Data (src/data/)
   yahoo_client/  — yfinance ラッパー（24h JSONキャッシュ）
@@ -142,6 +142,12 @@ Data (src/data/)
                     取れない項目は 0 で埋めず WARN（NC が過大に出るのを防ぐ）。有利子負債は
                     短期+長期の両方か Total Debt−リースの大きい方。履歴は4年しか見られないので
                     CY0 は見た年数を必ず出す（本は10〜20年）
+                    時価総額は株数を照合してから使う（KIK-787・DQ9 check_share_count）。
+                    yfinance と J-Quants（最新短信の発行済−自己株）の大きい方×株価。食い違い・未照合なら
+                    AV2・EV6 の PASS を WARN に下げる。適時開示で確かめた値は shares_override
+  share_count.py — J-Quants の最新流通株数を取り detail に足す（attach_share_counts・KIK-787）。
+                    yfinance の株数は増資後も古いままのことがある（5408.T: yf 59.9M / 正 67.3M）。
+                    J-Quants も期末時点なので、期末より後の増資はどちらにも出ないことがある
   dilution.py    — 増資（希薄化）履歴の判定（EC6・父娘本 2026-09-21）
                     J-Quants 短信の期末発行済株数を3年遡り、隣接+5%か
                     累計+10%（MSCB等の段階的希薄化）で WARN。+80%以上=分割、
