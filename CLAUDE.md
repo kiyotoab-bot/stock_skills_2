@@ -86,6 +86,7 @@ Tools (tools/)
   watchlist.py     — ウォッチリスト読み書き（JSON直接I/O）
   scoring.py       — 3軸品質スコアリング（src/data/scoring.py のファサード）
   rates.py         — 米国債 10Y-2Y（src/data/treasury_yields.py のファサード。財務省 CMT → FRED。先物 2YY=F は使わない・KIK-779）
+  value_types.py   — 3類型バリューの式と AV/EV/CY0 チェック（src/data/value_formulas.py + value_types.py のファサード・KIK-786）
 
 Data (src/data/)
   yahoo_client/  — yfinance ラッパー（24h JSONキャッシュ）
@@ -132,6 +133,15 @@ Data (src/data/)
                     （取引履歴は不完全なので、それ以外の買いは買い増し扱い）。判定が14日超
                     途切れた間の抵触は、記録していない売りと区別できないので WARN 止まり（KIK-778）
                     同日2回目のレビュー・日次レポートは _HHMM 付きで保存し上書きしない
+  value_formulas.py — 3類型バリュー（資産・収益・シクリカル）の式（KIK-786・父娘本）。
+                    グレアム指数・NC（父娘式: 現預金+有価証券−有利子負債。清原式とは別）・
+                    清算価値（掛目つき）・本のFCF（営業CF−投資CF）・DCF 弱気/強気・逆算PER5
+  value_types.py — 同じ式の機械チェック。AV1-AV4 / EV1-EV6 / CY0（check_peak_trap・最高益の
+                    80%以上で WARN）・CY2・CY5（参考値）。日本株以外は対象外。決算書の項目は
+                    yahoo_client/_balance.py が stock_detail に足す（古いキャッシュは取り直す）。
+                    取れない項目は 0 で埋めず WARN（NC が過大に出るのを防ぐ）。有利子負債は
+                    短期+長期の両方か Total Debt−リースの大きい方。履歴は4年しか見られないので
+                    CY0 は見た年数を必ず出す（本は10〜20年）
   dilution.py    — 増資（希薄化）履歴の判定（EC6・父娘本 2026-09-21）
                     J-Quants 短信の期末発行済株数を3年遡り、隣接+5%か
                     累計+10%（MSCB等の段階的希薄化）で WARN。+80%以上=分割、
@@ -161,6 +171,8 @@ Config: config/etf_universe.yaml (ETF定番リスト — セクター/債券/コ
 Config: config/llm_routing.yaml (LLM選択・モデルルーティング・コスト定義)
 Config: config/tools.yaml (全ツールの関数・役割・NotebookLMライブラリと参照可否)
 Config: config/checklists.yaml (機械チェックの定義。entry_conditions EC1-EC6 = WL登録時、
+        3類型の型別 entry_conditions_asset AV1-AV5 / entry_conditions_earnings EV1-EV7 /
+        entry_conditions_cyclical CY0-CY5 = KIK-786、
         reporting RP6 = 候補提示時の需給、pre_order PO1-PO9 = 発注前後)
 Rules:  .claude/rules/ (development, workflow, testing)
 Docs:   docs/ (architecture, neo4j-schema, data-models)

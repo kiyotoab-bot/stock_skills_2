@@ -135,6 +135,7 @@ orchestration.yaml に基づく自律修正ループ。スクリーニング0件
 | graphrag.py | src/data/graph_store/ + graph_query/ | Neo4j ナレッジグラフ |
 | grok.py | src/data/grok_client/ | Grok API（X/Web検索） |
 | llm.py | (直接API呼び出し) | Gemini/GPT/Grok マルチLLM |
+| value_types.py | src/data/value_formulas.py + value_types.py | 3類型バリュー（資産・収益・シクリカル）の式と AV/EV/CY0 チェック（KIK-786）。決算書の項目は yahoo_client/_balance.py |
 
 ## Testing & Worktree Tooling（KIK-745/746/747）
 

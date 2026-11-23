@@ -49,6 +49,8 @@ export NEO4J_DEBUG=1    # 接続失敗時の診断を初回1回だけ stderr に
 「最新ニュース教えて」    → Researcher が Grok API でニュース取得
 「PF大丈夫？」           → Health Checker が数値を出し、Strategist がレコメンド
 「暴落したらどうなる？」   → Health Checker がストレステスト実行
+「資産バリュー株を探して」 → Screener が清算価値・ネットキャッシュで判定（3類型バリュー）
+「1926.Tの清算価値は？」  → Analyst が型判定（資産/収益/シクリカル・最高益の罠）
 「メモしておいて」        → 投資メモを直接保存
 ```
 

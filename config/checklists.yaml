@@ -320,6 +320,12 @@ entry_conditions_cyclical:
   apply_to:
     - "シクリカルバリュー銘柄（造船・鉄鋼・非鉄・鉱業・ガラス・石油石炭・化学・紙パルプ等）のWL登録・エントリー"
   items:
+    - id: CY0
+      check: "最高益の罠: 直近の純利益が、見られる範囲の最高益になっていないか（KIK-786）"
+      why: "「今業績が好調な会社は買わない」。黒字ピークの低PERは最も安く見える罠"
+      incident: "2026-11-23: 5706.T 三井金属は PER 5.7・営業利益率18% で収益バリューの式を満たしたが、非鉄で直近=最高益。growth 候補から外した（lesson 9ac8dd74）"
+      note: "直近が見られる範囲の最高益の80%以上で WARN（最高益圏）。yfinance の履歴は4年程度で、本は過去10〜20年と比べる。見た年数を必ず出力に残す。受注残・数量の高原化は目視。型に関係なく低PERの銘柄に通す"
+      code: "src.data.checklist_review.check_peak_trap({sym: get_stock_detail(sym)})（check_cyclical_peak にも含まれる）"
     - id: CY1
       check: "現在が不況期（景気の谷）で赤字であること。ベストは2年連続赤字"
       why: "シクリカルは黒字ピークのPERが最も安く見える罠がある。買うのは赤字の谷"
@@ -327,7 +333,7 @@ entry_conditions_cyclical:
     - id: CY2
       check: "PSR（株価売上高倍率）0.5倍以下。PER/PBR は不問（赤字で計算不能のため）"
       why: "赤字期の割安判定は売上ベースでしか測れない"
-      code: "get_stock_info の psr。過去レンジ比較は price_history × 売上履歴で"
+      code: "src.data.checklist_review.check_cyclical_peak(...) の CY2。過去レンジ比較は price_history × 売上履歴で"
     - id: CY3
       check: "黒字化の予兆: ①数量（販売量・受注量）の増加 ②赤字下での新規設備投資"
       why: "価格より先に数量が動く。赤字でも設備投資する会社は需要回復を見ている"
@@ -338,3 +344,75 @@ entry_conditions_cyclical:
     - id: CY5
       check: "エグジットの逆算PER目標を購入時に決めたか（例: 黒字化後EPS×PER5倍）"
       why: "シクリカルの売り遅れは往復ビンタになる。目標到達で機械的に売る"
+      code: "src.data.checklist_review.check_cyclical_peak(...) の CY5（履歴最高益EPS×5 の参考値）"
+      note: "参考値は履歴の最高益で近似しただけ。本はピーク時の利益を数量×価格で試算する。決めた目標はテーゼに書く"
+
+# --- 資産バリュー・収益バリューのエントリー条件（KIK-786・2026-11-23 ユーザー承認） ---
+# 出典: NotebookLM「投資家の父から娘への教え」。式は原文どおり（lesson note_2026-11-23_general_9ac8dd74）
+# 型を決めてから、その型のリストを通す（資産=AV / 収益=EV / シクリカル=CY）。
+# EC2（テーゼ・sell_triggers）/ EC3（一次情報）/ EC4（枠）/ EC5（需給）/ EC6（増資）は併用する。
+# 入力は get_stock_detail()。決算書の項目（現預金・有価証券・売掛金・棚卸資産・総負債・
+# 有利子負債・投資CF）は KIK-786 で stock_detail に追加した。取れない項目は WARN になる。
+# ⚠️ 本の時価総額の上限（収益バリュー 300億・最大1000億）は当システムの小型株
+#    （1銘柄3%・合計10%・総資産比）。当システムの上限は守る（決定3）。本の上限を超える
+#    銘柄は除外せず、EV6 で「緩和基準」と明記して比較表に残す。
+# ⚠️ AV3 の「ネットキャッシュ」は父娘式（現預金+有価証券−有利子負債）。清原式とは別の式。
+entry_conditions_asset:
+  apply_to:
+    - "資産バリュー銘柄（待機資金の置き場・小型株枠）の WL 登録・エントリー"
+  items:
+    - id: AV1
+      check: "グレアム指数（PER×PBR）22.5以下 かつ PER 12以下"
+      why: "原文のスクリーニング基準"
+      code: "src.data.checklist_review.check_asset_value({sym: get_stock_detail(sym)})"
+    - id: AV2
+      code: "check_asset_value(...) の AV2"
+      check: "清算価値（修正資産−総負債）が時価総額を上回る"
+      why: "資産の裏付けがあること。掛目: 現預金・有価証券100% / 売掛85% / 棚卸・投資等・有形50% / 無形・その他流動0%"
+      note: "取れなかった資産項目は0として足す（保守的）。何を0にしたかは detail に出る"
+    - id: AV3
+      code: "check_asset_value(...) の AV3"
+      check: "ネットキャッシュ（現預金+有価証券−有利子負債）がプラス。赤字なら枯渇年数を見る"
+      why: "手元資金に対して株価が割安に放置されていること"
+    - id: AV4
+      code: "check_asset_value(...) の AV4"
+      check: "自己資本比率60%以上 かつ PBR 0.5以下"
+      why: "原文のスクリーニング基準"
+    - id: AV5
+      check: "カタリストの確認: 保有資産の売却・特別配当・アクティビスト・TOB/MBO（土地の含み益 = 路線価×面積−帳簿価額）"
+      why: "資産バリューは株価が数年動かないことがある。動く理由を探す"
+      note: "自動化経路なし（適時開示・有報『設備の状況』・路線価図を直読）。売りは特別配当の権利付最終日の前"
+
+entry_conditions_earnings:
+  apply_to:
+    - "収益バリュー銘柄（income の中核）の WL 登録・エントリー"
+  items:
+    - id: EV1
+      check: "営業利益率10%以上（緩和 8〜9%）"
+      why: "原文のスクリーニング基準"
+      code: "src.data.checklist_review.check_earnings_value({sym: get_stock_detail(sym)})"
+    - id: EV2
+      code: "check_earnings_value(...) の EV2"
+      check: "PER 10以下（上昇相場は15まで）"
+      why: "原文のスクリーニング基準"
+    - id: EV3
+      code: "check_earnings_value(...) の EV3"
+      check: "PBR 1.5以下 かつ グレアム指数22.5以下"
+      why: "原文のスクリーニング基準"
+    - id: EV4
+      code: "check_earnings_value(...) の EV4"
+      check: "ROA（純利益÷総資産）7%以上"
+      why: "原文のスクリーニング基準"
+    - id: EV5
+      code: "check_earnings_value(...) の EV5"
+      check: "FCF（営業CF−投資CF）がプラス（機械判定は直近期のみ。継続性は複数期を目視）。DCF（弱気 NC+FCF÷10% / 強気 5年20%成長）を時価総額と比べる"
+      why: "企業価値が時価総額より著しく高いこと"
+      note: "本の FCF は営業CF−投資CF。stock_detail の fcf（yfinance の営業CF−設備投資）とは別物"
+    - id: EV6
+      code: "check_earnings_value(...) の EV6"
+      check: "時価総額300億以下（上限1000億）。超える銘柄は『緩和基準』と明記して扱う"
+      why: "原文の基準。ただし当システムでは小型株枠（1銘柄3%・合計10%）になる"
+    - id: EV7
+      check: "全国展開の余地が残っているか（売りは全国展開の一巡・業績のかげり）"
+      why: "収益バリューのシナリオは『営業エリアの拡大 × 利益率の向上』"
+      note: "自動化経路なし（店舗数・営業エリアを IR で確認）"

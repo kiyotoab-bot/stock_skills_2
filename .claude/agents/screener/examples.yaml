@@ -119,8 +119,9 @@ presets:
   momentum:          { description: "モメンタム（急騰・ブレイクアウト検出）", mode: "momentum" }
   long-term:         "長期投資適性（高ROE・配当・安定成長）"
   market-darling:    "市場期待銘柄（高PER許容・EPS急成長）"
-  shueki-value:      { description: "収益バリュー株（父娘NB 5条件: 営業利益率10%↑・PER10倍↓・PBR1.5↓・ROA7%↑・時価総額300億↓。緩和順=利益率8-9%→PER15。グレアム指数22.5超は不可。⚠️時価総額条件は小型株制約[1銘柄3%]と衝突するため株数上限に注意）", mode: "value" }
-  cyclical-value:    "シクリカルバリュー株（父娘NB: 不況期赤字・PSR0.5倍↓・数量増加+赤字下設備投資の予兆。EC1不適用→checklists.yaml の CY1-CY5。対象=造船/鉄鋼/非鉄/鉱業/ガラス/石油石炭/化学/紙パルプ。⚠️mode指定なし=contrarianのファンダ堅調フィルタは赤字銘柄を落とすため使わない。参照NBは父娘のみ・清原NBの自動参照はしない）"
+  shueki-value:      { description: "収益バリュー株（父娘NB 5条件: 営業利益率10%↑・PER10倍↓・PBR1.5↓・ROA7%↑・時価総額300億↓。緩和順=利益率8-9%→PER15。グレアム指数22.5超は不可。⚠️時価総額条件は小型株制約[1銘柄3%]と衝突するため株数上限に注意。後段: tools.value_types.check_earnings_value（EV1-EV6・本のFCF/DCF）と check_peak_trap（CY0・最高益の罠）を必ず通す・KIK-786）", mode: "value" }
+  shisan-value:      "資産バリュー株（父娘NB: PBR0.5↓・自己資本比率60%↑・PER12↓・グレアム指数22.5↓・ネットキャッシュ豊富。EquityQuery で PBR/PER を絞り、後段で tools.value_types.check_asset_value（AV1-AV4: 清算価値>時価総額・NC（父娘式。清原式とは別））を通す。役割は待機資金の置き場で小型株枠（1銘柄3%・合計10%）。カタリスト（資産売却・特別配当・アクティビスト・TOB）は AV5 で目視・KIK-786）"
+  cyclical-value:    "シクリカルバリュー株（父娘NB: 不況期赤字・PSR0.5倍↓・数量増加+赤字下設備投資の予兆。EC1不適用→checklists.yaml の CY0-CY5。対象=造船/鉄鋼/非鉄/鉱業/ガラス/石油石炭/化学/紙パルプ。後段: tools.value_types.check_cyclical_peak で CY0（直近=最高益なら『ピークの安さ』）・CY2・CY5（逆算目標株価）を機械判定・KIK-786。⚠️mode指定なし=contrarianのファンダ堅調フィルタは赤字銘柄を落とすため使わない。参照NBは父娘のみ・清原NBの自動参照はしない）"
 
 # ---------------------------------------------------------------------------
 # 3軸品質スコア閾値（KIK-710）
@@ -152,6 +153,22 @@ examples:
     params: { region: japan, preset: deep-value, max_per: 8, max_pbr: 0.5 }
     scoring: "PER(30)+PBR(30)+配当(20)+ROE(10)+成長(10)=100点"
     reasoning: "ディープバリュー。PER/PBR の配分を高め。流動性リスクに注意"
+
+  # === 3類型バリュー（父娘NB・KIK-786）===
+  - intent: "資産バリュー株を探して"
+    params: { region: japan, preset: shisan-value, max_pbr: 0.5, max_per: 12 }
+    note: "後段: get_stock_detail → tools.value_types.check_asset_value（AV1-AV4）+ check_peak_trap。清算価値>時価総額 と ネットキャッシュ>0 を満たす銘柄を上位に"
+    reasoning: "待機資金の置き場。小型株が多いので小型株枠（1銘柄3%・合計10%）で株数を決める。AV5（資産売却・特別配当・アクティビスト）は適時開示で目視"
+
+  - intent: "収益バリュー株"
+    params: { region: japan, preset: shueki-value, max_per: 15, max_pbr: 1.5, min_roe: 0.08 }
+    note: "後段: check_earnings_value（EV1-EV6）+ check_peak_trap（CY0）。直近=最高益の非鉄・素材は『ピークの安さ』として ⚠ を付けて順位を下げる"
+    reasoning: "income の中核。本の時価総額上限1000億を超える銘柄は EV6 で『緩和基準』と表示される。2026-11-23 に 5706.T が式を満たしつつ CY0 で落ちた実例あり"
+
+  - intent: "シクリカルの谷にある株"
+    params: { region: japan, preset: cyclical-value, max_psr: 0.5 }
+    note: "後段: check_cyclical_peak（CY0/CY2/CY5）。CY0 が PASS（最高益から大きく落ちた・赤字）の銘柄だけを候補に。CY1/CY3/CY4 は短信で目視"
+    reasoning: "最高益の銘柄は低PERでも買わない。今は谷待ちのリスト作り（lesson 9ac8dd74）。逆算目標株価は履歴の最高益による近似値なので、数量×価格で試算し直す"
 
   # === 配当系 ===
   - intent: "米国の高配当株"

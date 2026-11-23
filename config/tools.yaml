@@ -194,6 +194,30 @@ tools:
         description: "PF全銘柄の一括スコアリング + 4象限分類（保有/買い増し/要監視/売却検討）"
         when: "PF全体の品質評価、要監視銘柄の特定時"
 
+  value_types:
+    source: tools/value_types.py
+    # KIK-786。父娘本の3類型（資産・収益・シクリカル）。入力は get_stock_detail()
+    # 式は src/data/value_formulas.py、判定は src/data/value_types.py。
+    # ⚠️ ここの「ネットキャッシュ」は父娘式（現預金+有価証券−有利子負債）。清原式（notebooklm）とは別
+    # 式の単体関数（net_cash / liquidation_value / book_fcf / dcf_bear / dcf_bull /
+    # depletion_years / graham_index / peak_profile / cyclical_target_price）も公開している
+    functions:
+      compute_metrics:
+        description: "1銘柄の式をまとめて計算（グレアム指数・NC（父娘式）・清算価値・本のFCF・DCF弱気/強気・枯渇年数・ROA・最高益の位置・逆算目標株価）。判定はしない"
+        when: "銘柄がどの型に当たるかを見るとき、候補の比較表を作るとき"
+      check_asset_value:
+        description: "資産バリュー AV1-AV4（グレアム指数・清算価値>時価総額・NC（父娘式）・自己資本比率/PBR）"
+        when: "資産バリュー候補の WL 登録・エントリー前（config/checklists.yaml entry_conditions_asset）"
+      check_earnings_value:
+        description: "収益バリュー EV1-EV6（営業利益率・PER・PBR/グレアム・ROA・FCF/DCF・時価総額）"
+        when: "収益バリュー候補の WL 登録・エントリー前（entry_conditions_earnings）。check_peak_trap と併用"
+      check_peak_trap:
+        description: "CY0 最高益の罠だけ（直近が見られる範囲の最高益の80%以上なら WARN。見た年数を出す）"
+        when: "型に関係なく、低PERの銘柄を割安と判断する前"
+      check_cyclical_peak:
+        description: "シクリカル CY0 最高益の罠 / CY2 PSR / CY5 逆算目標株価（参考値・ピークEPS×5）"
+        when: "シクリカル候補の判定（entry_conditions_cyclical）"
+
   news_rss:
     source: tools/news_rss.py
     functions:
