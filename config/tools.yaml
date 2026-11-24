@@ -334,6 +334,19 @@ tools:
         description: "NAV倍率・LTV・分配金利回り（年換算）を一次情報（J-Quants 決算短信）から算出"
         when: "J-REIT の評価時。**get_stock_info の PBR/PER を使わない**"
 
+  dashboard:
+    source: tools/dashboard.py
+    # KIK-789。保有・資産額は個人情報なので外部に出さない（外部 CDN なしの1ファイル HTML・gitignore 済みの data/ に出力）
+    functions:
+      build_dashboard:
+        description: "資産推移・現在の配分・売買の推移・戦略（allocation.yaml・恒久 lesson）・選定条件（checklists.yaml）を data/dashboard/index.html に書き出す。株価が取れない銘柄は取得単価で評価し、そう明記する"
+        when: "日次チェックの最後。「ダッシュボード」「資産推移を見たい」と言われたとき"
+      record_snapshot:
+        description: "総資産（と株式・現金）を data/history/assets.jsonl に1日1点記録する（同じ日は上書き）"
+        when: "日次チェックの最後（build_dashboard の前）"
+      load_asset_history:
+        description: "総資産の推移。日次の記録 + 過去レポート本文からの推計（source=report_text・外れ値±15%は除外）"
+        when: "資産推移を数字で答えるとき"
   rates:
     source: tools/rates.py
     functions:
