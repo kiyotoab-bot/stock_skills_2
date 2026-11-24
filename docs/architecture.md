@@ -136,6 +136,7 @@ orchestration.yaml に基づく自律修正ループ。スクリーニング0件
 | grok.py | src/data/grok_client/ | Grok API（X/Web検索） |
 | llm.py | (直接API呼び出し) | Gemini/GPT/Grok マルチLLM |
 | value_types.py | src/data/value_formulas.py + value_types.py + share_count.py | 3類型バリュー（資産・収益・シクリカル）の式と AV/EV/CY0 チェック（KIK-786）。決算書の項目は yahoo_client/_balance.py。時価総額は yfinance と J-Quants の株数を照合してから使う（DQ9・KIK-787） |
+| dashboard.py | src/data/asset_history.py + dashboard.py + dashboard_svg.py | 資産推移の記録（data/history/assets.jsonl）とローカル HTML ダッシュボード（data/dashboard/index.html・外部通信なし・KIK-789） |
 
 ## Testing & Worktree Tooling（KIK-745/746/747）
 

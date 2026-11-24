@@ -85,6 +85,7 @@ Tools (tools/)
   notes.py         — 投資メモ読み書き（src/data/note_manager のファサード）
   watchlist.py     — ウォッチリスト読み書き（JSON直接I/O）
   scoring.py       — 3軸品質スコアリング（src/data/scoring.py のファサード）
+  dashboard.py     — 資産推移の記録とローカル HTML ダッシュボード（src/data/asset_history.py + dashboard.py のファサード・KIK-789）
   rates.py         — 米国債 10Y-2Y（src/data/treasury_yields.py のファサード。財務省 CMT → FRED。先物 2YY=F は使わない・KIK-779）
   value_types.py   — 3類型バリューの式と AV/EV/CY0 チェック・DQ9 株数照合（src/data/value_formulas.py + value_types.py + share_count.py のファサード・KIK-786/787）
 
@@ -148,6 +149,10 @@ Data (src/data/)
   share_count.py — J-Quants の最新流通株数を取り detail に足す（attach_share_counts・KIK-787）。
                     yfinance の株数は増資後も古いままのことがある（5408.T: yf 59.9M / 正 67.3M）。
                     J-Quants も期末時点なので、期末より後の増資はどちらにも出ないことがある
+  asset_history.py — 総資産の推移（KIK-789）。日次で data/history/assets.jsonl に1点記録し、
+                    それ以前はレポート本文の「総資産 … ¥N」から推計（外れ値±15%は除外・破線で区別）
+  dashboard.py   — 資産推移・配分・売買・戦略・選定条件を data/dashboard/index.html に出す（KIK-789）。
+                    外部 CDN を読まない1ファイル（グラフは dashboard_svg.py の inline SVG）。個人情報を外に出さない
   dilution.py    — 増資（希薄化）履歴の判定（EC6・父娘本 2026-09-21）
                     J-Quants 短信の期末発行済株数を3年遡り、隣接+5%か
                     累計+10%（MSCB等の段階的希薄化）で WARN。+80%以上=分割、
