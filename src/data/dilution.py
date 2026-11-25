@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import datetime
+import math
 from typing import Any, Iterator, Optional
 
 #: 隣接開示間でこの率以上の株数増加を「増資の疑い」として WARN にする。
@@ -54,6 +55,9 @@ DILUTION_MERGE_PCT = -30.0
 
 #: 検査対象の既定期間（年）。
 DILUTION_LOOKBACK_YEARS = 3
+
+#: 期末後の比較（KIK-788）の detail に出す「現在の株数」の出所の既定名。
+POST_PERIOD_DEFAULT_SOURCE = "yfinance"
 
 
 def _num(value: Any) -> Optional[float]:
@@ -136,10 +140,42 @@ def _cutoff(today: Optional[datetime.date], years: int) -> str:
         return d.replace(year=d.year - years, day=28).isoformat()
 
 
+def _finite_pos(value: Any) -> Optional[float]:
+    """正の有限値だけ通す（bool・inf・0 以下は None。True が「1株」に化けるのを防ぐ）."""
+    if isinstance(value, bool):
+        return None
+    f = _num(value)
+    return f if f is not None and math.isfinite(f) and f > 0 else None
+
+
+def _post_period_events(rec: Optional[dict]) -> Optional[tuple[list[str], list[str]]]:
+    """期末後の株数の増え方（KIK-788）。比べられなければ None.
+
+    ``rec`` = ``{"base": 最新短信の流通株数, "base_disclosed": 開示日,
+    "latest": 現在の株数, "latest_source": 出所}``。
+    減少・微増は問題にしない（自社株買い・SO 行使）。
+    """
+    if not isinstance(rec, dict):
+        return None
+    base, latest = _finite_pos(rec.get("base")), _finite_pos(rec.get("latest"))
+    if base is None or latest is None:
+        return None
+    pct = (latest / base - 1) * 100
+    src = rec.get("latest_source") or POST_PERIOD_DEFAULT_SOURCE
+    where = (f"短信 {rec.get('base_disclosed') or '開示日不明'} 開示 {base / 1e6:,.2f}M"
+             f" → {src} {latest / 1e6:,.2f}M")
+    if pct >= DILUTION_SPLIT_PCT:
+        return [], [f"期末後 +{pct:.0f}% 分割か大規模希薄化（{where}）"]
+    if pct >= DILUTION_WARN_PCT:
+        return [f"期末後 +{pct:.1f}%（{where}）"], []
+    return [], []
+
+
 def check_dilution(
     share_series: dict[str, list[tuple[str, float]]],
     today: Optional[datetime.date] = None,
     lookback_years: int = DILUTION_LOOKBACK_YEARS,
+    post_period: Optional[dict[str, Optional[dict]]] = None,
 ) -> list[dict]:
     """EC6 — 買い候補の発行株数履歴に増資（希薄化）の形跡が無いか。
 
@@ -151,6 +187,16 @@ def check_dilution(
         判定基準日（テスト用）。省略時は今日。
     lookback_years
         遡る年数。既定 3 年。
+    post_period
+        ``{symbol: share_count.get_post_period_shares() の結果}``（KIK-788）。
+        期末の株数だけでは、**最新の期末より後の増資**が次の短信まで見えない
+        （5408.T: 10/02 払込の第三者割当が 9/30 期末の株数に出ず PASS になった）。
+        最新短信の流通株数（J-Quants）と現在の株数（yfinance）を比べ、
+        +5% 以上で WARN、+80% 以上で目視確認にする。
+        値が取れない銘柄は「期末より後は未確認」で WARN。
+        ``None``（指定なし）なら判定は従来どおりで、detail に「見ていない」と書く。
+        ⚠️ yfinance も古ければ（増資がどちらの出所にも出ていなければ）拾えない。
+        自己株処分は yfinance にも出ないことがある（5408.T は新株分だけ反映）。
 
     Returns
     -------
@@ -165,12 +211,17 @@ def check_dilution(
     header = (f"直近{lookback_years}年の期末発行済株数(自己株込み)。"
               f"閾値: 単発+{DILUTION_WARN_PCT:.0f}% 累計+{DILUTION_CUM_WARN_PCT:.0f}% "
               f"分割疑義+{DILUTION_SPLIT_PCT:.0f}% 併合疑義{DILUTION_MERGE_PCT:.0f}%。")
+    if post_period is None:
+        header += "⚠ 期末より後の増資は見ていない（post_period 未指定）。"
+    else:
+        header += ("期末後: 最新短信の流通株数(J-Quants) vs 現在の株数(yfinance・時価総額÷株価。"
+                   "値の時点ずれで数%動くことがあるので、+5〜10%は適時開示で増資の有無を確かめる)。")
 
     if not share_series:
         return [_result("EC6", NA, header + "候補なし")]
 
     cutoff = _cutoff(today, lookback_years)
-    suspects, verify, clean, unknown = [], [], [], []
+    suspects, verify, clean, unknown, post_unknown = [], [], [], [], []
 
     for sym in sorted(share_series):
         # 入口でも同日重複を後勝ちで解決する（get_share_count_history 経由なら
@@ -185,11 +236,9 @@ def check_dilution(
         # 窓の直前1点を基準点として残す。切り捨てると「窓の最初の開示に
         # 現れる増加」（d0 < cutoff <= d1）が評価されず盲点になる
         series = before[-1:] + in_win
-        if len(series) < 2:
-            unknown.append(sym)
-            continue
-
         events_warn, events_verify = [], []
+        if len(series) < 2:
+            series = []  # 期末の系列は判定できない。期末後の比較だけは続ける
         for (d0, s0), (d1, s1) in zip(series, series[1:]):
             if s0 <= 0:
                 continue
@@ -221,12 +270,22 @@ def check_dilution(
                              else f"累計({seg[0][0]}以降)")
                     events_warn.append(f"{label} +{cum:.1f}%")
 
+        if post_period is not None:
+            post = _post_period_events(post_period.get(sym))
+            if post is None:
+                post_unknown.append(sym)
+            else:
+                events_warn += post[0]
+                events_verify += post[1]
+
         # 分割と増資の複合を落とさない: elif にせず両方を積む
         if events_warn:
             suspects.append(f"{sym}({', '.join(events_warn)})")
         if events_verify:
             verify.append(f"{sym}({', '.join(events_verify)})")
-        if not events_warn and not events_verify:
+        if not series:
+            unknown.append(sym)
+        elif not events_warn and not events_verify:
             clean.append(sym)
 
     parts = []
@@ -239,9 +298,12 @@ def check_dilution(
         parts.append("形跡なし: " + ", ".join(clean))
     if unknown:
         parts.append("データ不足/窓内の開示なし(要目視): " + ", ".join(unknown))
+    if post_unknown:
+        parts.append("期末より後は未確認(現在の株数が取れない・適時開示で確認): "
+                     + ", ".join(post_unknown))
 
     # 非空なら全銘柄が suspects/verify/clean/unknown のいずれかに入るので
     # NA には落ちない（NA は「候補なし」専用）。unknown も WARN に含めるのは
     # SD1/SD2 と同じ方針——「見られなかったのに総合 PASS」を作らない
-    status = WARN if (suspects or verify or unknown) else PASS
+    status = WARN if (suspects or verify or unknown or post_unknown) else PASS
     return [_result("EC6", status, header + " | ".join(parts))]

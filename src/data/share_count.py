@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from src.data.dilution import iter_share_rows
+from src.data.dilution import POST_PERIOD_DEFAULT_SOURCE, get_share_count_history, iter_share_rows
 from src.data.value_formulas import JQ_SHARES_DATE_KEY, JQ_SHARES_KEY  # noqa: F401  (re-export)
 
 
@@ -99,3 +99,53 @@ def attach_share_counts(details: dict[str, dict], fetch=get_latest_share_count) 
         d[JQ_SHARES_KEY] = rec["outstanding"]
         d[JQ_SHARES_DATE_KEY] = rec.get("disclosed")
     return details
+
+
+def get_post_period_shares(symbol: str, latest_fn=get_latest_share_count, info_fn=None) -> Optional[dict]:
+    """最新短信の流通株数（期末時点）と現在の株数を並べる（EC6 の期末後の比較・KIK-788）.
+
+    現在の株数は yfinance（``value_formulas.shares_outstanding``＝時価総額÷株価）。
+    5408.T では 10/02 の第三者割当の新株分が 10/07 に反映されていた（J-Quants は 9/30 期末のまま）。
+
+    Returns
+    -------
+    dict | None
+        ``{base, base_disclosed, latest, latest_source}``。どちらかが取れなければ None
+        （EC6 側で「期末より後は未確認」の WARN になる）。
+    """
+    from src.data.value_formulas import shares_outstanding
+
+    if info_fn is None:
+        from src.data.yahoo_client import get_stock_info as info_fn
+    try:
+        rec = latest_fn(symbol)
+    except Exception:  # noqa: BLE001
+        rec = None
+    if not isinstance(rec, dict):
+        return None
+    base = _num(rec.get("outstanding"))
+    if not base or base <= 0:
+        return None
+    try:
+        info = info_fn(symbol)
+    except Exception:  # noqa: BLE001 - 取れなければ未確認に回す
+        info = None
+    latest = shares_outstanding(info) if isinstance(info, dict) else None
+    if not latest or latest <= 0:
+        return None
+    return {"base": base, "base_disclosed": rec.get("disclosed"), "latest": latest,
+            "latest_source": POST_PERIOD_DEFAULT_SOURCE}
+
+
+def collect_dilution_inputs(symbols, history_fn=get_share_count_history,
+                            post_fn=get_post_period_shares) -> tuple[dict, dict]:
+    """EC6 の入力をまとめて取る: ``check_dilution(*collect_dilution_inputs(syms))``.
+
+    Returns ``(share_series, post_period)``。日本株以外は期末後の比較の対象外で None を入れる
+    （「期末より後は未確認」として WARN に出る。J-Quants が無い以上、黙って PASS にしない）。
+    """
+    series, post = {}, {}
+    for sym in symbols or ():
+        series[sym] = history_fn(sym)
+        post[sym] = post_fn(sym) if _is_japanese(sym) else None
+    return series, post

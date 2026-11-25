@@ -956,16 +956,19 @@ def check_series_gaps(dates_by_symbol, today=None, lookback=30):
     return _impl(dates_by_symbol, today=today, lookback=lookback)
 
 
-def check_dilution(share_series, today=None, lookback_years=3):
+def check_dilution(share_series, today=None, lookback_years=3, post_period=None):
     """EC6: 買い候補の増資（希薄化）履歴。詳細は src.data.dilution 参照。
 
     父娘本「苦しい時に増資で乗り切る会社は買わない」に対応する
     （2026-09-21 の監査で工程がどこにも無いと判明）。
     ``share_series`` は ``{symbol: dilution.get_share_count_history(sym)}``。
+    ``post_period`` は期末より後の増資を見る材料（KIK-788）。
+    ``check_dilution(*share_count.collect_dilution_inputs(syms))`` で両方そろう。
     """
     from src.data.dilution import check_dilution as _impl
 
-    return _impl(share_series, today=today, lookback_years=lookback_years)
+    return _impl(share_series, today=today, lookback_years=lookback_years,
+                 post_period=post_period)
 
 
 def check_asset_value(details):
