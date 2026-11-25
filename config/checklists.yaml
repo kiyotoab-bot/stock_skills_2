@@ -323,7 +323,13 @@ entry_conditions:
         短信・適時開示で確認せよ」の意味。機械では理由まで分からない。
         小比率の分割（1:1.2 等）は増資と同じ帯に落ちるため機械では
         区別できない。これも WARN に含めて人間が確認する。
-      code: "src.data.checklist_review.check_dilution({sym: src.data.dilution.get_share_count_history(sym)})"
+        期末後（KIK-788）: 期末の株数には**最新の期末より後の増資**が次の短信まで
+        出ない（2026-11-23 の 5408.T: 10/02 の第三者割当を PASS で通した）。
+        最新短信の流通株数（J-Quants）と現在の株数（yfinance）を比べ、
+        +5%以上で WARN / +80%以上で目視確認。取れない銘柄は「期末より後は未確認」で WARN。
+        ⚠️ yfinance も古ければ拾えない。自己株処分も出ないことがある。
+        直近の増資は適時開示で確かめる。
+      code: "src.data.checklist_review.check_dilution(*src.data.share_count.collect_dilution_inputs([sym]))"
 
 # --- シクリカルバリュー専用のエントリー条件（2026-09-21 ユーザー指示） ---
 # 出典: NotebookLM「投資家の父から娘への教え」（father-daughter-value-investin）
