@@ -341,6 +341,9 @@ tools:
       build_dashboard:
         description: "資産推移・現在の配分・売買の推移・戦略（allocation.yaml・恒久 lesson）・選定条件（checklists.yaml）を data/dashboard/index.html に書き出す。株価が取れない銘柄は取得単価で評価し、そう明記する"
         when: "日次チェックの最後。「ダッシュボード」「資産推移を見たい」と言われたとき"
+      open_dashboard:
+        description: "書き出した index.html を既定のブラウザで開く（file:// のみ・外部通信なし）。開けなければ False"
+        when: "日次チェックの最後（build_dashboard の後）と「ダッシュボード見せて」のとき（KIK-790）"
       record_snapshot:
         description: "総資産（と株式・現金）を data/history/assets.jsonl に1日1点記録する（同じ日は上書き）"
         when: "日次チェックの最後（build_dashboard の前）"

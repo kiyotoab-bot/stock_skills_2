@@ -328,3 +328,21 @@ def build_dashboard(out: str = DEFAULT_OUT, base_dir: str = ".", price_fn=defaul
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(html, encoding="utf-8")
     return path.resolve()
+
+
+def open_dashboard(path, opener=None) -> bool:
+    """既定のブラウザでダッシュボードを開く（KIK-790・日次チェックの最後に呼ぶ）.
+
+    ローカルの file:// を開くだけで、外部へは何も送らない。開けなければ False
+    （日次チェックは止めない）。``opener`` はテスト用（既定は ``webbrowser.open``）。
+    """
+    p = Path(path)
+    if not p.is_file():
+        return False
+    if opener is None:
+        import webbrowser
+        opener = webbrowser.open
+    try:
+        return bool(opener(p.resolve().as_uri()))
+    except Exception:  # noqa: BLE001 - ブラウザが無い環境（CI 等）でも落とさない
+        return False

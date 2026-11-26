@@ -190,3 +190,24 @@ class TestBuild:
     def test_facade(self):
         from tools import dashboard as T
         assert T.build_dashboard is D.build_dashboard
+
+    def test_open_dashboard(self, tmp_path):
+        f = tmp_path / "index.html"
+        f.write_text("<html></html>", encoding="utf-8")
+        seen = []
+        assert D.open_dashboard(f, opener=lambda u: seen.append(u) or True) is True
+        assert seen == [f.resolve().as_uri()] and seen[0].startswith("file://")
+
+    def test_open_dashboard_missing_or_failing(self, tmp_path):
+        assert D.open_dashboard(tmp_path / "nope.html", opener=lambda u: True) is False
+        f = tmp_path / "index.html"
+        f.write_text("x", encoding="utf-8")
+
+        def boom(u):
+            raise RuntimeError("no browser")
+        assert D.open_dashboard(f, opener=boom) is False
+        assert D.open_dashboard(f, opener=lambda u: False) is False
+
+    def test_open_facade(self):
+        from tools import dashboard as T
+        assert T.open_dashboard is D.open_dashboard

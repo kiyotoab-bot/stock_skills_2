@@ -84,7 +84,7 @@ examples:
     agent: health-checker
     pattern: A
     header: "🎯 [health-checker] ダッシュボード"
-    note: "tools.dashboard.build_dashboard() で data/dashboard/index.html を作り直し、file:// のパスを返す。資産推移・売買の推移・戦略・選定条件。外部へは送らない"
+    note: "tools.dashboard.build_dashboard() で data/dashboard/index.html を作り直し、open_dashboard() でブラウザに開く（KIK-790）。資産推移・売買の推移・戦略・選定条件。外部へは送らない"
 
   - intent: "資産推移をグラフで見たい"
     agent: health-checker

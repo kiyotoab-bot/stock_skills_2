@@ -1381,15 +1381,17 @@ Markdown と JSON を別々に書く手順だったため、2026-08-06 に日次
 同じ日の2回目以降は上書きせず `daily_YYYYMMDD_HHMM.md` / `.json` に保存される（KIK-777）。
 戻り値のパスをそのまま 💾 行に出すこと（固定の名前を書かない）。
 
-**日次の最後に資産を記録し、ダッシュボードを作り直す**（KIK-789）:
+**日次の最後に資産を記録し、ダッシュボードを作り直して開く**（KIK-789 / KIK-790）:
 
 ```python
-from tools.dashboard import record_snapshot, build_dashboard
+from tools.dashboard import record_snapshot, build_dashboard, open_dashboard
 record_snapshot(total=総資産, equity=株式, cash=現金)   # data/history/assets.jsonl（同じ日は上書き）
 path = build_dashboard()                               # data/dashboard/index.html
+open_dashboard(path)                                   # 既定のブラウザで開く（ユーザー指示 2026-11-26）
 ```
 
 失敗しても日次チェックは止めない（⚠ を1行出して続ける）。💾 行にダッシュボードのパスも出す。
+**日次チェックでは毎回ブラウザで開く**（2026-11-26 ユーザー指示）。開けなかったときはパスを示す。
 総資産は日次の本文に書いた値と同じものを渡す（2つの数字を作らない）。
 
 **保存タイミング**: 全ステップ完了後、チャット出力と同一内容を保存する。
