@@ -53,7 +53,8 @@ export NEO4J_DEBUG=1    # 接続失敗時の診断を初回1回だけ stderr に
 「1926.Tの清算価値は？」  → Analyst が型判定（資産/収益/シクリカル・最高益の罠）
 「メモしておいて」        → 投資メモを直接保存
 「ダッシュボード見せて」   → 資産推移・売買の推移・戦略・選定条件をローカル HTML で表示
-                           （python scripts/build_dashboard.py でも作れる。外部への通信なし）
+                           （python scripts/build_dashboard.py --open でも作れる。外部への通信なし。
+                            日次チェックの最後にも自動で作り直してブラウザで開く）
 ```
 
 ### 出力フォーマット（Output &amp; Visibility v1）

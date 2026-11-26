@@ -15,6 +15,7 @@ from src.data.asset_history import (  # noqa: E402
     load_asset_history,
     record_snapshot,
 )
-from src.data.dashboard import build_dashboard  # noqa: E402
+from src.data.dashboard import build_dashboard, open_dashboard  # noqa: E402
 
-__all__ = ["build_dashboard", "record_snapshot", "load_asset_history", "backfill_from_reports"]
+__all__ = ["build_dashboard", "open_dashboard", "record_snapshot", "load_asset_history",
+           "backfill_from_reports"]
